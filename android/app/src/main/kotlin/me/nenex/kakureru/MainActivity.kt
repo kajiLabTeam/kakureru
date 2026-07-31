@@ -1,4 +1,4 @@
-package com.example.kakureru
+package me.nenex.kakureru
 
 import io.flutter.embedding.android.FlutterActivity
 
