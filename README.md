@@ -1,18 +1,79 @@
 # kakureru
 
-A new Flutter project.
+広い範囲で遊ぶ「かくれんぼ」（鬼ごっこ + 缶蹴り）のスマートフォンアプリ。
+
+GPS だけの鬼ごっこは**鬼が不利**になりやすい。そこで屋内でも効く測位手段（Wi-Fi の電波強度・気圧・BLE）を足して鬼側の情報量を増やし、逃走者と鬼のゲームバランスを対等にすることを狙う。
+
+## ゲームの流れ
+
+1. ホストがルームを作成し、遊ぶ範囲・時間・鬼を設定する。参加者は4桁コードで参加する
+2. 鬼放出待機時間のあいだ逃走者が散らばる。カウントダウンと端末の振動で放出を知らせる
+3. 鬼が逃走者を探す。捕まった逃走者は自己申告で鬼になり、鬼が増えていく
+4. 全体タイムリミットまでにスタート地点（集合地点）へ戻れれば逃走者の勝ち（缶蹴り方式）
+
+補助ルールとして、5分に1回全員が足元の写真を撮って共有する（隠れっぱなし防止）。範囲外に出るとアラートが出る。
+
+## 測位の考え方
+
+| 知りたいこと | 手段 |
+| --- | --- |
+| 相手がどこにいるか（地図上） | GPS |
+| 近いか遠いか | BSSID ごとの Wi-Fi 電波強度と、その変化の共有 |
+| 上の階か下の階か | 互いの気圧の差 |
+| 確実に至近距離にいるか（終盤のみ） | BLE の捕捉 |
+
+## 機能の優先順位
+
+### must
+
+- 逃走者と鬼が、測位した GPS の位置を地図上で互いに見られる
+- 逃走者と鬼が互いの距離感がわかる（BSSID ごとの Wi-Fi 強度と変化の共有）
+- 鬼放出のカウントダウンと全体終了時間の共有
+- 逃走者が鬼になる宣言機能（捕まったら自己申告し、鬼が増えたことが全員にわかる）
+
+### should
+
+- 互いが上にいるか下にいるかがわかる（気圧の値を送り続ける。開始時のキャリブレーションが必要になる可能性あり）
+- ホストが逃げる範囲を指定できる
+- 範囲外に出たときのアラート
+
+### want
+
+- 一定半径（GPS 測位）に入るまで距離感を表示しない
+- ルーム作成・参加まわりの作り込み
+- 終盤、鬼が BLE で逃走者の至近を確実に捕捉できる（近づくと振動）
+- 5分に1回、全員が足元の写真を撮影・共有
+- ミッション（例: GPS を1分間止める）
+
+## 技術構成
+
+- **Flutter**（Dart SDK ^3.12.2）
+- **対象は Android のみ**。iOS には周辺 Wi-Fi アクセスポイントをスキャンする公開 API がなく、must 機能である Wi-Fi ベースの距離感が実装できないため
+- **状態管理**: flutter_hooks + Riverpod（使い分けは [AGENTS.md](AGENTS.md) の規約に従う）
+- **データクラス**: Freezed のみ
+- **バックエンド**: Firebase Realtime Database
+- **静的解析**: very_good_analysis（strict lint）
+
+### 運用上の前提
+
+Android 9 以降、`WifiManager.startScan()` は **2分間に4回**（実質30秒に1回）に制限される。本プロジェクトでは**参加者全員が開発者オプションで「Wi-Fi スキャンのスロットル」を解除した状態で遊ぶ**ことを前提とする。一般配布を想定した作りではない。
+
+## 設計ドキュメント
+
+- [docs/glossary.md](docs/glossary.md) — 用語集（ユビキタス言語）。コード上の型名・enum値はここに揃える
+- [docs/scenarios.md](docs/scenarios.md) — 集合からゲーム終了までのシナリオ（SVOC分解）
+- [docs/rtdb-schema.md](docs/rtdb-schema.md) — Realtime Database のデータ構造
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+```sh
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs   # Freezed の生成コード
+flutter run
+flutter test
+flutter analyze
+```
 
-A few resources to get you started if this is your first Flutter project:
+## AIエージェントで作業する場合
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-# kakureru
+このリポジトリには AI コーディングエージェント向けの共通指示と安全網が入っている。作業前に [AGENTS.md](AGENTS.md) を読むこと。Claude Code 固有の補足は [CLAUDE.md](CLAUDE.md) にある。

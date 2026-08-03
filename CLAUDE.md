@@ -6,17 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
-## Project
+## コマンド
 
-This repository is a template for AI-powered applications. It is currently empty — populate it with your project files and update this file accordingly.
+```sh
+flutter pub get                                            # 依存関係の取得
+dart run build_runner build --delete-conflicting-outputs   # Freezed等の生成コード更新
+flutter run                                                # 実行（Android実機/エミュレータ）
+flutter test                                               # テスト
+flutter analyze                                            # 静的解析（very_good_analysis のstrict lint）
+```
 
-## Getting Started
+生成コード（`*.freezed.dart` / `*.g.dart`）を手で編集せず、必ず `build_runner` で再生成する。
 
-Add your project files, then update this CLAUDE.md with:
+## 参照先
 
-- **Build/run/test commands** — how to install dependencies, start the app, run tests, and lint
-- **Architecture overview** — the high-level structure and how components interact
-- **Key conventions** — any naming, formatting, or workflow rules specific to this project
+- ゲーム内容・機能の優先順位（must/should/want）・技術構成 → README.md
+- Firebase Realtime Database のデータ構造 → `docs/rtdb-schema.md`
+- 状態管理（hooks / Riverpod）とデータクラス（Freezed）の規約、Android限定などの前提 → AGENTS.md（上でインポート済み）
 
 ## Claude Code固有の補足（このセクションはテンプレートを埋めた後も残すこと）
 

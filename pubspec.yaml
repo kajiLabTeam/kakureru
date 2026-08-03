@@ -35,12 +35,20 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_hooks: ^0.21.3+1
-  freezed: ^3.2.5
-  riverpod: ^3.4.2
+  freezed_annotation: ^3.1.0
+  # hooks_riverpod は flutter_riverpod + flutter_hooks を統合したもの。
+  # HookConsumerWidget で hooks と Riverpod を同じウィジェットで使える。
+  hooks_riverpod: ^3.4.2
+  json_annotation: ^4.9.0
 
 dev_dependencies:
+  # コード生成用。実行時には不要なので dev_dependencies 側に置く。
+  build_runner: ^2.15.1
+
   flutter_test:
     sdk: flutter
+  freezed: ^3.2.5
+  json_serializable: ^6.8.0
 
   # The "very_good_analysis" package below contains a set of strict lints to
   # encourage good coding practices. The lint set provided by the package is
