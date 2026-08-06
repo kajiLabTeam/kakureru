@@ -44,3 +44,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets
+# google-services.json / firebase_options.dart はFirebaseクライアント設定であり、
+# Google公式の見解でも「公開されて問題ない」ものなので意図的に対象外にしている。
+# アクセス制御はAPIキー制限とSecurity Rules側で行う（docs/firebase-api-key-restrictions.md）。
+# 一方で以下はサーバー側の真の秘密情報なので除外する。
+.env
+.env.*
+!.env.example
+*firebase-adminsdk*.json
+serviceAccountKey.json
+*.pem
+*.p12

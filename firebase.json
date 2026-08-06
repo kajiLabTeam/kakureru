@@ -1,0 +1,24 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "kakureru-b8545",
+          "appId": "1:219341099189:android:78af13949c6782cdc9aefc",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "kakureru-b8545",
+          "configurations": {
+            "android": "1:219341099189:android:78af13949c6782cdc9aefc"
+          }
+        }
+      }
+    }
+  },
+  "database": {
+    "rules": "database.rules.json"
+  }
+}

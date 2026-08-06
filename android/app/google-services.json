@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "219341099189",
+    "firebase_url": "https://kakureru-b8545-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "kakureru-b8545",
+    "storage_bucket": "kakureru-b8545.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:219341099189:android:78af13949c6782cdc9aefc",
+        "android_client_info": {
+          "package_name": "me.nenex.kakureru"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAecyYA45wDsmn-cfKyxsmHBvkJd8fyKn8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
