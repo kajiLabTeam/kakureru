@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 
@@ -29,16 +30,27 @@ class RoomRepository {
     RoomSetting setting = const RoomSetting(),
   }) async {
     final roomId = _db.ref('rooms').push().key!;
+    debugPrint('[createRoom] start roomId=$roomId uid=$_uid');
+
+    debugPrint('[createRoom] step1 roomCodes予約 開始');
     final code = await _reserveRoomCode(roomId);
+    debugPrint('[createRoom] step1 roomCodes予約 完了 code=$code');
 
     try {
+      debugPrint('[createRoom] step2 rooms/$roomId/meta set 開始');
       await _db.ref('rooms/$roomId/meta').set({
         'status': 'WAITING',
         'hostUserId': _uid,
         'roomCode': code,
         'createdAt': ServerValue.timestamp,
       });
+      debugPrint('[createRoom] step2 meta set 完了');
+
+      debugPrint('[createRoom] step3 rooms/$roomId/setting set 開始');
       await _db.ref('rooms/$roomId/setting').set(setting.toMap());
+      debugPrint('[createRoom] step3 setting set 完了');
+
+      debugPrint('[createRoom] step4 rooms/$roomId/users/$_uid set 開始');
       await _db.ref('rooms/$roomId/users/$_uid').set({
         'displayName': displayName,
         'deviceId': deviceId,
@@ -46,11 +58,18 @@ class RoomRepository {
         'role': 'FUGITIVE',
         'joinedAt': ServerValue.timestamp,
       });
+      debugPrint('[createRoom] step4 users set 完了');
     } catch (e) {
+      if (e is FirebaseException) {
+        debugPrint('[createRoom] 失敗: code=${e.code} message=${e.message}');
+      } else {
+        debugPrint('[createRoom] 失敗(非FirebaseException): $e');
+      }
       await _rollbackRoom(roomId, code);
       rethrow;
     }
 
+    debugPrint('[createRoom] 全ステップ成功 roomId=$roomId');
     return roomId;
   }
 
@@ -79,11 +98,18 @@ class RoomRepository {
   Future<String> _reserveRoomCode(String roomId) async {
     for (var i = 0; i < 10; i++) {
       final code = (1000 + _random.nextInt(9000)).toString();
-      final result = await _db.ref('roomCodes/$code').runTransaction((current) {
-        if (current != null) return Transaction.abort();
-        return Transaction.success({'roomId': roomId});
-      });
-      if (result.committed) return code;
+      debugPrint('[_reserveRoomCode] roomCodes/$code へrunTransaction試行 ($i回目)');
+      try {
+        final result = await _db.ref('roomCodes/$code').runTransaction((current) {
+          if (current != null) return Transaction.abort();
+          return Transaction.success({'roomId': roomId});
+        });
+        debugPrint('[_reserveRoomCode] roomCodes/$code committed=${result.committed}');
+        if (result.committed) return code;
+      } on FirebaseException catch (e) {
+        debugPrint('[_reserveRoomCode] roomCodes/$code 失敗: code=${e.code} message=${e.message}');
+        rethrow;
+      }
     }
     throw Exception('ルームコードの発行に失敗しました');
   }
