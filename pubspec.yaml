@@ -47,6 +47,7 @@ dependencies:
   permission_handler: ^11.3.1
   sensors_plus: ^6.1.1
   wifi_scan: ^0.4.1
+  device_info_plus: ^11.1.1
 
 dev_dependencies:
   # コード生成用。実行時には不要なので dev_dependencies 側に置く。

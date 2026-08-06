@@ -5,16 +5,25 @@
 
     "rooms": {
       "$roomId": {
-        ".read": "auth != null",
-        ".write": "auth != null",
+        "meta": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+
+        "setting": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
 
         "users": {
+          ".read": "auth != null",
           "$uid": {
             ".write": "auth != null && auth.uid === $uid"
           }
         },
 
         "locations": {
+          ".read": "auth != null && root.child('rooms').child($roomId).child('users').child(auth.uid).exists()",
           "$uid": {
             ".write": "auth != null && auth.uid === $uid"
           }
@@ -25,6 +34,16 @@
           "$uid": {
             ".read": "auth != null && auth.uid === $uid"
           }
+        },
+
+        "catches": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+
+        "photos": {
+          ".read": "auth != null",
+          ".write": "auth != null"
         }
       }
     },
@@ -32,7 +51,7 @@
     "roomCodes": {
       "$code": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null && (!data.exists() || root.child('rooms').child(data.child('roomId').val()).child('meta').child('hostUserId').val() === auth.uid)"
       }
     }
   }

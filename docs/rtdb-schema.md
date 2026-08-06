@@ -79,11 +79,52 @@ roomCodes/
 現状のルールは、この設計意図のうち既に決まっている部分だけを反映している:
 
 - 全体のデフォルトは `auth != null`（未認証アクセスは拒否）。認証は起動時の匿名サインイン（`lib/main.dart`）が前提
+- `rooms/{roomId}` 自体には一括の `.read`/`.write` を付けない。RTDBのルールは上位ノードで許可すると下位ノードでの制限を上書きしてしまう（カスケードする）ため、`meta`/`setting`/`users`/`locations`/`visible`/`catches`/`photos` それぞれに個別にルールを付けている
 - `users/{uid}`・`locations/{uid}` は本人（`auth.uid === $uid`）以外は書き込み不可
 - `visible/{uid}` はクライアント書き込みを禁止（Cloud Functions が Admin SDK 経由で書く想定）し、読み取りは本人のみ
+- `roomCodes/{code}` は新規作成は誰でも可能だが、既存コードへの上書き・削除はそのルームのホスト（`meta/hostUserId` と `auth.uid` が一致する人）のみ
 
-`meta` / `setting` / `catches` / `photos` の書き込みロジック（誰がホストか、誰が捕獲を報告できるか等）は、対応する Dart 側の実装が入ってから、その仕様に合わせてルールを絞り込むこと。それまでは `rooms/{roomId}` 配下は認証済みなら誰でも読み書きできる暫定ルールになっている。
+`meta` / `setting` / `catches` / `photos` の書き込みロジック（誰がホストか、誰が捕獲を報告できるか等）は、対応する Dart 側の実装が入ってから、その仕様に合わせてルールを絞り込むこと。それまでは認証済みなら誰でも読み書きできる暫定ルールになっている。
 
 APIキー自体はアクセス制御に使われない（プロジェクトを識別するだけ）ため、ここでの Security Rules と、Google Cloud Console 側のAPIキー制限（アプリ制限・API制限）の両方が必須。
+
+### 一括書き込み・一括読み取りが使えない理由
+
+RTDBの `.read`/`.write` 権限は、**アクセス先のパス自身か、その祖先にルールが無いと許可されない**。子ノードに個別ルールを付けていても、それは子ノードへ直接アクセスする場合にしか効かず、親への一括アクセスを救済してはくれない。
+
+`rooms/{roomId}` 自体には `.read`/`.write` を付けていない（`meta`/`setting`/`users`/…にだけ個別に付けている、上の「カスケードする」の項参照）。そのため:
+
+- `rooms/{roomId}` へ `set()`/`update()` で `{meta: {...}, setting: {...}, users: {...}}` のように複数の子を一括で書き込む操作は、`meta`/`setting`/`users/{uid}` それぞれに書き込み権限があっても**必ず権限エラーになる**（実際に本番環境で検証済み）
+- 同様に `rooms/{roomId}` を丸ごと読み取る操作（一括GET・`onValue` を room直下に張る等）も**必ず権限エラーになる**（データがある/ないに関わらず、検証済み）
+
+これはカスケードバグ修正（`rooms/{roomId}` 直下の一括 `.read`/`.write` を撤去したこと）の意図した副作用であり、バグではない。子ごとに権限を絞った結果として、子ごとに個別アクセスする以外の手段が塞がれている。
+
+**実装への影響**: `rooms/{roomId}` 配下を扱うコードは、`meta` / `setting` / `users/{uid}` を必ず個別のパスで読み書きする。
+- 書き込み: `RoomRepository.createRoom` は `rooms/{roomId}/meta` → `setting` → `users/{uid}` の順で個別に `set()` する（`roomCodes` のホスト限定ルールが `meta/hostUserId` を参照するため、`meta` を最初に確定させる）
+- 読み取り: `RoomRepository.watchRoom` は `meta` / `setting` / `users` を個別に `onValue` 購読し、クライアント側で `Room` に合成する
+
+### ルーム終了(解散)は Phase 1 ではステータス変更のみ
+
+ホストが解散時に他ユーザーの `users/{uid}` を削除できるようにルールを緩めることは行わない。`users/{uid}` の書き込みを本人以外にも許可すると、`role` や `pressureOffset` を第三者が書き換えられる穴になるため。
+
+そのため `RoomRepository.finishRoom` は `meta/status` を `"FINISHED"` に更新するだけで、`users` / `setting` / `meta` / `roomCodes` の実データは削除しない。これらの削除は **Phase 2 の `finishGame` Cloud Function**（Admin SDK でルールをバイパスして全参加者分をまとめて消せる）に任せる。
+
+**Phase 1 の間の既知の制約**: 削除処理が無いため、遊び終わったあとも `roomCodes/{code}` が残り続ける。4桁コードは10000通りしかないので、開発中に何度もルームを作り直していると枯渇しうる。Phase 2 実装までは、開発中に溜まった `roomCodes` / `rooms` を手動（Firebase Console）または簡単なクリーンアップスクリプトで消す運用が必要。
+
+### Phase 1 の暫定措置: `locations/` をルームメンバーに開放
+
+Phase 1 は Cloud Functions を使わずクライアント側だけで実装する方針のため、`visible/` に書き込む主体（本来は Cloud Functions）が存在しない。`visible/` 方式を厳密に適用すると、鬼と逃走者が互いの位置を確認できる must 機能自体が実装不能になる。
+
+そのため `locations/{uid}` の読み取りを「本人のみ」ではなく「そのルームの `users/{auth.uid}` が存在する（=同じルームのメンバーである）」に緩めている:
+
+```
+"locations": {
+  ".read": "auth != null && root.child('rooms').child($roomId).child('users').child(auth.uid).exists()"
+}
+```
+
+**既知のリスク**: 位置の公開範囲（`senseDistanceRadiusM` による距離制限、`fugitiveInfoDelaySec` による解禁タイミング）はクライアント側のロジックでしか制御されていない。ルール上は同室メンバーであれば誰でも `locations/` の生データを即座に読めるため、改造クライアントを使えば、本来まだ見えないはずの相手の位置（解禁前・射程外）を読み取れてしまう。正規のアプリ経由なら見えないが、ルールとしては防げていない。
+
+**Phase 3 で `visible/` 方式へ切り替える予定**。Cloud Functions が距離・解禁タイミングを判定して `visible/{uid}/{targetUid}` にだけ書き出すようになったら、`locations/{uid}` の `.read` は再び「本人のみ」に戻し、`locations/` への直接アクセスをクライアントから完全に断つこと。
 
 
