@@ -1,0 +1,85 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/location/repository/location_task_handler.dart';
+
+class LocationRepository {
+  final FirebaseDatabase _db;
+  final FirebaseAuth _auth;
+  DataCallback? _taskDataCallback;
+
+  LocationRepository({FirebaseDatabase? db, FirebaseAuth? auth})
+    : _db = db ?? FirebaseDatabase.instance,
+      _auth = auth ?? FirebaseAuth.instance;
+
+  String get _uid => _auth.currentUser!.uid;
+
+  /// 自分の位置を rooms/{roomId}/locations/{uid} へ継続送信する。
+  ///
+  /// ポケットに入れたまま遊ぶ運用のため、アプリがバックグラウンドでも
+  /// 位置取得が止まらないよう Foreground Service(flutter_foreground_task)を使う。
+  /// 実際の位置取得は [LocationTaskHandler] が別isolateで行い、取得した値を
+  /// sendDataToMain 経由でここ(メインisolate)が受け取ってRTDBへ書き込む
+  /// (Firebase呼び出しは既存の動作確認済みのメインisolate側に集約している)。
+  /// 1秒間隔だと転送量が跳ねるため、更新間隔(onRepeatEvent)は4秒にしている。
+  Future<void> startSendingLocation(String roomId) async {
+    await stopSendingLocation();
+
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'kakureru_location',
+        channelName: '位置情報の送信',
+        channelDescription: 'ゲーム中、自分の位置を他の参加者へ送信しています',
+      ),
+      // iOS非対応のプロジェクトだが init() が必須引数として要求するため、
+      // 使われないダミー値として渡している。
+      iosNotificationOptions: const IOSNotificationOptions(),
+      foregroundTaskOptions: ForegroundTaskOptions(eventAction: ForegroundTaskEventAction.repeat(4000)),
+    );
+
+    _taskDataCallback = (data) {
+      if (data is! Map) return;
+      _db.ref('rooms/$roomId/locations/$_uid').set({
+        'lat': data['lat'],
+        'lng': data['lng'],
+        'altitude': data['altitude'],
+        'updatedAt': ServerValue.timestamp,
+      });
+    };
+    FlutterForegroundTask.addTaskDataCallback(_taskDataCallback!);
+
+    final result = await FlutterForegroundTask.startService(
+      serviceId: 1000,
+      serviceTypes: const [ForegroundServiceTypes.location],
+      notificationTitle: 'かくれんぼ',
+      notificationText: '位置情報を送信しています',
+      callback: startLocationTaskCallback,
+    );
+    if (result is ServiceRequestFailure) {
+      debugPrint('[LocationRepository] startService失敗: ${result.error}');
+    }
+  }
+
+  /// 位置送信を止める。ゲーム画面を離れる時に呼ぶこと。
+  Future<void> stopSendingLocation() async {
+    if (_taskDataCallback != null) {
+      FlutterForegroundTask.removeTaskDataCallback(_taskDataCallback!);
+      _taskDataCallback = null;
+    }
+    if (await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.stopService();
+    }
+  }
+
+  /// 同じルームの全員の位置(自分を含む)を購読する。
+  Stream<List<UserLocation>> watchLocations(String roomId) {
+    return _db.ref('rooms/$roomId/locations').onValue.map((event) {
+      final value = event.snapshot.value as Map<dynamic, dynamic>? ?? {};
+      return value.entries
+          .map((e) => UserLocation.fromMap(e.key.toString(), e.value as Map<dynamic, dynamic>))
+          .toList();
+    });
+  }
+}
