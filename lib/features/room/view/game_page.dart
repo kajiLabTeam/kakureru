@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
@@ -45,6 +46,24 @@ class GamePage extends HookConsumerWidget {
       ref.read(locationViewModelProvider.notifier).start(roomId);
       return () => ref.read(locationViewModelProvider.notifier).stop();
     }, [roomId]);
+
+    // GPSの実測(getPositionStream)は初回の測位に時間がかかる(コールドスタート)。
+    // 端末にキャッシュされた直近の位置を getLastKnownPosition で先に取り、
+    // 地図の初期表示だけに使う。RTDBへは送らない(古い位置を他の参加者に
+    // 見せないため。書き込みは LocationRepository 経由の実測のみで行う)。
+    final cachedPosition = useState<Position?>(null);
+    useEffect(() {
+      Future<void> loadCached() async {
+        try {
+          cachedPosition.value = await Geolocator.getLastKnownPosition();
+        } on Object {
+          // 取得できなくても致命的ではない(フォールバック座標を使う)。
+        }
+      }
+
+      loadCached();
+      return null;
+    }, const []);
 
     // 気圧の送信もゲーム画面滞在中だけ行う。センサー購読自体は待機画面の
     // キャリブレーションで既に始まっている想定(PressureViewModel.initは
@@ -106,6 +125,7 @@ class GamePage extends HookConsumerWidget {
                           locations: locationState.locations,
                           users: room.users,
                           myUid: myUid,
+                          cachedPosition: cachedPosition.value,
                         ),
                       ),
                       _VerticalPositionBar(positions: relativePositions, users: room.users),
@@ -123,44 +143,119 @@ class GamePage extends HookConsumerWidget {
   }
 }
 
-class _LocationMap extends StatelessWidget {
-  const _LocationMap({required this.locations, required this.users, required this.myUid});
+class _LocationMap extends HookWidget {
+  const _LocationMap({
+    required this.locations,
+    required this.users,
+    required this.myUid,
+    required this.cachedPosition,
+  });
 
   final List<UserLocation> locations;
   final List<RoomUser> users;
   final String? myUid;
+  final Position? cachedPosition;
+
+  /// 自分の位置が全く分からない間の暫定センター(東京駅)。
+  /// あくまで「世界地図の原点が出るよりまし」という仮の値。
+  static const _fallbackDefaultCenter = latlong.LatLng(35.681236, 139.767125);
 
   @override
   Widget build(BuildContext context) {
     final selfLocation = _findLocation(locations, myUid);
-    if (selfLocation == null) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [CircularProgressIndicator(), SizedBox(height: 16), Text('位置情報を取得中...')],
-        ),
-      );
-    }
 
-    final center = latlong.LatLng(selfLocation.latitude, selfLocation.longitude);
+    // 自分の位置の情報源には優先度がある: 実測(GPS) > 端末キャッシュ > 何も無い。
+    // 精度の低いソースから高いソースへ切り替わったタイミングだけ地図を
+    // 動かす(常時追従させると自由にパン・ズームできなくなるため)。
+    final positionTier = selfLocation != null
+        ? 2
+        : cachedPosition != null
+        ? 1
+        : 0;
+    final currentCenter = selfLocation != null
+        ? latlong.LatLng(selfLocation.latitude, selfLocation.longitude)
+        : cachedPosition != null
+        ? latlong.LatLng(cachedPosition!.latitude, cachedPosition!.longitude)
+        : _initialFallbackCenter();
 
-    return FlutterMap(
-      options: MapOptions(initialCenter: center, initialZoom: 17),
+    final mapController = useMemoized(MapController.new);
+    final bestTierShown = useRef(0);
+
+    useEffect(() {
+      if (positionTier > bestTierShown.value) {
+        bestTierShown.value = positionTier;
+        // MapControllerがまだレイアウト前だと move() が失敗しうるため、
+        // フレーム確定後に呼ぶ。
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          try {
+            mapController.move(currentCenter, mapController.camera.zoom);
+          } on Object {
+            // 画面遷移直後などでmapがまだ存在しない場合は無視する。
+          }
+        });
+      }
+      return null;
+    }, [positionTier, currentCenter.latitude, currentCenter.longitude]);
+
+    return Stack(
       children: [
-        // Phase 1では手軽さを優先し、追加設定・課金設定が不要な
-        // OpenStreetMapのタイルをそのまま使う(flutter_map採用)。
-        // Google Mapsだと google_maps_flutter 用のAPIキー発行と
-        // 課金設定が要るため、開発初期の身内テスト用途には過剰。
-        // 公開規模が大きくなったら自前タイルサーバや商用プロバイダへの
-        // 切り替えを検討すること(OSMのタイル使用ポリシー上、
-        // 本番の常用には推奨されない)。
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'me.nenex.kakureru',
+        FlutterMap(
+          mapController: mapController,
+          options: MapOptions(initialCenter: currentCenter, initialZoom: 17),
+          children: [
+            // Phase 1では手軽さを優先し、追加設定・課金設定が不要な
+            // OpenStreetMapのタイルをそのまま使う(flutter_map採用)。
+            // Google Mapsだと google_maps_flutter 用のAPIキー発行と
+            // 課金設定が要るため、開発初期の身内テスト用途には過剰。
+            // 公開規模が大きくなったら自前タイルサーバや商用プロバイダへの
+            // 切り替えを検討すること(OSMのタイル使用ポリシー上、
+            // 本番の常用には推奨されない)。
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'me.nenex.kakureru',
+            ),
+            MarkerLayer(markers: locations.map(_buildMarker).toList()),
+          ],
         ),
-        MarkerLayer(markers: locations.map(_buildMarker).toList()),
+        if (positionTier == 0)
+          Positioned(
+            top: 12,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    ),
+                    SizedBox(width: 8),
+                    Text('現在地を取得中...', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
+  }
+
+  /// 自分の位置(実測・キャッシュとも)がまだ無い間の初期センター。
+  /// ルーム内の他の参加者が既にいればその位置、いなければ固定の暫定座標。
+  latlong.LatLng _initialFallbackCenter() {
+    if (locations.isNotEmpty) {
+      final other = locations.first;
+      return latlong.LatLng(other.latitude, other.longitude);
+    }
+    return _fallbackDefaultCenter;
   }
 
   Marker _buildMarker(UserLocation location) {
