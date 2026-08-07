@@ -1,5 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:kakureru/core/utils/rtdb_map.dart';
+import 'package:kakureru/features/wifi/model/wifi_scan_result.dart';
 
 part 'user_location.freezed.dart';
 part 'user_location.g.dart';
@@ -13,8 +14,10 @@ abstract class UserLocation with _$UserLocation {
     @JsonKey(name: 'lat') required double latitude,
     @JsonKey(name: 'lng') required double longitude,
     double? altitude,
-    // 気圧センサー用に予約。現時点ではどこからも書き込まない。
+    // 気圧センサーの平滑化済み値(PressureRepositoryが4秒間隔で書き込む)。
     double? pressure,
+    // Wi-Fiスキャン結果(WifiScanRepositoryが20〜30秒間隔で書き込む)。
+    WifiScanResult? wifiScan,
     @Default(0) int updatedAt,
   }) = _UserLocation;
 

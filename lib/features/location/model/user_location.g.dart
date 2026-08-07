@@ -13,6 +13,9 @@ _UserLocation _$UserLocationFromJson(Map<String, dynamic> json) =>
       longitude: (json['lng'] as num).toDouble(),
       altitude: (json['altitude'] as num?)?.toDouble(),
       pressure: (json['pressure'] as num?)?.toDouble(),
+      wifiScan: json['wifiScan'] == null
+          ? null
+          : WifiScanResult.fromJson(json['wifiScan'] as Map<String, dynamic>),
       updatedAt: (json['updatedAt'] as num?)?.toInt() ?? 0,
     );
 
@@ -23,5 +26,6 @@ Map<String, dynamic> _$UserLocationToJson(_UserLocation instance) =>
       'lng': instance.longitude,
       'altitude': instance.altitude,
       'pressure': instance.pressure,
+      'wifiScan': instance.wifiScan,
       'updatedAt': instance.updatedAt,
     };

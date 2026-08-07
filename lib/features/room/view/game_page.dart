@@ -15,7 +15,20 @@ import 'package:kakureru/features/pressure/model/relative_vertical_position.dart
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
+import 'package:kakureru/features/wifi/model/proximity_level.dart';
+import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
+import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
+import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 import 'package:latlong2/latlong.dart' as latlong;
+
+/// Wi-Fi近接判定の表示方式。GamePage上でいつでも切り替えられる。
+enum _WifiDisplayMode {
+  /// 参加者ごとの3段階判定(近い/遠い/検知なし)。
+  levels,
+
+  /// 最も近い相手との上位3AP RSSI生データ比較。
+  rssiBars,
+}
 
 /// ゲーム中の画面。ゲーム内容自体はまだ無く、残り時間と参加者の位置表示のみ行う仮実装。
 class GamePage extends HookConsumerWidget {
@@ -75,8 +88,16 @@ class GamePage extends HookConsumerWidget {
       return () => ref.read(pressureViewModelProvider.notifier).stopSendingAndDispose();
     }, [roomId]);
 
+    // Wi-Fiスキャンもゲーム画面滞在中だけ行う。位置情報・気圧とは別の
+    // 20〜30秒間隔のタイマーで動く(Androidのスキャンスロットリング対策)。
+    useEffect(() {
+      ref.read(wifiScanRepositoryProvider).startScanning(roomId);
+      return () => ref.read(wifiScanRepositoryProvider).stopScanning();
+    }, [roomId]);
+
     final pressureState = ref.watch(pressureViewModelProvider);
     final relativePositions = ref.watch(relativeVerticalPositionsProvider(roomId));
+    final wifiDisplayMode = useState(_WifiDisplayMode.levels);
 
     // 送信中(Foreground Service稼働中)にソフトバックキーで誤ってアプリごと
     // 閉じてしまうと位置送信が止まるため、最小化に倒す(プラグイン推奨パターン)。
@@ -131,6 +152,30 @@ class GamePage extends HookConsumerWidget {
                       _VerticalPositionBar(positions: relativePositions, users: room.users),
                     ],
                   ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: SegmentedButton<_WifiDisplayMode>(
+                    segments: const [
+                      ButtonSegment(value: _WifiDisplayMode.levels, label: Text('3段階判定')),
+                      ButtonSegment(value: _WifiDisplayMode.rssiBars, label: Text('RSSI比較')),
+                    ],
+                    selected: {wifiDisplayMode.value},
+                    onSelectionChanged: (selection) => wifiDisplayMode.value = selection.first,
+                  ),
+                ),
+                SizedBox(
+                  height: 160,
+                  child: wifiDisplayMode.value == _WifiDisplayMode.levels
+                      ? _WifiProximityLevelsView(
+                          entries: ref.watch(wifiProximityLevelsProvider(roomId)),
+                          users: room.users,
+                        )
+                      : _WifiRssiCompareView(
+                          comparisons: ref.watch(topWifiComparisonsProvider(roomId)),
+                          nearestUid: ref.watch(nearestOpponentUidProvider(roomId)),
+                          users: room.users,
+                        ),
                 ),
               ],
             );
@@ -347,5 +392,127 @@ class _VerticalPositionBar extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Wi-Fi近接判定 表示方式A: 参加者ごとの3段階判定。
+class _WifiProximityLevelsView extends StatelessWidget {
+  const _WifiProximityLevelsView({required this.entries, required this.users});
+
+  final List<WifiProximityEntry> entries;
+  final List<RoomUser> users;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Wi-Fiスキャン結果を待っています...'),
+      );
+    }
+
+    return ListView(
+      children: entries.map((entry) {
+        final user = _findUser(users, entry.uid);
+        return ListTile(
+          dense: true,
+          leading: Icon(Icons.circle, size: 12, color: _colorForRole(user?.role)),
+          title: Text(user?.displayName ?? entry.uid),
+          trailing: Text(_labelFor(entry.level)),
+        );
+      }).toList(),
+    );
+  }
+
+  String _labelFor(ProximityLevel level) {
+    switch (level) {
+      case ProximityLevel.close:
+        return '近い';
+      case ProximityLevel.far:
+        return '遠い';
+      case ProximityLevel.notDetected:
+        return '検知なし';
+    }
+  }
+}
+
+/// Wi-Fi近接判定 表示方式B: 判定を経由しない生RSSIバー比較。
+///
+/// 比較対象は最も近い「対象の役割」の相手(nearestOpponentUidProvider)。
+/// 共通APのうち自分・相手のRSSI平均が強い上位3つを、それぞれ自分の
+/// バーと相手のバーを並べて表示する(数値そのものは出さず、長さで見せる)。
+class _WifiRssiCompareView extends StatelessWidget {
+  const _WifiRssiCompareView({
+    required this.comparisons,
+    required this.nearestUid,
+    required this.users,
+  });
+
+  final List<WifiApComparison> comparisons;
+  final String? nearestUid;
+  final List<RoomUser> users;
+
+  static const _minRssi = -90;
+  static const _maxRssi = -40;
+  static const _maxBarWidth = 100.0;
+  static const _circledNumbers = ['①', '②', '③'];
+
+  @override
+  Widget build(BuildContext context) {
+    final targetUid = nearestUid;
+    if (targetUid == null) {
+      return const Padding(padding: EdgeInsets.all(16), child: Text('比較対象が見つかりません(検知なし)'));
+    }
+
+    final targetUser = _findUser(users, targetUid);
+    final targetColor = _colorForRole(targetUser?.role);
+    final targetLabel = targetUser?.role == UserRole.demon ? '鬼' : '逃走者';
+
+    if (comparisons.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text('${targetUser?.displayName ?? targetLabel} との共通APがまだありません'),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '比較対象: ${targetUser?.displayName ?? targetLabel}($targetLabel)',
+            style: TextStyle(color: targetColor, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          for (var i = 0; i < comparisons.length; i++)
+            _buildApRow(i, comparisons[i], targetLabel, targetColor),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApRow(int index, WifiApComparison comparison, String targetLabel, Color targetColor) {
+    final number = index < _circledNumbers.length ? _circledNumbers[index] : '${index + 1}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(width: 48, child: Text('Wi-Fi$number', style: const TextStyle(fontSize: 12))),
+          const Text('自分', style: TextStyle(fontSize: 12)),
+          const SizedBox(width: 4),
+          _bar(comparison.selfRssi, Colors.blue),
+          const SizedBox(width: 12),
+          Text(targetLabel, style: TextStyle(fontSize: 12, color: targetColor)),
+          const SizedBox(width: 4),
+          _bar(comparison.targetRssi, targetColor),
+        ],
+      ),
+    );
+  }
+
+  Widget _bar(int rssi, Color color) {
+    final ratio = ((rssi - _minRssi) / (_maxRssi - _minRssi)).clamp(0.0, 1.0);
+    return Container(width: _maxBarWidth * ratio + 4, height: 10, color: color);
   }
 }
