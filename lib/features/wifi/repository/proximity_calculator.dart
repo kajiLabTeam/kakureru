@@ -29,7 +29,9 @@ class ProximityThresholds {
 /// [ProximityThresholds.weakSignalCutoffDbm]未満のAPを除外したマップを返す。
 Map<String, int> filterWeakSignals(Map<String, int> bssidRssi) {
   return Map.fromEntries(
-    bssidRssi.entries.where((e) => e.value >= ProximityThresholds.weakSignalCutoffDbm),
+    bssidRssi.entries.where(
+      (e) => e.value >= ProximityThresholds.weakSignalCutoffDbm,
+    ),
   );
 }
 
@@ -89,11 +91,17 @@ ProximityLevel classifyProximity({
 /// 2人分のWi-Fiスキャン結果(BSSID→RSSI)から近接度を判定する。
 /// 指標の計算方法は [calculateJaccardIndex]・[calculateAverageRssiDiff]、
 /// 判定基準は [classifyProximity] を参照。
-ProximityLevel calculateProximity(Map<String, int> selfBssidRssi, Map<String, int> targetBssidRssi) {
+ProximityLevel calculateProximity(
+  Map<String, int> selfBssidRssi,
+  Map<String, int> targetBssidRssi,
+) {
   final selfFiltered = filterWeakSignals(selfBssidRssi);
   final targetFiltered = filterWeakSignals(targetBssidRssi);
 
-  final commonCount = selfFiltered.keys.toSet().intersection(targetFiltered.keys.toSet()).length;
+  final commonCount = selfFiltered.keys
+      .toSet()
+      .intersection(targetFiltered.keys.toSet())
+      .length;
   final jaccard = calculateJaccardIndex(selfFiltered, targetFiltered);
   final avgRssiDiff = calculateAverageRssiDiff(selfFiltered, targetFiltered);
 
@@ -113,7 +121,9 @@ List<WifiApComparison> selectTopCommonAccessPoints(
 }) {
   final selfFiltered = filterWeakSignals(selfBssidRssi);
   final targetFiltered = filterWeakSignals(targetBssidRssi);
-  final common = selfFiltered.keys.toSet().intersection(targetFiltered.keys.toSet());
+  final common = selfFiltered.keys.toSet().intersection(
+    targetFiltered.keys.toSet(),
+  );
 
   final comparisons = common
       .map(
@@ -149,7 +159,10 @@ String? findNearestUid(
 
   for (final entry in candidateBssidRssiByUid.entries) {
     final targetFiltered = filterWeakSignals(entry.value);
-    final commonCount = selfFiltered.keys.toSet().intersection(targetFiltered.keys.toSet()).length;
+    final commonCount = selfFiltered.keys
+        .toSet()
+        .intersection(targetFiltered.keys.toSet())
+        .length;
     if (commonCount < ProximityThresholds.minCommonApCount) continue;
 
     final diff = calculateAverageRssiDiff(selfFiltered, targetFiltered);

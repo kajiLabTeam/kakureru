@@ -13,6 +13,7 @@ import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
@@ -96,7 +97,7 @@ class GamePage extends HookConsumerWidget {
     }, [roomId]);
 
     final pressureState = ref.watch(pressureViewModelProvider);
-    final relativePositions = ref.watch(relativeVerticalPositionsProvider(roomId));
+    final nearestVerticalPosition = ref.watch(nearestOpponentVerticalPositionProvider(roomId));
     final wifiDisplayMode = useState(_WifiDisplayMode.levels);
 
     // 送信中(Foreground Service稼働中)にソフトバックキーで誤ってアプリごと
@@ -130,52 +131,56 @@ class GamePage extends HookConsumerWidget {
                       style: TextStyle(color: Colors.red),
                     ),
                   ),
-                if (pressureState.sensorAvailability == PressureSensorAvailability.unavailable)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'この端末は気圧センサー非対応のため、上下判定は行えません',
-                      style: TextStyle(color: Colors.orange),
-                    ),
-                  ),
                 Expanded(
+                  child: _LocationMap(
+                    locations: locationState.locations,
+                    users: room.users,
+                    myUid: myUid,
+                    cachedPosition: cachedPosition.value,
+                  ),
+                ),
+                // マップの下に「鬼(または逃走者)との上下関係」と「Wi-Fi近接表示」を
+                // 横並びで置く。ゲーム中にちらっと見てすぐ分かることを優先し、
+                // どちらも常に同時に見える位置にしている。
+                SizedBox(
+                  height: 200,
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      _NearestOpponentVerticalIndicator(
+                        pressureState: pressureState,
+                        isCalibrated: _isCalibrated(room, myUid),
+                        position: nearestVerticalPosition,
+                        opponentRole: _roleOf(room.users, nearestVerticalPosition?.uid),
+                      ),
                       Expanded(
-                        child: _LocationMap(
-                          locations: locationState.locations,
-                          users: room.users,
-                          myUid: myUid,
-                          cachedPosition: cachedPosition.value,
+                        child: Column(
+                          children: [
+                            SegmentedButton<_WifiDisplayMode>(
+                              segments: const [
+                                ButtonSegment(value: _WifiDisplayMode.levels, label: Text('3段階判定')),
+                                ButtonSegment(value: _WifiDisplayMode.rssiBars, label: Text('RSSI比較')),
+                              ],
+                              selected: {wifiDisplayMode.value},
+                              onSelectionChanged: (selection) => wifiDisplayMode.value = selection.first,
+                            ),
+                            Expanded(
+                              child: wifiDisplayMode.value == _WifiDisplayMode.levels
+                                  ? _WifiProximityLevelsView(
+                                      entries: ref.watch(wifiProximityLevelsProvider(roomId)),
+                                      users: room.users,
+                                    )
+                                  : _WifiRssiCompareView(
+                                      comparisons: ref.watch(topWifiComparisonsProvider(roomId)),
+                                      nearestUid: ref.watch(nearestOpponentUidProvider(roomId)),
+                                      users: room.users,
+                                    ),
+                            ),
+                          ],
                         ),
                       ),
-                      _VerticalPositionBar(positions: relativePositions, users: room.users),
                     ],
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: SegmentedButton<_WifiDisplayMode>(
-                    segments: const [
-                      ButtonSegment(value: _WifiDisplayMode.levels, label: Text('3段階判定')),
-                      ButtonSegment(value: _WifiDisplayMode.rssiBars, label: Text('RSSI比較')),
-                    ],
-                    selected: {wifiDisplayMode.value},
-                    onSelectionChanged: (selection) => wifiDisplayMode.value = selection.first,
-                  ),
-                ),
-                SizedBox(
-                  height: 160,
-                  child: wifiDisplayMode.value == _WifiDisplayMode.levels
-                      ? _WifiProximityLevelsView(
-                          entries: ref.watch(wifiProximityLevelsProvider(roomId)),
-                          users: room.users,
-                        )
-                      : _WifiRssiCompareView(
-                          comparisons: ref.watch(topWifiComparisonsProvider(roomId)),
-                          nearestUid: ref.watch(nearestOpponentUidProvider(roomId)),
-                          users: room.users,
-                        ),
                 ),
               ],
             );
@@ -337,45 +342,119 @@ RoomUser? _findUser(List<RoomUser> users, String uid) {
   return null;
 }
 
-/// 自分を中心線とした上下バー。
-///
-/// 「精密な階数判定ではなく、上か下かを曖昧に伝える」という方針のため、
-/// 複数人を1本の共有バーに●として重ねて表示する形にした
-/// (人数分バーを並べる案もあったが、数値を出さない曖昧な表現という
-/// 目的には、視線を1箇所に集められるこちらの方が合うと判断した)。
-/// 誰の●かは地図と同じ色分け(鬼=赤、逃走者=緑)で見分ける。
-class _VerticalPositionBar extends StatelessWidget {
-  const _VerticalPositionBar({required this.positions, required this.users});
+UserRole? _roleOf(List<RoomUser> users, String? uid) {
+  if (uid == null) return null;
+  return _findUser(users, uid)?.role;
+}
 
-  final List<RelativeVerticalPosition> positions;
-  final List<RoomUser> users;
+/// 自分がキャリブレーション済みかどうか。ホストは meta/basePressure、
+/// 参加者は自分の users/{uid}/pressureOffset の有無で判定する
+/// (待機画面の判定基準と同じ)。
+bool _isCalibrated(Room room, String? myUid) {
+  if (myUid == null) return false;
+  if (myUid == room.hostUserId) return room.basePressure != null;
+  return _findUser(room.users, myUid)?.pressureOffset != null;
+}
+
+/// 気圧センサーによる「鬼(または逃走者)との上下関係」表示。
+///
+/// 以前は参加者全員を1本のバーに重ねていたが、誰が誰か分かりにくかった
+/// ため、Wi-Fiの近接判定と同じ「最も近い対象の役割の相手」1人だけに絞った
+/// (nearestOpponentVerticalPositionProvider参照)。表示対象を揃えることで
+/// 認知負荷を下げる狙い。
+///
+/// センサー非対応・未キャリブレーション・検知なしの3状態を、実際に上下を
+/// 表示できる状態と明確に区別して案内する。
+class _NearestOpponentVerticalIndicator extends StatelessWidget {
+  const _NearestOpponentVerticalIndicator({
+    required this.pressureState,
+    required this.isCalibrated,
+    required this.position,
+    required this.opponentRole,
+  });
+
+  final PressureState pressureState;
+  final bool isCalibrated;
+  final RelativeVerticalPosition? position;
+  final UserRole? opponentRole;
 
   static const _rangeMeters = 5.0;
-  static const _dotSize = 16.0;
+  static const _dotSize = 22.0;
+  static const _boxWidth = 88.0;
 
   @override
   Widget build(BuildContext context) {
+    final message = _statusMessage();
+
     return SizedBox(
-      width: 48,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final height = constraints.maxHeight;
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(width: 2, height: height, color: Colors.grey.shade400),
-              // 中心線 = 自分の高さ。
-              Container(width: 24, height: 2, color: Colors.black54),
-              for (final position in positions) _buildDot(position, height),
-            ],
-          );
-        },
+      width: 120,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('上', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Expanded(
+              child: Container(
+                width: _boxWidth,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: message != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Text(
+                            message,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      )
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final height = constraints.maxHeight;
+                          return Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              // 自分の中心線。太線+色ではっきり区別する。
+                              Container(height: 4, color: Colors.blue),
+                              _buildDot(height),
+                            ],
+                          );
+                        },
+                      ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text('下', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildDot(RelativeVerticalPosition position, double height) {
-    final clamped = position.deltaMeters.clamp(-_rangeMeters, _rangeMeters);
+  /// 実際に上下を表示できないなら理由を返す。表示できるならnull。
+  String? _statusMessage() {
+    if (pressureState.sensorAvailability == PressureSensorAvailability.unavailable) {
+      return 'この端末は非対応';
+    }
+    if (pressureState.sensorAvailability == PressureSensorAvailability.checking) {
+      return '確認中...';
+    }
+    if (!isCalibrated) {
+      return 'キャリブレーションが必要です';
+    }
+    if (position == null) {
+      return '検知なし';
+    }
+    return null;
+  }
+
+  Widget _buildDot(double height) {
+    final clamped = position!.deltaMeters.clamp(-_rangeMeters, _rangeMeters);
     // t: 0(下端)〜1(上端)。deltaMetersが正(相手が上)ほどtが大きくなる。
     final t = (clamped + _rangeMeters) / (2 * _rangeMeters);
     final top = (height * (1 - t) - _dotSize / 2).clamp(0.0, height - _dotSize);
@@ -386,9 +465,9 @@ class _VerticalPositionBar extends StatelessWidget {
         width: _dotSize,
         height: _dotSize,
         decoration: BoxDecoration(
-          color: _colorForRole(_findUser(users, position.uid)?.role),
+          color: _colorForRole(opponentRole),
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 1.5),
+          border: Border.all(color: Colors.white, width: 2),
         ),
       ),
     );

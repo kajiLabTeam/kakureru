@@ -9,6 +9,7 @@ import 'package:kakureru/features/pressure/repository/pressure_repository.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
+import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
 part 'pressure_view_model.freezed.dart';
 
@@ -124,6 +125,24 @@ final relativeVerticalPositionsProvider = Provider.family<List<RelativeVerticalP
       positions.add(RelativeVerticalPosition(uid: location.uid, deltaMeters: delta));
     }
     return positions;
+  },
+);
+
+/// 表示を「鬼(または逃走者)だけ」に絞るため、Wi-Fi側の
+/// nearestOpponentUidProvider(共通APのRSSI差が最小の相手)をそのまま流用し、
+/// 上のrelativeVerticalPositionsProviderからその1人分だけを取り出す。
+/// 対象が見つからない、またはその相手がまだ気圧を送っていない場合はnull
+/// (画面側で「検知なし」として扱う)。
+final nearestOpponentVerticalPositionProvider = Provider.family<RelativeVerticalPosition?, String>(
+  (ref, roomId) {
+    final nearestUid = ref.watch(nearestOpponentUidProvider(roomId));
+    if (nearestUid == null) return null;
+
+    final positions = ref.watch(relativeVerticalPositionsProvider(roomId));
+    for (final position in positions) {
+      if (position.uid == nearestUid) return position;
+    }
+    return null;
   },
 );
 
