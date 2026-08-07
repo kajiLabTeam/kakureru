@@ -126,6 +126,45 @@ class RoomRepository {
     await _db.ref('rooms/$roomId/meta/status').set('FINISHED');
   }
 
+  /// ホストがゲームを開始する。
+  ///
+  /// ServerValue.timestamp はサーバー側でしか解決されないため、書き込んだ
+  /// その場では startedAt の実値を知り得ず、クライアントで
+  /// `startedAt + N` を計算することはできない。ここでは
+  /// 1) startedAt を ServerValue.timestamp で確定させて書き込み、
+  /// 2) 実際に書き込まれた値を読み戻し、
+  /// 3) その実値をもとに releasedAt/endsAt を計算して status と同時に書き込む
+  /// という手順にしている(案A)。
+  ///
+  /// 案B(releasedAt/endsAtを保存せず、画面側で毎回
+  /// startedAt + setting から計算する)も検討したが、
+  /// docs/rtdb-schema.md が releasedAt/endsAt を meta の実フィールドとして
+  /// 既に定義しており、Phase 2 の Cloud Functions 側もこれを直接参照する
+  /// 想定であるため、スキーマ通りRTDBに実値を持たせる案Aを採用した。
+  ///
+  /// status・releasedAt・endsAt は1回の update() にまとめている
+  /// (meta ノード自体に .write があるため一括更新できる。rooms/{roomId}
+  /// 自体には .write が無く一括書き込みができないのとは別の話 —
+  /// 「一括書き込みが使えない理由」参照)。これにより、他クライアントが
+  /// status=PLAYING を観測した時点では releasedAt/endsAt も必ず揃っている。
+  Future<void> startGame(String roomId) async {
+    await _db.ref('rooms/$roomId/meta/startedAt').set(ServerValue.timestamp);
+
+    final startedAtSnapshot = await _db.ref('rooms/$roomId/meta/startedAt').get();
+    final startedAt = startedAtSnapshot.value as int;
+
+    final settingSnapshot = await _db.ref('rooms/$roomId/setting').get();
+    final setting = RoomSetting.fromMap(
+      settingSnapshot.value as Map<dynamic, dynamic>? ?? {},
+    );
+
+    await _db.ref('rooms/$roomId/meta').update({
+      'status': 'PLAYING',
+      'releasedAt': startedAt + setting.releaseWaitSec * 1000,
+      'endsAt': startedAt + setting.gameDurationSec * 1000,
+    });
+  }
+
   /// コードからルームに参加する
   Future<String> joinRoom({
     required String code,

@@ -2,7 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:kakureru/features/room/view_model/room_home_page.dart';
+import 'package:kakureru/features/room/view/room_home_page.dart';
 
 import 'firebase_options.dart';
 

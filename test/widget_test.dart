@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:kakureru/features/room/view_model/room_home_page.dart';
+import 'package:kakureru/features/room/view/room_home_page.dart';
 
 void main() {
   testWidgets('RoomHomePage shows create/join room controls', (tester) async {
