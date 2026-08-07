@@ -9,6 +9,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
+import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
+import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
+import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:latlong2/latlong.dart' as latlong;
@@ -43,6 +46,19 @@ class GamePage extends HookConsumerWidget {
       return () => ref.read(locationViewModelProvider.notifier).stop();
     }, [roomId]);
 
+    // 気圧の送信もゲーム画面滞在中だけ行う。センサー購読自体は待機画面の
+    // キャリブレーションで既に始まっている想定(PressureViewModel.initは
+    // 何度呼んでも安全)。
+    useEffect(() {
+      ref.read(pressureViewModelProvider.notifier)
+        ..init()
+        ..startSendingToRoom(roomId);
+      return () => ref.read(pressureViewModelProvider.notifier).stopSendingAndDispose();
+    }, [roomId]);
+
+    final pressureState = ref.watch(pressureViewModelProvider);
+    final relativePositions = ref.watch(relativeVerticalPositionsProvider(roomId));
+
     // 送信中(Foreground Service稼働中)にソフトバックキーで誤ってアプリごと
     // 閉じてしまうと位置送信が止まるため、最小化に倒す(プラグイン推奨パターン)。
     return WithForegroundTask(
@@ -74,11 +90,26 @@ class GamePage extends HookConsumerWidget {
                       style: TextStyle(color: Colors.red),
                     ),
                   ),
+                if (pressureState.sensorAvailability == PressureSensorAvailability.unavailable)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'この端末は気圧センサー非対応のため、上下判定は行えません',
+                      style: TextStyle(color: Colors.orange),
+                    ),
+                  ),
                 Expanded(
-                  child: _LocationMap(
-                    locations: locationState.locations,
-                    users: room.users,
-                    myUid: myUid,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _LocationMap(
+                          locations: locationState.locations,
+                          users: room.users,
+                          myUid: myUid,
+                        ),
+                      ),
+                      _VerticalPositionBar(positions: relativePositions, users: room.users),
+                    ],
                   ),
                 ),
               ],
@@ -134,7 +165,7 @@ class _LocationMap extends StatelessWidget {
 
   Marker _buildMarker(UserLocation location) {
     final isSelf = location.uid == myUid;
-    final color = isSelf ? Colors.blue : _roleColor(_findUser(users, location.uid)?.role);
+    final color = isSelf ? Colors.blue : _colorForRole(_findUser(users, location.uid)?.role);
 
     return Marker(
       point: latlong.LatLng(location.latitude, location.longitude),
@@ -144,12 +175,6 @@ class _LocationMap extends StatelessWidget {
     );
   }
 
-  // 役割による表示制御(誰に誰が見えるか)は別タスクで扱う。ここでは
-  // 取得できた位置を単純に色分けして表示するだけ。
-  Color _roleColor(UserRole? role) {
-    return role == UserRole.demon ? Colors.red : Colors.green;
-  }
-
   UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
     if (uid == null) return null;
     for (final location in locations) {
@@ -157,11 +182,75 @@ class _LocationMap extends StatelessWidget {
     }
     return null;
   }
+}
 
-  RoomUser? _findUser(List<RoomUser> users, String uid) {
-    for (final user in users) {
-      if (user.id == uid) return user;
-    }
-    return null;
+// 役割による表示制御(誰に誰が見えるか)は別タスクで扱う。ここでは
+// 取得できた位置を単純に色分けして表示するだけ。地図・上下バー共通で使う。
+Color _colorForRole(UserRole? role) {
+  return role == UserRole.demon ? Colors.red : Colors.green;
+}
+
+RoomUser? _findUser(List<RoomUser> users, String uid) {
+  for (final user in users) {
+    if (user.id == uid) return user;
+  }
+  return null;
+}
+
+/// 自分を中心線とした上下バー。
+///
+/// 「精密な階数判定ではなく、上か下かを曖昧に伝える」という方針のため、
+/// 複数人を1本の共有バーに●として重ねて表示する形にした
+/// (人数分バーを並べる案もあったが、数値を出さない曖昧な表現という
+/// 目的には、視線を1箇所に集められるこちらの方が合うと判断した)。
+/// 誰の●かは地図と同じ色分け(鬼=赤、逃走者=緑)で見分ける。
+class _VerticalPositionBar extends StatelessWidget {
+  const _VerticalPositionBar({required this.positions, required this.users});
+
+  final List<RelativeVerticalPosition> positions;
+  final List<RoomUser> users;
+
+  static const _rangeMeters = 5.0;
+  static const _dotSize = 16.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 48,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final height = constraints.maxHeight;
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(width: 2, height: height, color: Colors.grey.shade400),
+              // 中心線 = 自分の高さ。
+              Container(width: 24, height: 2, color: Colors.black54),
+              for (final position in positions) _buildDot(position, height),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDot(RelativeVerticalPosition position, double height) {
+    final clamped = position.deltaMeters.clamp(-_rangeMeters, _rangeMeters);
+    // t: 0(下端)〜1(上端)。deltaMetersが正(相手が上)ほどtが大きくなる。
+    final t = (clamped + _rangeMeters) / (2 * _rangeMeters);
+    final top = (height * (1 - t) - _dotSize / 2).clamp(0.0, height - _dotSize);
+
+    return Positioned(
+      top: top,
+      child: Container(
+        width: _dotSize,
+        height: _dotSize,
+        decoration: BoxDecoration(
+          color: _colorForRole(_findUser(users, position.uid)?.role),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 1.5),
+        ),
+      ),
+    );
   }
 }
