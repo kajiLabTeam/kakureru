@@ -1,0 +1,14 @@
+targets:
+  $default:
+    builders:
+      json_serializable:
+        options:
+          # json_serializableのデフォルト(false)だと、ネストしたカスタム型
+          # (例: RoomSetting.gameArea の List<LatLng>、UserLocation.wifiScan)
+          # のtoJson()が生成コードから呼ばれず、生のオブジェクトのまま
+          # Mapに入ってしまう。dart:convertのjsonEncode経由なら自動で
+          # toJson()が呼ばれるので気づきにくいが、Firebaseへ直接渡す
+          # toMap()の用途では動かない(実際にRoomSetting.gameAreaの保存で
+          # 「invalid argument: instance of '_LatLng'」というエラーになった)。
+          # 全モデルに対して明示的にtoJson()を呼ぶよう固定する。
+          explicit_to_json: true

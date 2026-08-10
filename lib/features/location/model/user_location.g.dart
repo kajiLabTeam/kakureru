@@ -26,6 +26,6 @@ Map<String, dynamic> _$UserLocationToJson(_UserLocation instance) =>
       'lng': instance.longitude,
       'altitude': instance.altitude,
       'pressure': instance.pressure,
-      'wifiScan': instance.wifiScan,
+      'wifiScan': instance.wifiScan?.toJson(),
       'updatedAt': instance.updatedAt,
     };

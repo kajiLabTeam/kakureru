@@ -37,6 +37,25 @@ void main() {
       const setting = RoomSetting(updatedAt: 123);
       expect(setting.toMap().containsKey('updatedAt'), isFalse);
     });
+
+    test('toMap serializes gameArea as plain Maps, not raw LatLng instances', () {
+      // 回帰テスト: json_serializableのデフォルト(explicitToJson: false)だと
+      // ネストしたLatLngがtoJson()されず生のオブジェクトのまま入ってしまい、
+      // Firebaseへの書き込みが「invalid argument: instance of '_LatLng'」で
+      // 失敗した(build.yamlでexplicit_to_json: trueにして修正)。
+      const setting = RoomSetting(
+        gameArea: [LatLng(lat: 35.0, lng: 139.0), LatLng(lat: 35.1, lng: 139.1)],
+      );
+
+      final map = setting.toMap();
+      final gameArea = map['gameArea'] as List;
+
+      expect(gameArea, isNot(isA<List<LatLng>>()));
+      for (final entry in gameArea) {
+        expect(entry, isA<Map<String, dynamic>>());
+      }
+      expect(gameArea.first, {'lat': 35.0, 'lng': 139.0});
+    });
   });
 
   group('RoomUser', () {

@@ -9,6 +9,7 @@ import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
+import 'package:kakureru/features/room/view/room_setting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 class RoomWaitingPage extends HookConsumerWidget {
@@ -67,6 +68,17 @@ class RoomWaitingPage extends HookConsumerWidget {
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
               ),
+              if (isHost && room.status == RoomStatus.waiting)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.settings),
+                    label: const Text('設定'),
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute(builder: (_) => RoomSettingPage(roomId: roomId))),
+                  ),
+                ),
               const Text('参加者'),
               Expanded(
                 child: ListView(
@@ -128,11 +140,19 @@ class RoomWaitingPage extends HookConsumerWidget {
                 basePressure: room.basePressure,
                 pressureState: pressureState,
               ),
+              if (isHost && room.setting.gameArea.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    'プレイエリアが未設定です。「設定」からエリアを指定してください',
+                    style: TextStyle(color: Colors.orange),
+                  ),
+                ),
               if (isHost)
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: FilledButton(
-                    onPressed: isStarting.value
+                    onPressed: isStarting.value || room.setting.gameArea.isEmpty
                         ? null
                         : () async {
                             isStarting.value = true;

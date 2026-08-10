@@ -32,7 +32,7 @@ _RoomSetting _$RoomSettingFromJson(Map<String, dynamic> json) => _RoomSetting(
 
 Map<String, dynamic> _$RoomSettingToJson(_RoomSetting instance) =>
     <String, dynamic>{
-      'gameArea': instance.gameArea,
+      'gameArea': instance.gameArea.map((e) => e.toJson()).toList(),
       'releaseWaitSec': instance.releaseWaitSec,
       'gameDurationSec': instance.gameDurationSec,
       'photoIntervalSec': instance.photoIntervalSec,

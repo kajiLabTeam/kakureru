@@ -128,6 +128,13 @@ class RoomRepository {
     });
   }
 
+  /// ルーム設定画面から呼ばれる。ルール上は誰でも書ける状態のままなので
+  /// (docs/rtdb-schema.md「ルーム設定画面」参照)、host以外が呼ばないよう
+  /// 画面側(RoomWaitingPage/RoomSettingPage)でホスト限定のガードをかけている。
+  Future<void> updateSetting(String roomId, RoomSetting setting) async {
+    await _db.ref('rooms/$roomId/setting').set(setting.toMap());
+  }
+
   /// ホストが鬼にする人を指名する(meta/pendingDemonUid経由の自己申告方式。
   Future<void> nominateDemon(String roomId, String uid) async {
     await _db.ref('rooms/$roomId/meta/pendingDemonUid').set(uid);
