@@ -9,12 +9,6 @@ Future<void> initLocalNotifications() async {
 }
 
 /// 鬼放出の瞬間に出す通知。
-///
-/// ポケットに入れたまま遊ぶ運用のため、振動だけでは画面を見ていないと
-/// 気づけない。ヘッドアップ表示・音が出るよう importance/priority を
-/// high にしている(Foreground Serviceの常駐通知とは別チャンネル)。
-/// 通知権限(Android 13+)はキャリブレーション画面で
-/// flutter_foreground_task 経由で既にリクエスト済みの前提。
 Future<void> showDemonReleasedNotification() async {
   const androidDetails = AndroidNotificationDetails(
     'kakureru_release',

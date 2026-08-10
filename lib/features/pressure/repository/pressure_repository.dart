@@ -37,9 +37,6 @@ class PressureRepository {
   }
 
   /// 自分の気圧(直近5件の移動平均で平滑化した値)を購読する。
-  ///
-  /// 待機画面(キャリブレーション)・ゲーム画面のどちらからも呼ばれるため、
-  /// 既に購読中なら同じStreamを使い回す(センサー購読を二重に張らない)。
   Stream<double> watchMyPressure() {
     final existing = _smoothedController;
     if (existing != null && !existing.isClosed) return existing.stream;
@@ -61,7 +58,6 @@ class PressureRepository {
   double? get latestPressure => _latestSmoothed;
 
   /// rooms/{roomId}/locations/{uid}/pressure への定期送信を開始する。
-  /// 位置情報の送信間隔と揃えて4秒間隔にしている。
   void startSendingToRoom(String roomId) {
     stopSendingToRoom();
     _writeTimer = Timer.periodic(const Duration(seconds: 4), (_) {
@@ -72,8 +68,6 @@ class PressureRepository {
   }
 
   /// RTDBへの定期送信を止める。センサー自体の購読は続ける
-  /// (ゲーム画面を離れる時に呼ぶ想定。センサー購読全体を止めたい場合は
-  /// [disposeSensor] を使う)。
   void stopSendingToRoom() {
     _writeTimer?.cancel();
     _writeTimer = null;

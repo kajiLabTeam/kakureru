@@ -17,14 +17,10 @@ class WifiScanRepository {
   String get _uid => _auth.currentUser!.uid;
 
   /// 20〜30秒間隔。Androidのスキャンスロットリング(2分に4回)に対して
-  /// 十分な余裕を持たせている。位置情報・気圧とは別のタイマーで動く。
+  /// 十分な余裕を持たせている。
   static const _scanInterval = Duration(seconds: 25);
 
-  /// 同室メンバーのスキャン結果の購読は不要——wifiScanは
-  /// UserLocationのフィールドなので、既存の LocationRepository.watchLocations
-  /// (rooms/{roomId}/locations 購読)経由で他人の分も一緒に流れてくる。
-  ///
-  /// ここでは自分のスキャンの実行とRTDBへの書き込みだけを行う。
+  /// 自分のスキャンの実行とRTDBへの書き込みだけを行う
   void startScanning(String roomId) {
     stopScanning();
 

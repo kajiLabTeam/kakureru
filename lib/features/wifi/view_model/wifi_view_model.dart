@@ -38,7 +38,6 @@ final wifiProximityLevelsProvider = Provider.family<List<WifiProximityEntry>, St
 });
 
 /// 自分から見て最も近い「対象の役割」の相手のuid。
-/// 自分が逃走者なら鬼を、鬼なら逃走者を対象にする。該当者が無ければnull。
 final nearestOpponentUidProvider = Provider.family<String?, String>((ref, roomId) {
   final room = ref.watch(roomStreamProvider(roomId)).value;
   final myUid = FirebaseAuth.instance.currentUser?.uid;

@@ -7,15 +7,6 @@ part 'room.freezed.dart';
 
 enum RoomStatus { waiting, playing, finished }
 
-// Room は RTDB 上で meta/setting/users の3ノードに分かれており
-// (docs/rtdb-schema.md の「一括書き込み・一括読み取りが使えない理由」参照)、
-// 1つの Map として読めることもない。fromMap では
-// - meta の中身を Room のトップレベルフィールドへ展開
-// - users ({uid: {...}} という Map) を、uid を id として注入した List<RoomUser> へ変換
-// という2つの整形を行っており、json_serializable の fromJson が前提とする
-// 「JSON構造とクラス構造が対応している」形になっていない。そのため Room だけは
-// fromJson/toJson を生成せず、fromMap を手書きにしている
-// (RoomSetting・RoomUser 側は形が対応しているので生成コードに任せている)。
 @freezed
 abstract class Room with _$Room {
   const factory Room({
@@ -29,9 +20,6 @@ abstract class Room with _$Room {
     int? releasedAt,
     int? endsAt,
     int? endedAt,
-    // ホストが指名した、鬼になる予定の人のuid。指名された本人が自分で
-    // role を書き換えたらnullに戻す(docs/rtdb-schema.md
-    // 「鬼の決定」参照)。
     String? pendingDemonUid,
     required RoomSetting setting,
     required List<RoomUser> users,

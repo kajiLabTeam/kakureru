@@ -27,7 +27,6 @@ abstract class RoomSetting with _$RoomSetting {
 
   factory RoomSetting.fromJson(Map<String, dynamic> json) => _$RoomSettingFromJson(json);
 
-  /// RTDBの `Map<dynamic, dynamic>` から組み立てる。
   factory RoomSetting.fromMap(Map<dynamic, dynamic> raw) =>
       RoomSetting.fromJson(rtdbMapToJson(raw));
 

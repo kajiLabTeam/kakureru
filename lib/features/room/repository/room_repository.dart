@@ -19,11 +19,6 @@ class RoomRepository {
   String get _uid => _auth.currentUser!.uid;
 
   /// ルームを作成して roomId を返す
-  ///
-  /// rooms/{roomId} 自体には .write が無いため、一括 set はできない
-  /// (docs/rtdb-schema.md の「一括書き込みが使えない理由」参照)。
-  /// meta / setting / users を個別に書き込む。roomCodes のホスト限定ルールが
-  /// meta/hostUserId を参照するため、meta を最初に書いて確定させる。
   Future<String> createRoom({
     required String displayName,
     required String deviceId,
@@ -74,11 +69,6 @@ class RoomRepository {
   }
 
   /// createRoom 失敗時に、途中まで書き込んだ内容を可能な範囲で取り消す。
-  ///
-  /// roomCodes/{code} の削除はホスト限定ルール(meta/hostUserId 参照)に
-  /// 依存するため、meta を消す前に行う。meta の書き込み自体が失敗していた
-  /// 場合は hostUserId が存在せず、roomCodes の削除も権限エラーになり
-  /// コードが孤立したまま残りうる(既知の限界。docs/rtdb-schema.md 参照)。
   Future<void> _rollbackRoom(String roomId, String code) async {
     try {
       await _db.ref('roomCodes/$code').remove();
@@ -115,38 +105,11 @@ class RoomRepository {
   }
 
   /// ルームを終了状態にする(解散)。
-  ///
-  /// ホストに他ユーザーの users/{uid} への書き込み権限を与えると
-  /// role や pressureOffset を書き換えられる穴になるため、ルールは変更しない。
-  /// そのため実データ(users/setting/meta/roomCodes)の削除はここでは行わず、
-  /// meta/status を "FINISHED" にするだけにとどめる。実データの削除は
-  /// Phase 2 の finishGame Function に任せる想定
-  /// (docs/rtdb-schema.md の「ルーム終了は Phase 1 ではステータス変更のみ」参照)。
   Future<void> finishRoom(String roomId) async {
     await _db.ref('rooms/$roomId/meta/status').set('FINISHED');
   }
 
   /// ホストがゲームを開始する。
-  ///
-  /// ServerValue.timestamp はサーバー側でしか解決されないため、書き込んだ
-  /// その場では startedAt の実値を知り得ず、クライアントで
-  /// `startedAt + N` を計算することはできない。ここでは
-  /// 1) startedAt を ServerValue.timestamp で確定させて書き込み、
-  /// 2) 実際に書き込まれた値を読み戻し、
-  /// 3) その実値をもとに releasedAt/endsAt を計算して status と同時に書き込む
-  /// という手順にしている(案A)。
-  ///
-  /// 案B(releasedAt/endsAtを保存せず、画面側で毎回
-  /// startedAt + setting から計算する)も検討したが、
-  /// docs/rtdb-schema.md が releasedAt/endsAt を meta の実フィールドとして
-  /// 既に定義しており、Phase 2 の Cloud Functions 側もこれを直接参照する
-  /// 想定であるため、スキーマ通りRTDBに実値を持たせる案Aを採用した。
-  ///
-  /// status・releasedAt・endsAt は1回の update() にまとめている
-  /// (meta ノード自体に .write があるため一括更新できる。rooms/{roomId}
-  /// 自体には .write が無く一括書き込みができないのとは別の話 —
-  /// 「一括書き込みが使えない理由」参照)。これにより、他クライアントが
-  /// status=PLAYING を観測した時点では releasedAt/endsAt も必ず揃っている。
   Future<void> startGame(String roomId) async {
     await _db.ref('rooms/$roomId/meta/startedAt').set(ServerValue.timestamp);
 
@@ -166,23 +129,17 @@ class RoomRepository {
   }
 
   /// ホストが鬼にする人を指名する(meta/pendingDemonUid経由の自己申告方式。
-  /// 理由は docs/rtdb-schema.md の「鬼の決定」参照)。
   Future<void> nominateDemon(String roomId, String uid) async {
     await _db.ref('rooms/$roomId/meta/pendingDemonUid').set(uid);
   }
 
   /// 指名された本人が、指名を受諾して自分のroleをDEMONに更新する。
-  /// pendingDemonUidのクリアが失敗しても実害はない
-  /// (呼び出し側でroleが既にDEMONなら再度呼ばないようにガードすること)。
   Future<void> acceptDemonNomination(String roomId, String uid) async {
     await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
     await _db.ref('rooms/$roomId/meta/pendingDemonUid').set(null);
   }
 
   /// 逃走者が「捕まった」ことを自己申告する。
-  ///
-  /// 誰に捕まったか(demonUserId)はクライアント側で確実には特定できないため
-  /// nullを許容する(docs/rtdb-schema.md参照)。
   Future<void> reportCaught(String roomId) async {
     final uid = _uid;
     await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
@@ -219,9 +176,6 @@ class RoomRepository {
   }
 
   /// ルームの状態をリアルタイムで監視する
-  ///
-  /// rooms/{roomId} 自体は読み取り不可(meta/setting/users個別にしか
-  /// .read が無い)ため、3つを個別に購読して Room に合成する。
   Stream<Room> watchRoom(String roomId) {
     final controller = StreamController<Room>.broadcast();
 

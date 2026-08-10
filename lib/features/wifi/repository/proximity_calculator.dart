@@ -1,8 +1,7 @@
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 
-/// Wi-Fi近接判定に使う閾値。7/22の実測検証で確定した値。
-/// 後から調整しやすいよう定数として切り出している。
+/// Wi-Fi近接判定に使う閾値。
 class ProximityThresholds {
   const ProximityThresholds._();
 
@@ -47,7 +46,6 @@ double calculateJaccardIndex(Map<String, int> a, Map<String, int> b) {
 
 /// 共通BSSIDにおけるRSSI差の平均(dBm)を計算する。
 /// [ProximityThresholds.rssiDiffOutlierThresholdDbm]を超える差は外れ値として除外する。
-/// 共通BSSIDが無い(または全て外れ値として除外された)場合はnull。
 double? calculateAverageRssiDiff(Map<String, int> a, Map<String, int> b) {
   final common = a.keys.toSet().intersection(b.keys.toSet());
   final diffs = <int>[];
@@ -89,8 +87,6 @@ ProximityLevel classifyProximity({
 }
 
 /// 2人分のWi-Fiスキャン結果(BSSID→RSSI)から近接度を判定する。
-/// 指標の計算方法は [calculateJaccardIndex]・[calculateAverageRssiDiff]、
-/// 判定基準は [classifyProximity] を参照。
 ProximityLevel calculateProximity(
   Map<String, int> selfBssidRssi,
   Map<String, int> targetBssidRssi,
@@ -113,7 +109,6 @@ ProximityLevel calculateProximity(
 }
 
 /// 共通して見えているAPのうち、自分と相手のRSSI平均が強い順に上位[count]件を選ぶ
-/// (表示方式B用)。弱いAPは事前に除外する。
 List<WifiApComparison> selectTopCommonAccessPoints(
   Map<String, int> selfBssidRssi,
   Map<String, int> targetBssidRssi, {
@@ -138,7 +133,7 @@ List<WifiApComparison> selectTopCommonAccessPoints(
   comparisons.sort((a, b) {
     final avgA = (a.selfRssi + a.targetRssi) / 2;
     final avgB = (b.selfRssi + b.targetRssi) / 2;
-    return avgB.compareTo(avgA); // 平均RSSIが強い(数値が大きい)順
+    return avgB.compareTo(avgA); // 平均RSSIが強い順
   });
 
   return comparisons.take(count).toList();

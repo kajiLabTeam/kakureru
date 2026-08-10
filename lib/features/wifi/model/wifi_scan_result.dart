@@ -15,7 +15,6 @@ abstract class WifiScanResult with _$WifiScanResult {
 
   factory WifiScanResult.fromJson(Map<String, dynamic> json) => _$WifiScanResultFromJson(json);
 
-  /// RTDBの `Map<dynamic, dynamic>` から組み立てる。
   factory WifiScanResult.fromMap(Map<dynamic, dynamic> raw) =>
       WifiScanResult.fromJson(rtdbMapToJson(raw));
 

@@ -5,8 +5,6 @@ part 'relative_vertical_position.freezed.dart';
 /// 自分から見た、他の参加者1人分の相対的な高さ。
 ///
 /// deltaMeters が正なら相手が自分より上、負なら下
-/// (算出方法は lib/features/pressure/pressure_math.dart 参照)。
-/// RTDBとは無関係の、画面表示用に計算した値なので fromJson/toJson は持たない。
 @freezed
 abstract class RelativeVerticalPosition with _$RelativeVerticalPosition {
   const factory RelativeVerticalPosition({required String uid, required double deltaMeters}) =
