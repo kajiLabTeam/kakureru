@@ -165,6 +165,37 @@ class RoomRepository {
     });
   }
 
+  /// ホストが鬼にする人を指名する(meta/pendingDemonUid経由の自己申告方式。
+  /// 理由は docs/rtdb-schema.md の「鬼の決定」参照)。
+  Future<void> nominateDemon(String roomId, String uid) async {
+    await _db.ref('rooms/$roomId/meta/pendingDemonUid').set(uid);
+  }
+
+  /// 指名された本人が、指名を受諾して自分のroleをDEMONに更新する。
+  /// pendingDemonUidのクリアが失敗しても実害はない
+  /// (呼び出し側でroleが既にDEMONなら再度呼ばないようにガードすること)。
+  Future<void> acceptDemonNomination(String roomId, String uid) async {
+    await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
+    await _db.ref('rooms/$roomId/meta/pendingDemonUid').set(null);
+  }
+
+  /// 逃走者が「捕まった」ことを自己申告する。
+  ///
+  /// 誰に捕まったか(demonUserId)はクライアント側で確実には特定できないため
+  /// nullを許容する(docs/rtdb-schema.md参照)。
+  Future<void> reportCaught(String roomId) async {
+    final uid = _uid;
+    await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
+    await _db.ref('rooms/$roomId/users/$uid/becameDemonAt').set(ServerValue.timestamp);
+
+    final catchId = _db.ref('rooms/$roomId/catches').push().key!;
+    await _db.ref('rooms/$roomId/catches/$catchId').set({
+      'demonUserId': null,
+      'fugitiveUserId': uid,
+      'caughtAt': ServerValue.timestamp,
+    });
+  }
+
   /// コードからルームに参加する
   Future<String> joinRoom({
     required String code,

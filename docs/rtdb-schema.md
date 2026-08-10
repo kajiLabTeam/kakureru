@@ -17,6 +17,7 @@ rooms/
       releasedAt          startedAt + releaseWaitSec
       endsAt              startedAt + gameDurationSec
       endedAt
+      pendingDemonUid     ホストが指名した、鬼になる予定の人のuid（本人が受諾したらnullに戻す）
     setting/
       gameArea            [{lat, lng}, ...] 3点以上
       releaseWaitSec
@@ -126,5 +127,20 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 **既知のリスク**: 位置の公開範囲（`senseDistanceRadiusM` による距離制限、`fugitiveInfoDelaySec` による解禁タイミング）はクライアント側のロジックでしか制御されていない。ルール上は同室メンバーであれば誰でも `locations/` の生データを即座に読めるため、改造クライアントを使えば、本来まだ見えないはずの相手の位置（解禁前・射程外）を読み取れてしまう。正規のアプリ経由なら見えないが、ルールとしては防げていない。
 
 **Phase 3 で `visible/` 方式へ切り替える予定**。Cloud Functions が距離・解禁タイミングを判定して `visible/{uid}/{targetUid}` にだけ書き出すようになったら、`locations/{uid}` の `.read` は再び「本人のみ」に戻し、`locations/` への直接アクセスをクライアントから完全に断つこと。
+
+### 鬼の決定: `meta/pendingDemonUid` 経由の自己申告方式
+
+`users/{uid}` は本人以外書き込み不可のため、ホストが他人の `role` を直接書き換えることはできない（試すと権限エラーになる）。対応として以下の2案を検討した:
+
+- **案A**: `users/{uid}/role` にだけホスト書き込みを許可するルールを追加する
+- **案B**（採用）: ホストは `meta/pendingDemonUid` に指名先のuidを書くだけにし、指名された本人が自分で `role` を `"DEMON"` に更新して `pendingDemonUid` をクリアする
+
+案Aを見送った理由: `meta` 自体が現状 `auth != null` で誰でも書ける暫定ルールのままなので、`meta/hostUserId` も誰でも書き換えられる。この状態で「ホストなら他人の`role`を書ける」ルールを足すと、参加者が先に `hostUserId` を自分に書き換えてから他人の `role` を書き換えられてしまう（権限昇格）。`hostUserId` を書き込み不可・不変にするルールとセットならAも安全にできるが、それは別のルール設計判断になるため、Phase 1では「本人しか自分の`role`を書けない」という既存の制約を一切崩さない案Bを採用した。
+
+**既知のトレードオフ**: 指名された本人のアプリがその瞬間バックグラウンド等で `meta` の変化を受け取れないと、`pendingDemonUid` が一時的に残ったままになる(セキュリティ上の問題ではなく、単なる反映待ちの遅延)。
+
+### `catches/{catchId}/demonUserId` はnull許容
+
+逃走者の自己申告（「捕まった」ボタン）で記録する `catches` には、誰が捕まえたか（`demonUserId`）を確実には特定できない。Phase 1では「捕まえた鬼を選択させるUI」は作らず、`demonUserId: null` を許容する形にした。捕獲した鬼を明示的に記録したくなったら、選択UIを別途追加すること。
 
 

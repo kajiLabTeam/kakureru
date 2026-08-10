@@ -51,6 +51,8 @@ dependencies:
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
   flutter_foreground_task: ^10.0.0
+  vibration: ^3.2.0
+  flutter_local_notifications: ^22.3.0
 
 dev_dependencies:
   # コード生成用。実行時には不要なので dev_dependencies 側に置く。

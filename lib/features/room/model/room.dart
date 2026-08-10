@@ -29,6 +29,10 @@ abstract class Room with _$Room {
     int? releasedAt,
     int? endsAt,
     int? endedAt,
+    // ホストが指名した、鬼になる予定の人のuid。指名された本人が自分で
+    // role を書き換えたらnullに戻す(docs/rtdb-schema.md
+    // 「鬼の決定」参照)。
+    String? pendingDemonUid,
     required RoomSetting setting,
     required List<RoomUser> users,
   }) = _Room;
@@ -49,6 +53,7 @@ abstract class Room with _$Room {
       releasedAt: meta['releasedAt'] as int?,
       endsAt: meta['endsAt'] as int?,
       endedAt: meta['endedAt'] as int?,
+      pendingDemonUid: meta['pendingDemonUid'] as String?,
       setting: RoomSetting.fromMap(settingRaw),
       users: usersRaw.entries
           .map((e) => RoomUser.fromMap(e.key.toString(), e.value as Map<dynamic, dynamic>))
