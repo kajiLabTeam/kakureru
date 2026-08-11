@@ -23,20 +23,23 @@ abstract class LocationState with _$LocationState {
 
 class LocationViewModel extends Notifier<LocationState> {
   StreamSubscription<List<UserLocation>>? _locationsSub;
+  late final LocationRepository _repo;
 
   @override
   LocationState build() {
+    // dispose時のコールバック(_disposeSubscriptions)からはref.read()が
+    // 呼べない(Riverpodのライフサイクル制約)ため、build()時に一度だけ取得
+    // してフィールドに持っておく。
+    _repo = ref.read(locationRepositoryProvider);
     ref.onDispose(_disposeSubscriptions);
     return const LocationState();
   }
-
-  LocationRepository get _repo => ref.read(locationRepositoryProvider);
 
   /// ゲーム画面に入った時に呼ぶ。権限を確認し、位置送信を開始して
   /// 他ユーザーの位置の購読を始める。権限が無ければ送信は行わず、
   /// permissionDenied を立てるだけにとどめる。
   Future<void> start(String roomId) async {
-    final granted = await _ensurePermission();
+    final granted = await ensurePermission();
     if (!granted) {
       state = state.copyWith(permissionDenied: true);
       return;
@@ -67,7 +70,8 @@ class LocationViewModel extends Notifier<LocationState> {
   /// 必要とする。Android 11+では「使用中のみ許可」と同時には付与できないため、
   /// まず使用中の許可を確定させてから、改めて常時許可をリクエストする。
   /// 加えてForeground Serviceの通知(Android 13+)の権限も確認する。
-  Future<bool> _ensurePermission() async {
+
+  Future<bool> ensurePermission() async {
     if (!await Geolocator.isLocationServiceEnabled()) return false;
 
     final whileInUse = await Permission.locationWhenInUse.request();
@@ -76,14 +80,17 @@ class LocationViewModel extends Notifier<LocationState> {
     final always = await Permission.locationAlways.request();
     if (!always.isGranted) return false;
 
-    var notification = await FlutterForegroundTask.checkNotificationPermission();
+    var notification =
+        await FlutterForegroundTask.checkNotificationPermission();
     if (notification != NotificationPermission.granted) {
-      notification = await FlutterForegroundTask.requestNotificationPermission();
+      notification =
+          await FlutterForegroundTask.requestNotificationPermission();
     }
     return notification == NotificationPermission.granted;
   }
 }
 
-final locationViewModelProvider = NotifierProvider<LocationViewModel, LocationState>(
-  LocationViewModel.new,
-);
+final locationViewModelProvider =
+    NotifierProvider<LocationViewModel, LocationState>(
+      LocationViewModel.new,
+    );
