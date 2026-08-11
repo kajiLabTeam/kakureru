@@ -36,14 +36,21 @@ class LocationRepository {
       // iOS非対応のプロジェクトだが init() が必須引数として要求するため、
       // 使われないダミー値として渡している。
       iosNotificationOptions: const IOSNotificationOptions(),
-      foregroundTaskOptions: ForegroundTaskOptions(eventAction: ForegroundTaskEventAction.repeat(4000)),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.repeat(4000),
+      ),
     );
 
     _taskDataCallback = (data) {
       if (data is! Map) return;
+      final lat = data['lat'];
+      final lng = data['lng'];
+      // lat/lngが欠けたデータをRTDBへ書くと、他の参加者のwatchLocationsが
+      // UserLocation.fromMapの型キャストで例外を出し続けるため、ここで弾く。
+      if (lat is! num || lng is! num) return;
       _db.ref('rooms/$roomId/locations/$_uid').set({
-        'lat': data['lat'],
-        'lng': data['lng'],
+        'lat': lat,
+        'lng': lng,
         'altitude': data['altitude'],
         'updatedAt': ServerValue.timestamp,
       });
@@ -74,11 +81,25 @@ class LocationRepository {
   }
 
   /// 同じルームの全員の位置(自分を含む)を購読する。
+  ///
+  /// lat/lngが欠けた不正なエントリ(書き込み途中や過去の不具合の残骸)が
+  /// 1件でもあると、そこで例外になり他の参加者の位置更新まで止まって
+  /// しまうため、パースに失敗したエントリは1件ずつスキップする。
   Stream<List<UserLocation>> watchLocations(String roomId) {
     return _db.ref('rooms/$roomId/locations').onValue.map((event) {
       final value = event.snapshot.value as Map<dynamic, dynamic>? ?? {};
       return value.entries
-          .map((e) => UserLocation.fromMap(e.key.toString(), e.value as Map<dynamic, dynamic>))
+          .map((e) {
+            try {
+              return UserLocation.fromMap(
+                e.key.toString(),
+                e.value as Map<dynamic, dynamic>,
+              );
+            } on Object {
+              return null;
+            }
+          })
+          .whereType<UserLocation>()
           .toList();
     });
   }
