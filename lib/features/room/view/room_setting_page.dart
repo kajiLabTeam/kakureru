@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -47,30 +49,62 @@ class RoomSettingPage extends HookConsumerWidget {
           1,
           _releaseWaitMaxMinutes,
         );
-        gameDurationMin.value = (room.setting.gameDurationSec / 60).round().clamp(
-          1,
-          _gameDurationMaxMinutes,
-        );
+        gameDurationMin.value = (room.setting.gameDurationSec / 60)
+            .round()
+            .clamp(
+              1,
+              _gameDurationMaxMinutes,
+            );
         gameArea.value = room.setting.gameArea;
       }
       return null;
     }, [room]);
 
+    // 自分の現在地。エリアを描くときの目印として地図にピンで出す。
+    // この画面を閉じたら不要になる状態なのでhooksで持つ(Riverpodへは載せない)。
+    final myLocation = useState<latlong.LatLng?>(null);
+    // 地図を現在地へ寄せるのは最初の1回だけ。以降myLocationが更新されても
+    // 動かさない(ホストが地図をずらして操作している最中に引き戻さないため)。
     final initialCenter = useState<latlong.LatLng?>(null);
     useEffect(() {
-      Future<void> loadInitialCenter() async {
+      var cancelled = false;
+      StreamSubscription<Position>? subscription;
+
+      void update(Position position) {
+        if (cancelled) return;
+        final point = latlong.LatLng(position.latitude, position.longitude);
+        myLocation.value = point;
+        initialCenter.value ??= point;
+      }
+
+      Future<void> watchMyLocation() async {
         try {
-          final position = await Geolocator.getLastKnownPosition();
-          if (position != null) {
-            initialCenter.value = latlong.LatLng(position.latitude, position.longitude);
-          }
+          // 最後に取れていた位置をまず出す(GPSの初回測位は数秒かかるため)。
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null) update(last);
         } on Object {
           // 取得できなくてもフォールバック座標を使うだけなので致命的ではない。
         }
+        if (cancelled) return;
+        subscription =
+            Geolocator.getPositionStream(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.high,
+                distanceFilter: 5,
+              ),
+            ).listen(
+              update,
+              // 権限が無い・位置情報がOFFの場合はここに来る。ピンが出ないだけで
+              // 設定自体は続けられるので、画面は止めずに黙って諦める。
+              onError: (Object _) {},
+            );
       }
 
-      loadInitialCenter();
-      return null;
+      unawaited(watchMyLocation());
+      return () {
+        cancelled = true;
+        unawaited(subscription?.cancel());
+      };
     }, const []);
 
     final isDrawing = useState(false);
@@ -131,6 +165,7 @@ class RoomSettingPage extends HookConsumerWidget {
                   height: 320,
                   child: _AreaMap(
                     initialCenter: initialCenter.value ?? _fallbackCenter,
+                    myLocation: myLocation.value,
                     gameArea: gameArea.value,
                     isDrawing: isDrawing.value,
                     dragStart: dragStart.value,
@@ -141,9 +176,13 @@ class RoomSettingPage extends HookConsumerWidget {
                     },
                     onDragUpdate: (point) => dragCurrent.value = point,
                     onDragEnd: () {
-                      if (dragStart.value != null && dragCurrent.value != null) {
+                      if (dragStart.value != null &&
+                          dragCurrent.value != null) {
                         gameArea.value = calculateRectangleCorners(
-                          LatLng(lat: dragStart.value!.latitude, lng: dragStart.value!.longitude),
+                          LatLng(
+                            lat: dragStart.value!.latitude,
+                            lng: dragStart.value!.longitude,
+                          ),
                           LatLng(
                             lat: dragCurrent.value!.latitude,
                             lng: dragCurrent.value!.longitude,
@@ -159,6 +198,14 @@ class RoomSettingPage extends HookConsumerWidget {
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
+                      if (myLocation.value == null)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            '現在地を取得中です(位置情報がOFFだとピンは出ません)',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
                       if (gameArea.value.isEmpty)
                         const Padding(
                           padding: EdgeInsets.only(bottom: 8),
@@ -169,7 +216,9 @@ class RoomSettingPage extends HookConsumerWidget {
                         ),
                       OutlinedButton(
                         onPressed: () => isDrawing.value = !isDrawing.value,
-                        child: Text(isDrawing.value ? '描画をやめる(地図の移動に戻す)' : 'エリアを描く'),
+                        child: Text(
+                          isDrawing.value ? '描画をやめる(地図の移動に戻す)' : 'エリアを描く',
+                        ),
                       ),
                     ],
                   ),
@@ -188,7 +237,8 @@ class RoomSettingPage extends HookConsumerWidget {
                                     roomId,
                                     room.setting.copyWith(
                                       releaseWaitSec: releaseWaitMin.value * 60,
-                                      gameDurationSec: gameDurationMin.value * 60,
+                                      gameDurationSec:
+                                          gameDurationMin.value * 60,
                                       gameArea: gameArea.value,
                                     ),
                                   );
@@ -212,7 +262,10 @@ class RoomSettingPage extends HookConsumerWidget {
                 if (saveError.value != null)
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Text('${saveError.value}', style: const TextStyle(color: Colors.red)),
+                    child: Text(
+                      '${saveError.value}',
+                      style: const TextStyle(color: Colors.red),
+                    ),
                   ),
                 const SizedBox(height: 24),
               ],
@@ -252,12 +305,19 @@ class _MinuteStepper extends StatelessWidget {
           Expanded(child: Text(label)),
           IconButton(
             icon: const Icon(Icons.remove_circle_outline),
-            onPressed: minutes - step >= min ? () => onChanged(minutes - step) : null,
+            onPressed: minutes - step >= min
+                ? () => onChanged(minutes - step)
+                : null,
           ),
-          SizedBox(width: 56, child: Text('$minutes分', textAlign: TextAlign.center)),
+          SizedBox(
+            width: 56,
+            child: Text('$minutes分', textAlign: TextAlign.center),
+          ),
           IconButton(
             icon: const Icon(Icons.add_circle_outline),
-            onPressed: minutes + step <= max ? () => onChanged(minutes + step) : null,
+            onPressed: minutes + step <= max
+                ? () => onChanged(minutes + step)
+                : null,
           ),
         ],
       ),
@@ -271,6 +331,7 @@ class _MinuteStepper extends StatelessWidget {
 class _AreaMap extends HookWidget {
   const _AreaMap({
     required this.initialCenter,
+    required this.myLocation,
     required this.gameArea,
     required this.isDrawing,
     required this.dragStart,
@@ -281,6 +342,9 @@ class _AreaMap extends HookWidget {
   });
 
   final latlong.LatLng initialCenter;
+
+  /// 自分の現在地。まだ取得できていなければnull(ピンを出さない)。
+  final latlong.LatLng? myLocation;
   final List<LatLng> gameArea;
   final bool isDrawing;
   final latlong.LatLng? dragStart;
@@ -313,10 +377,14 @@ class _AreaMap extends HookWidget {
 
     return GestureDetector(
       onPanStart: isDrawing
-          ? (details) => onDragStart(mapController.camera.screenOffsetToLatLng(details.localPosition))
+          ? (details) => onDragStart(
+              mapController.camera.screenOffsetToLatLng(details.localPosition),
+            )
           : null,
       onPanUpdate: isDrawing
-          ? (details) => onDragUpdate(mapController.camera.screenOffsetToLatLng(details.localPosition))
+          ? (details) => onDragUpdate(
+              mapController.camera.screenOffsetToLatLng(details.localPosition),
+            )
           : null,
       onPanEnd: isDrawing ? (_) => onDragEnd() : null,
       child: FlutterMap(
@@ -337,7 +405,9 @@ class _AreaMap extends HookWidget {
             polygons: [
               if (gameArea.length >= 3)
                 Polygon(
-                  points: gameArea.map((p) => latlong.LatLng(p.lat, p.lng)).toList(),
+                  points: gameArea
+                      .map((p) => latlong.LatLng(p.lat, p.lng))
+                      .toList(),
                   color: Colors.blue.withValues(alpha: 0.2),
                   borderStrokeWidth: 2,
                   borderColor: Colors.blue,
@@ -347,7 +417,10 @@ class _AreaMap extends HookWidget {
                 Polygon(
                   points: calculateRectangleCorners(
                     LatLng(lat: dragStart!.latitude, lng: dragStart!.longitude),
-                    LatLng(lat: dragCurrent!.latitude, lng: dragCurrent!.longitude),
+                    LatLng(
+                      lat: dragCurrent!.latitude,
+                      lng: dragCurrent!.longitude,
+                    ),
                   ).map((p) => latlong.LatLng(p.lat, p.lng)).toList(),
                   color: Colors.orange.withValues(alpha: 0.2),
                   borderStrokeWidth: 2,
@@ -356,6 +429,22 @@ class _AreaMap extends HookWidget {
                 ),
             ],
           ),
+          // 自分の現在地。GamePageの自分マーカーと同じ青いピンで揃えている。
+          if (myLocation != null)
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: myLocation!,
+                  width: 40,
+                  height: 40,
+                  child: const Icon(
+                    Icons.location_pin,
+                    color: Colors.blue,
+                    size: 36,
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
