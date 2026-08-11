@@ -1,16 +1,19 @@
 import 'dart:async';
 
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/location/repository/location_permission.dart';
 import 'package:kakureru/features/location/repository/location_repository.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 part 'location_view_model.freezed.dart';
 
 final locationRepositoryProvider = Provider((ref) => LocationRepository());
+
+final locationPermissionServiceProvider = Provider(
+  (ref) => LocationPermissionService(),
+);
 
 @freezed
 abstract class LocationState with _$LocationState {
@@ -32,12 +35,25 @@ class LocationViewModel extends Notifier<LocationState> {
 
   LocationRepository get _repo => ref.read(locationRepositoryProvider);
 
+  /// アプリを開いた直後に呼ぶ。位置送信は始めず、権限の要求だけを行う。
+  /// ゲーム開始時にまとめて聞かれると場所の移動中に操作させることになるため、
+  /// 起動時に済ませておく。結果は permissionDenied に反映する。
+  Future<bool> ensurePermission() async {
+    final granted = await ref
+        .read(locationPermissionServiceProvider)
+        .ensureGranted();
+    state = state.copyWith(permissionDenied: !granted);
+    return granted;
+  }
+
   /// ゲーム画面に入った時に呼ぶ。権限を確認し、位置送信を開始して
   /// 他ユーザーの位置の購読を始める。権限が無ければ送信は行わず、
   /// permissionDenied を立てるだけにとどめる。
   Future<void> start(String roomId) async {
-    final granted = await _ensurePermission();
-    if (!granted) {
+    // 端末の位置情報(GPS)自体がOFFだと権限があっても値が取れないため、
+    // 送信を始める直前のここで確認する(起動時の権限要求では見ない)。
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled || !await ensurePermission()) {
       state = state.copyWith(permissionDenied: true);
       return;
     }
@@ -62,28 +78,9 @@ class LocationViewModel extends Notifier<LocationState> {
     _locationsSub?.cancel();
     _locationsSub = null;
   }
-
-  /// ポケットに入れたまま遊ぶ運用のため「常に許可」(バックグラウンド位置情報)まで
-  /// 必要とする。Android 11+では「使用中のみ許可」と同時には付与できないため、
-  /// まず使用中の許可を確定させてから、改めて常時許可をリクエストする。
-  /// 加えてForeground Serviceの通知(Android 13+)の権限も確認する。
-  Future<bool> _ensurePermission() async {
-    if (!await Geolocator.isLocationServiceEnabled()) return false;
-
-    final whileInUse = await Permission.locationWhenInUse.request();
-    if (!whileInUse.isGranted) return false;
-
-    final always = await Permission.locationAlways.request();
-    if (!always.isGranted) return false;
-
-    var notification = await FlutterForegroundTask.checkNotificationPermission();
-    if (notification != NotificationPermission.granted) {
-      notification = await FlutterForegroundTask.requestNotificationPermission();
-    }
-    return notification == NotificationPermission.granted;
-  }
 }
 
-final locationViewModelProvider = NotifierProvider<LocationViewModel, LocationState>(
-  LocationViewModel.new,
-);
+final locationViewModelProvider =
+    NotifierProvider<LocationViewModel, LocationState>(
+      LocationViewModel.new,
+    );
