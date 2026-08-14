@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../view_model/room_view_model.dart';
-import 'room_waiting_page.dart';
+import 'package:kakureru/features/room/view/room_waiting_page.dart';
+import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 class RoomHomePage extends HookConsumerWidget {
   const RoomHomePage({super.key});
