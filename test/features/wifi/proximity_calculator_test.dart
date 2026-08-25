@@ -122,6 +122,43 @@ void main() {
     });
   });
 
+  group('selectTopAccessPoints', () {
+    test('RSSIが強い順に上位count件を選ぶ', () {
+      final bssidRssi = {
+        'weakest': -90,
+        'strong': -50,
+        'mid': -65,
+        'weak': -80,
+        'strongest': -45,
+      };
+
+      final top = selectTopAccessPoints(bssidRssi, count: 3);
+
+      expect(top.keys.toList(), ['strongest', 'strong', 'mid']);
+    });
+
+    test('件数がcount以下ならそのまま全件返す', () {
+      final bssidRssi = {'a': -50, 'b': -60};
+
+      final top = selectTopAccessPoints(bssidRssi, count: 20);
+
+      expect(top, bssidRssi);
+    });
+
+    test('デフォルトは上位20件', () {
+      final bssidRssi = {
+        for (var i = 0; i < 25; i++) 'ap$i': -30 - i, // ap0が最強
+      };
+
+      final top = selectTopAccessPoints(bssidRssi);
+
+      expect(top.length, 20);
+      expect(top.containsKey('ap0'), isTrue);
+      expect(top.containsKey('ap19'), isTrue);
+      expect(top.containsKey('ap20'), isFalse);
+    });
+  });
+
   group('findNearestUid', () {
     test('複数の鬼候補から、共通APのRSSI差平均が最小の1人を選ぶ', () {
       final self = {'a': -50, 'b': -55, 'c': -60};

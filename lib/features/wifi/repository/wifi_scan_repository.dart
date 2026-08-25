@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
 class WifiScanRepository {
@@ -20,6 +21,10 @@ class WifiScanRepository {
   /// 十分な余裕を持たせている。
   static const _scanInterval = Duration(seconds: 25);
 
+  /// RTDBへ送るAP数の上限。都心部などAPが多い環境で書き込みサイズが
+  /// 際限なく膨らむのを防ぐ。
+  static const _maxApCount = 20;
+
   /// 自分のスキャンの実行とRTDBへの書き込みだけを行う
   void startScanning(String roomId) {
     stopScanning();
@@ -29,8 +34,9 @@ class WifiScanRepository {
       for (final ap in results) {
         bssidRssi[ap.bssid] = ap.level;
       }
+      final topBssidRssi = selectTopAccessPoints(bssidRssi, count: _maxApCount);
       _db.ref('rooms/$roomId/locations/$_uid/wifiScan').set({
-        'bssidRssi': bssidRssi,
+        'bssidRssi': topBssidRssi,
         'scannedAt': ServerValue.timestamp,
       });
     });

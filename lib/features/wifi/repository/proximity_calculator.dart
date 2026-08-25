@@ -58,6 +58,16 @@ double? calculateAverageRssiDiff(Map<String, int> a, Map<String, int> b) {
   return diffs.reduce((x, y) => x + y) / diffs.length;
 }
 
+/// RSSIが強い順に上位[count]件を選ぶ(RTDBへの送信データを絞るため)。
+Map<String, int> selectTopAccessPoints(
+  Map<String, int> bssidRssi, {
+  int count = 20,
+}) {
+  final sorted = bssidRssi.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value)); // RSSIが強い順
+  return Map.fromEntries(sorted.take(count));
+}
+
 /// 既に計算済みの指標から近接度を判定する。[calculateProximity]の中身を
 /// 切り出したもの(実測値をそのままテストしやすくするため)。
 ///
