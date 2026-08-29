@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -31,11 +33,13 @@ class PressureViewModel extends Notifier<PressureState> {
   PressureRepository get _repo => ref.read(pressureRepositoryProvider);
 
   /// 待機画面に入った時に呼ぶ。センサーの有無を確認し、使えるなら
-  /// 気圧の購読を始める(何度呼んでも安全)。
-  Future<void> init() async {
+  /// 気圧の購読を始める(何度呼んでも安全)。判定結果は他の参加者にも
+  /// 伝わるようroomIdのRTDBへ記録する(待機画面の一覧・集計表示用)。
+  Future<void> init(String roomId) async {
     if (state.sensorAvailability == PressureSensorAvailability.available) return;
 
     final available = await _repo.checkSensorAvailable();
+    unawaited(_repo.reportSensorAvailability(roomId, available: available));
     if (!available) {
       state = state.copyWith(sensorAvailability: PressureSensorAvailability.unavailable);
       return;

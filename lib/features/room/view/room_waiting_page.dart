@@ -6,6 +6,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/calibration_status.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
@@ -26,7 +27,7 @@ class RoomWaitingPage extends HookConsumerWidget {
     final myUid = FirebaseAuth.instance.currentUser?.uid;
 
     useEffect(() {
-      ref.read(pressureViewModelProvider.notifier).init();
+      ref.read(pressureViewModelProvider.notifier).init(roomId);
       return null;
     }, const []);
 
@@ -59,6 +60,28 @@ class RoomWaitingPage extends HookConsumerWidget {
           final hostCalibrated = room.basePressure != null;
           final demonCandidates = room.users.where((u) => u.role != UserRole.demon).toList();
 
+          final calibrationStatuses = {
+            for (final u in room.users)
+              u.id: calibrationStatusFor(
+                isHost: u.id == room.hostUserId,
+                sensorAvailable: u.pressureSensorAvailable,
+                basePressure: room.basePressure,
+                pressureOffset: u.pressureOffset,
+              ),
+          };
+          final requiredCount = calibrationStatuses.values
+              .where((s) => s != CalibrationStatus.unavailable)
+              .length;
+          final doneCount = calibrationStatuses.values
+              .where((s) => s == CalibrationStatus.done)
+              .length;
+          final allCalibrated = isCalibrationComplete(calibrationStatuses.values);
+          final pendingNames = room.users
+              .where((u) => calibrationStatuses[u.id] == CalibrationStatus.pending)
+              .map((u) => u.displayName)
+              .toList();
+          final myCalibrated = myUid != null && calibrationStatuses[myUid] == CalibrationStatus.done;
+
           return Column(
             children: [
               Padding(
@@ -79,13 +102,28 @@ class RoomWaitingPage extends HookConsumerWidget {
                     ).push(MaterialPageRoute(builder: (_) => RoomSettingPage(roomId: roomId))),
                   ),
                 ),
-              const Text('参加者'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('参加者'),
+                    if (requiredCount > 0)
+                      Text(
+                        'キャリブレーション $doneCount/$requiredCount人 完了',
+                        style: TextStyle(
+                          color: doneCount == requiredCount ? Colors.green : Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
               Expanded(
                 child: ListView(
                   children: room.users.map((u) {
-                    final calibrated = u.id == room.hostUserId
-                        ? hostCalibrated
-                        : u.pressureOffset != null;
+                    final status =
+                        calibrationStatuses[u.id] ?? CalibrationStatus.pending;
                     final isPending = room.pendingDemonUid == u.id && u.role != UserRole.demon;
 
                     return ListTile(
@@ -102,17 +140,25 @@ class RoomWaitingPage extends HookConsumerWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (u.isHost) const Padding(padding: EdgeInsets.only(right: 8), child: Text('ホスト')),
-                          Icon(
-                            calibrated ? Icons.check_circle : Icons.radio_button_unchecked,
-                            color: calibrated ? Colors.green : Colors.grey,
-                          ),
+                          _CalibrationStatusIcon(status: status),
                           if (isHost && u.role != UserRole.demon)
-                            IconButton(
-                              icon: const Icon(Icons.warning_amber),
-                              tooltip: '鬼にする',
-                              onPressed: room.pendingDemonUid != null
-                                  ? null
-                                  : () => ref.read(roomRepositoryProvider).nominateDemon(roomId, u.id),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: room.pendingDemonUid == u.id
+                                  ? ActionChip(
+                                      label: const Text('取り消す'),
+                                      onPressed: () => ref
+                                          .read(roomRepositoryProvider)
+                                          .cancelDemonNomination(roomId),
+                                    )
+                                  : ActionChip(
+                                      label: const Text('鬼にする'),
+                                      onPressed: room.pendingDemonUid != null
+                                          ? null
+                                          : () => ref
+                                                .read(roomRepositoryProvider)
+                                                .nominateDemon(roomId, u.id),
+                                    ),
                             ),
                         ],
                       ),
@@ -137,6 +183,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                 roomId: roomId,
                 isHost: isHost,
                 hostCalibrated: hostCalibrated,
+                myCalibrated: myCalibrated,
                 basePressure: room.basePressure,
                 pressureState: pressureState,
               ),
@@ -148,11 +195,22 @@ class RoomWaitingPage extends HookConsumerWidget {
                     style: TextStyle(color: Colors.orange),
                   ),
                 ),
+              if (isHost && !allCalibrated && pendingNames.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    'キャリブレーション未完了: ${pendingNames.join('、')}',
+                    style: const TextStyle(color: Colors.orange),
+                  ),
+                ),
               if (isHost)
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: FilledButton(
-                    onPressed: isStarting.value || room.setting.gameArea.isEmpty
+                    onPressed:
+                        isStarting.value ||
+                            room.setting.gameArea.isEmpty ||
+                            !allCalibrated
                         ? null
                         : () async {
                             isStarting.value = true;
@@ -190,11 +248,36 @@ RoomUser? _findUser(List<RoomUser> users, String uid) {
   return null;
 }
 
+/// 参加者リストの行に出す、キャリブレーション状況アイコン。
+/// done(緑のチェック)/pending(グレーの未チェック)/unavailable(非対応)の
+/// 3状態を一目で区別できるようにする。
+class _CalibrationStatusIcon extends StatelessWidget {
+  const _CalibrationStatusIcon({required this.status});
+
+  final CalibrationStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (status) {
+      case CalibrationStatus.done:
+        return const Icon(Icons.check_circle, color: Colors.green);
+      case CalibrationStatus.pending:
+        return const Icon(Icons.radio_button_unchecked, color: Colors.orange);
+      case CalibrationStatus.unavailable:
+        return Tooltip(
+          message: '気圧センサー非対応',
+          child: Icon(Icons.sensors_off, color: Colors.grey.shade400),
+        );
+    }
+  }
+}
+
 class _CalibrationSection extends ConsumerWidget {
   const _CalibrationSection({
     required this.roomId,
     required this.isHost,
     required this.hostCalibrated,
+    required this.myCalibrated,
     required this.basePressure,
     required this.pressureState,
   });
@@ -202,15 +285,44 @@ class _CalibrationSection extends ConsumerWidget {
   final String roomId;
   final bool isHost;
   final bool hostCalibrated;
+  final bool myCalibrated;
   final double? basePressure;
   final PressureState pressureState;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: _buildMyStatus(ref),
+    );
+  }
+
+  Widget _buildMyStatus(WidgetRef ref) {
     if (pressureState.sensorAvailability == PressureSensorAvailability.unavailable) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        child: Text('この端末は気圧センサー非対応です', style: TextStyle(color: Colors.orange)),
+      return const Row(
+        children: [
+          Icon(Icons.sensors_off, color: Colors.grey),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'この端末は気圧センサーに非対応です(キャリブレーション不要)',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (myCalibrated) {
+      return const Row(
+        children: [
+          Icon(Icons.check_circle, color: Colors.green),
+          SizedBox(width: 8),
+          Text(
+            'キャリブレーション完了',
+            style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+          ),
+        ],
       );
     }
 
@@ -227,26 +339,24 @@ class _CalibrationSection extends ConsumerWidget {
       hint = 'ホストのキャリブレーション待ち';
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: Column(
-        children: [
-          OutlinedButton(
-            onPressed: canCalibrate
-                ? () {
-                    final notifier = ref.read(pressureViewModelProvider.notifier);
-                    if (isHost) {
-                      notifier.calibrateAsHost(roomId);
-                    } else {
-                      notifier.calibrateAsParticipant(roomId, basePressure);
-                    }
+    return Column(
+      children: [
+        FilledButton.icon(
+          icon: const Icon(Icons.touch_app),
+          onPressed: canCalibrate
+              ? () {
+                  final notifier = ref.read(pressureViewModelProvider.notifier);
+                  if (isHost) {
+                    notifier.calibrateAsHost(roomId);
+                  } else {
+                    notifier.calibrateAsParticipant(roomId, basePressure);
                   }
-                : null,
-            child: const Text('キャリブレーション'),
-          ),
-          if (hint != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(hint)),
-        ],
-      ),
+                }
+              : null,
+          label: const Text('キャリブレーションする(未実施)'),
+        ),
+        if (hint != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(hint)),
+      ],
     );
   }
 }

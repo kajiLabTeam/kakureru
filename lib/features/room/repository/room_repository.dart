@@ -143,6 +143,12 @@ class RoomRepository {
     await _db.ref('rooms/$roomId/meta/pendingDemonUid').set(uid);
   }
 
+  /// 指名を取り消す。対象者がまだ受諾(自己申告)していない間だけ意味を持つ
+  /// (対象者側が既に受諾済みならroleが変わっているため、これは無効化にしかならない)。
+  Future<void> cancelDemonNomination(String roomId) async {
+    await _db.ref('rooms/$roomId/meta/pendingDemonUid').set(null);
+  }
+
   /// 指名された本人が、指名を受諾して自分のroleをDEMONに更新する。
   Future<void> acceptDemonNomination(String roomId, String uid) async {
     await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
