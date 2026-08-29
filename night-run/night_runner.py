@@ -298,6 +298,9 @@ def build_prompt(task, state):
 ## 手順
 1. `gh issue view {task.get('issue_url', '')}` でこのタスクの内容(issue本文)を取得し、実装する。実装規約はAGENTS.md/CLAUDE.mdに従うこと
    (状態管理でのhooks/Riverpodの使い分け、データクラスはFreezed限定、等)。
+   **UI・画面まわりのタスクなら、実装前に `docs/ui-mockup-*.html` のようなUIモックが無いか確認し、あれば
+   その見た目・文言・レイアウトに合わせること(独自解釈で別デザインを実装しない)。issue本文にモックの
+   参照(画面名等)があれば特に優先する。**
 2. 各段階が終わるたびに以下を実行し、進捗を記録する(必須。レートリミット等で中断しても再開できるようにするため):
    `python3 night-run/update_step.py "{task['title']}" "<段階名: 実装/デバッグ/レビュー/修正/コンフリクト解消/PR作成>" [レビューラウンド数]`
 3. `flutter test` と `flutter analyze` を実行し、失敗があれば直す。
