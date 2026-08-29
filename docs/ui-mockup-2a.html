@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>〇〇かくれんぼ — UI改修案 2a</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Yusei+Magic&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f0eee9;font-family:"Yusei Magic",system-ui,sans-serif}
+a{color:#2a78d6;text-decoration:none}a:hover{color:#1a5cb0}
+.dv-turn{padding:40px 44px 32px;scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px}
+.dv-tname{font:600 13px/1.2 system-ui,sans-serif;color:#1a1a1a}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.55)}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.dv-next{margin:22px 0 0;font:12px/1.5 system-ui,sans-serif;color:rgba(0,0,0,.5)}
+</style>
+</head>
+<body>
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">実装済みアプリ（kajiLabTeam/kakureru）のUI改修案 — 1aのトーン</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a" style="width:100%">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>実画面ベースの改修モック（8画面）— 赤=鬼 / 青=自分 / 緑=逃走者、ルームコードは4桁、地図はOSMタイル</div>
+<div class="dv-card" style="padding:26px;background:#fafaf7">
+<div style="display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start">
+
+  <!-- 01 ホーム -->
+  <div data-screen-label="2a-01 ホーム" style="display:flex;flex-direction:column;gap:6px;width:280px">
+    <div style="font:600 11px ui-monospace,monospace;color:#888">01 ホーム</div>
+    <div style="width:280px;height:560px;background:#fff;border:2px solid #2b2b2b;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box">
+      <div style="padding:14px 16px;border-bottom:2px solid #eee;font-size:17px">かくれんぼ</div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:16px;flex:1">
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div style="font-size:11px;color:#888">なまえ <span style="color:#e5484d">必須</span></div>
+          <div style="border:2px solid #2b2b2b;border-radius:10px;padding:11px;font-size:15px">りんや<span style="color:#bbb">｜</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:#aaa"><span>前回の名前を復元しました</span><span>3 / 12</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;border:2px solid #eee;border-radius:14px;padding:14px">
+          <div style="font-size:12px;color:#888">ホストとして</div>
+          <div style="background:#2b2b2b;color:#fff;border-radius:11px;padding:13px;text-align:center;font-size:15px">ルームを作る</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;border:2px solid #eee;border-radius:14px;padding:14px">
+          <div style="font-size:12px;color:#888">ルームコードで参加</div>
+          <div style="display:flex;gap:8px">
+            <div style="flex:1;border:2px solid #2b2b2b;border-radius:10px;padding:12px 0;text-align:center;font:600 20px ui-monospace,monospace">7</div>
+            <div style="flex:1;border:2px solid #2b2b2b;border-radius:10px;padding:12px 0;text-align:center;font:600 20px ui-monospace,monospace">4</div>
+            <div style="flex:1;border:2px solid #2b2b2b;border-radius:10px;padding:12px 0;text-align:center;font:600 20px ui-monospace,monospace">2</div>
+            <div style="flex:1;border:2px dashed #bbb;border-radius:10px;padding:12px 0;text-align:center;font:600 20px ui-monospace,monospace;color:#ccc">_</div>
+          </div>
+          <div style="border:2px solid #ddd;color:#bbb;border-radius:11px;padding:13px;text-align:center;font-size:15px">ルームに参加</div>
+          <div style="font-size:10px;color:#aaa;text-align:center">4桁そろうと押せます</div>
+        </div>
+      </div>
+    </div>
+    <div style="font:11px/1.5 system-ui,sans-serif;color:#777;background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px">改善：名前が空/超過ならボタン自体を無効化（今は押してから赤字）。4桁コードを1桁ずつのマスに分解。</div>
+  </div>
+
+  <!-- 02 待機 -->
+  <div data-screen-label="2a-02 待機" style="display:flex;flex-direction:column;gap:6px;width:280px">
+    <div style="font:600 11px ui-monospace,monospace;color:#888">02 待機（ホスト視点）</div>
+    <div style="width:280px;height:560px;background:#fff;border:2px solid #2b2b2b;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box">
+      <div style="padding:12px 14px;border-bottom:2px solid #eee;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:14px">待機中</div>
+        <div style="border:2px solid #2b2b2b;border-radius:8px;padding:3px 9px;font:600 15px ui-monospace,monospace;letter-spacing:3px">7 4 2 9</div>
+      </div>
+      <div style="padding:11px 14px;border-bottom:2px solid #eee;display:flex;flex-direction:column;gap:6px;background:#fbfbf9">
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#888">開始に必要な準備</span><span style="color:#e5a341">あと1つ</span></div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:11.5px">
+          <div style="display:flex;gap:7px;align-items:center;color:#3a8a4a"><span>✓</span>プレイエリア設定ずみ</div>
+          <div style="display:flex;gap:7px;align-items:center;color:#3a8a4a"><span>✓</span>鬼を決定（りんや）</div>
+          <div style="display:flex;gap:7px;align-items:center;color:#c88a1e"><span>◻</span>キャリブレーション 3/4人</div>
+        </div>
+      </div>
+      <div style="flex:1;overflow:hidden;padding:8px 12px;display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:10px;color:#888">参加者 4人</div>
+        <div style="display:flex;align-items:center;gap:8px;border:2px solid #e5484d;border-radius:11px;padding:8px 10px;background:rgba(229,72,77,.05)">
+          <div style="width:26px;height:26px;border-radius:50%;background:#e5484d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">り</div>
+          <div style="flex:1"><div style="font-size:13px">りんや</div><div style="font-size:9.5px;color:#e5484d">鬼 ・ ホスト</div></div>
+          <div style="color:#3a8a4a;font-size:13px">✓</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;border:2px solid #eee;border-radius:11px;padding:8px 10px">
+          <div style="width:26px;height:26px;border-radius:50%;background:#4a9c5d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">た</div>
+          <div style="flex:1"><div style="font-size:13px">たくみ</div><div style="font-size:9.5px;color:#888">逃走者</div></div>
+          <div style="color:#3a8a4a;font-size:13px">✓</div>
+          <div style="border:1.5px solid #ccc;border-radius:7px;padding:3px 7px;font-size:10px;color:#888;white-space:nowrap;flex:none">鬼にする</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;border:2px solid #f0c98a;border-radius:11px;padding:8px 10px;background:#fffaf0">
+          <div style="width:26px;height:26px;border-radius:50%;background:#4a9c5d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">ゆ</div>
+          <div style="flex:1"><div style="font-size:13px">ゆい</div><div style="font-size:9.5px;color:#c88a1e">キャリブレーション待ち</div></div>
+          <div style="color:#c88a1e;font-size:13px">◻</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;border:2px solid #eee;border-radius:11px;padding:8px 10px">
+          <div style="width:26px;height:26px;border-radius:50%;background:#4a9c5d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">そ</div>
+          <div style="flex:1"><div style="font-size:13px">そら</div><div style="font-size:9.5px;color:#aaa">気圧センサー非対応（不要）</div></div>
+          <div style="color:#ccc;font-size:13px">—</div>
+        </div>
+      </div>
+      <div style="border-top:2px solid #eee;padding:9px 14px 11px;display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;gap:8px;align-items:center;border:2px solid #2b2b2b;border-radius:11px;padding:9px 12px">
+          <div style="font-size:16px">📐</div>
+          <div style="flex:1"><div style="font-size:12.5px">キャリブレーションする</div><div style="font-size:9.5px;color:#888">机の上など、動かない場所で1回</div></div>
+          <div style="font-size:14px;color:#3a8a4a">✓</div>
+        </div>
+        <div style="background:#ddd;color:#999;border-radius:12px;padding:13px;text-align:center;font-size:15px">ゲーム開始（ゆい を待っています）</div>
+      </div>
+    </div>
+    <div style="font:11px/1.5 system-ui,sans-serif;color:#777;background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px">改善：開始条件を上部にチェックリスト化。丸ボタンだけだったキャリブレーションを説明つきの行に。行ごとに役割・状態を明記。</div>
+  </div>
+
+  <!-- 03 ゲーム中・鬼 -->
+  <div data-screen-label="2a-03 ゲーム中(鬼)" style="display:flex;flex-direction:column;gap:6px;width:280px">
+    <div style="font:600 11px ui-monospace,monospace;color:#888">03 ゲーム中（鬼）</div>
+    <div style="width:280px;height:560px;background:#fff;border:2px solid #2b2b2b;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box">
+      <div style="background:#e5484d;color:#fff;padding:9px 13px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:13px">あなたは 鬼</div>
+        <div style="font:600 17px ui-monospace,monospace">14:52</div>
+      </div>
+      <div style="position:relative;flex:1;background:#eceae3">
+        <div style="position:absolute;left:0;right:0;top:96px;height:15px;background:#fff;border-top:1px solid #ddd8cc;border-bottom:1px solid #ddd8cc"></div>
+        <div style="position:absolute;left:118px;top:0;bottom:0;width:13px;background:#fff;border-left:1px solid #ddd8cc;border-right:1px solid #ddd8cc"></div>
+        <div style="position:absolute;left:18px;top:130px;width:62px;height:52px;background:#e2ded2;border:1px solid #d0cbbd"></div>
+        <div style="position:absolute;left:158px;top:140px;width:56px;height:66px;background:#e2ded2;border:1px solid #d0cbbd"></div>
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,.38);clip-path:polygon(0 0,100% 0,100% 100%,0 100%,0 0,4% 4%,4% 82%,94% 82%,94% 4%,4% 4%)"></div>
+        <div style="position:absolute;left:4%;top:4%;right:6%;bottom:18%;border:2px dashed #3b82f6"></div>
+        <div style="position:absolute;left:8px;top:8px;background:rgba(255,255,255,.92);border-radius:6px;padding:4px 7px;font:9.5px system-ui;color:#555">━ プレイエリア（外は暗く表示）</div>
+        <div style="position:absolute;left:46px;top:210px;display:flex;flex-direction:column;align-items:center">
+          <div style="font-size:9.5px;background:#e5484d;color:#fff;border-radius:5px;padding:1px 5px;margin-bottom:2px">自分（鬼）</div>
+          <div style="width:15px;height:15px;border-radius:50%;background:#e5484d;border:3px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>
+        </div>
+        <div style="position:absolute;left:160px;top:150px;display:flex;flex-direction:column;align-items:center">
+          <div style="font-size:9.5px;background:#4a9c5d;color:#fff;border-radius:5px;padding:1px 5px;margin-bottom:2px">ゆい</div>
+          <div style="width:13px;height:13px;border-radius:50%;background:#4a9c5d;border:2.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>
+        </div>
+        <div style="position:absolute;left:80px;top:300px;display:flex;flex-direction:column;align-items:center">
+          <div style="font-size:9.5px;background:#4a9c5d;color:#fff;border-radius:5px;padding:1px 5px;margin-bottom:2px">たくみ</div>
+          <div style="width:13px;height:13px;border-radius:50%;background:#4a9c5d;border:2.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>
+        </div>
+      </div>
+      <div style="border-top:2px solid #2b2b2b;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:11px;color:#888">いま追う相手</div>
+          <div style="font-size:10px;color:#888">いちばん近い逃走者</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:stretch;border:2px solid #2b2b2b;border-radius:12px;padding:10px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:56px">
+            <div style="width:30px;height:30px;border-radius:50%;background:#4a9c5d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px">ゆ</div>
+            <div style="font-size:11px">ゆい</div>
+          </div>
+          <div style="width:2px;background:#eee"></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:3px;width:52px">
+            <div style="font-size:9.5px;color:#888">上下</div>
+            <div style="position:relative;width:26px;flex:1;min-height:44px;border:1.5px solid #ddd;border-radius:6px">
+              <div style="position:absolute;left:0;right:0;top:50%;height:3px;background:#3b82f6"></div>
+              <div style="position:absolute;left:50%;top:9px;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;background:#4a9c5d;border:2px solid #fff"></div>
+            </div>
+            <div style="font-size:10px;color:#2b2b2b">＋4m 上</div>
+          </div>
+          <div style="width:2px;background:#eee"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px;justify-content:center">
+            <div style="font-size:9.5px;color:#888">Wi-Fi距離感</div>
+            <div style="font-size:15px;color:#e5484d">近い</div>
+            <div style="display:flex;gap:3px;align-items:flex-end;height:16px">
+              <div style="flex:1;height:60%;background:#3b82f6;border-radius:2px"></div>
+              <div style="flex:1;height:70%;background:#4a9c5d;border-radius:2px"></div>
+              <div style="width:4px"></div>
+              <div style="flex:1;height:90%;background:#3b82f6;border-radius:2px"></div>
+              <div style="flex:1;height:85%;background:#4a9c5d;border-radius:2px"></div>
+              <div style="width:4px"></div>
+              <div style="flex:1;height:45%;background:#3b82f6;border-radius:2px"></div>
+              <div style="flex:1;height:50%;background:#4a9c5d;border-radius:2px"></div>
+            </div>
+            <div style="font-size:9px;color:#aaa">青=自分 / 緑=相手 のRSSI（3AP）</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:7px;font-size:10.5px;color:#888">
+          <div style="flex:1;border:1.5px solid #ddd;border-radius:8px;padding:5px;text-align:center">たくみ 遠い ↓</div>
+          <div style="flex:1;border:1.5px solid #ddd;border-radius:8px;padding:5px;text-align:center">そら 検知なし</div>
+        </div>
+      </div>
+    </div>
+    <div style="font:11px/1.5 system-ui,sans-serif;color:#777;background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px">改善：ピンに名前ラベル。「いま追う相手」を1人に固定し、上下バーとWi-Fiを同じカードにまとめる（3段階/RSSIの切替タブを廃止し両方表示）。他の人は下に一行ずつ。</div>
+  </div>
+
+  <!-- 04 ゲーム中・逃走者 -->
+  <div data-screen-label="2a-04 ゲーム中(逃走者)" style="display:flex;flex-direction:column;gap:6px;width:280px">
+    <div style="font:600 11px ui-monospace,monospace;color:#888">04 ゲーム中（逃走者・放出前）</div>
+    <div style="width:280px;height:560px;background:#fff;border:2px solid #2b2b2b;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box">
+      <div style="background:#4a9c5d;color:#fff;padding:9px 13px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:13px">あなたは 逃走者</div>
+        <div style="font:600 17px ui-monospace,monospace">2:31</div>
+      </div>
+      <div style="background:#fffaf0;border-bottom:2px solid #f0c98a;padding:8px 13px;display:flex;align-items:center;gap:8px">
+        <div style="font-size:15px">⏳</div>
+        <div style="font-size:11.5px;color:#8a6a1e">鬼の放出まで 2:31 — いまのうちに離れる</div>
+      </div>
+      <div style="position:relative;flex:1;background:#eceae3">
+        <div style="position:absolute;left:0;right:0;top:86px;height:15px;background:#fff;border-top:1px solid #ddd8cc;border-bottom:1px solid #ddd8cc"></div>
+        <div style="position:absolute;left:118px;top:0;bottom:0;width:13px;background:#fff;border-left:1px solid #ddd8cc;border-right:1px solid #ddd8cc"></div>
+        <div style="position:absolute;left:18px;top:120px;width:62px;height:52px;background:#e2ded2;border:1px solid #d0cbbd"></div>
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,.38);clip-path:polygon(0 0,100% 0,100% 100%,0 100%,0 0,4% 4%,4% 84%,94% 84%,94% 4%,4% 4%)"></div>
+        <div style="position:absolute;left:4%;top:4%;right:6%;bottom:16%;border:2px dashed #3b82f6"></div>
+        <div style="position:absolute;left:60px;top:230px;display:flex;flex-direction:column;align-items:center">
+          <div style="font-size:9.5px;background:#3b82f6;color:#fff;border-radius:5px;padding:1px 5px;margin-bottom:2px">自分</div>
+          <div style="width:15px;height:15px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>
+        </div>
+        <div style="position:absolute;left:170px;top:190px;display:flex;flex-direction:column;align-items:center">
+          <div style="font-size:9.5px;background:#4a9c5d;color:#fff;border-radius:5px;padding:1px 5px;margin-bottom:2px">たくみ</div>
+          <div style="width:13px;height:13px;border-radius:50%;background:#4a9c5d;border:2.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>
+        </div>
+      </div>
+      <div style="border-top:2px solid #2b2b2b;padding:11px 13px;display:flex;flex-direction:column;gap:8px">
+        <div style="border:2px dashed #ccc;border-radius:12px;padding:14px 10px;display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div style="font-size:20px;opacity:.35">👹</div>
+          <div style="font-size:12.5px;color:#888">鬼の位置はまだ見えません</div>
+          <div style="font-size:10px;color:#aaa">放出から30秒後に表示されます</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;background:#f7f7f5;border-radius:10px;padding:8px 10px">
+          <div style="font-size:13px">📡</div>
+          <div style="font-size:10.5px;color:#888">BLEは残り5分から有効。3m以内に鬼が来ると通知されます</div>
+        </div>
+      </div>
+    </div>
+    <div style="font:11px/1.5 system-ui,sans-serif;color:#777;background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px">改善：見えない理由（役割による可視性ディレイ）を空欄ではなく明示。放出前は残り時間の意味が変わることをバナーで補足。</div>
+  </div>
+
+  <!-- 05 BLE 3m -->
+  <div data-screen-label="2a-05 BLE3m 鬼になる" style="display:flex;flex-direction:column;gap:6px;width:280px">
+    <div style="font:600 11px ui-monospace,monospace;color:#888">05 BLE 3m接近 → 鬼になるボタン</div>
+    <div style="width:280px;height:560px;background:#fff;border:2px solid #2b2b2b;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box">
+      <div style="background:#4a9c5d;color:#fff;padding:9px 13px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:13px">あなたは 逃走者</div>
+        <div style="font:600 17px ui-monospace,monospace">3:12</div>
+      </div>
+      <div style="flex:1;background:rgba(229,72,77,.05);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px">
+        <div style="position:relative;width:190px;height:190px;display:flex;align-items:center;justify-content:center">
+          <div style="position:absolute;inset:0;border:2px solid rgba(229,72,77,.18);border-radius:50%"></div>
+          <div style="position:absolute;inset:24px;border:2px solid rgba(229,72,77,.35);border-radius:50%"></div>
+          <div style="position:absolute;inset:48px;border:2px solid rgba(229,72,77,.55);border-radius:50%"></div>
+          <div style="width:88px;height:88px;border-radius:50%;background:#e5484d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">
+            <div style="font-size:22px">👹</div><div style="font-size:12px">りんや</div>
+          </div>
+          <div style="position:absolute;bottom:-4px;background:#2b2b2b;color:#fff;border-radius:20px;padding:3px 11px;font:600 12px ui-monospace,monospace">約 3m</div>
+        </div>
+        <div style="font-size:19px;color:#e5484d">鬼がすぐそこにいます</div>
+        <div style="font-size:11px;color:#888;text-align:center">BLE受信強度 −61.0 dBm（3m相当）で表示<br>📳 端末が振動しています</div>
+        <div style="width:100%;background:#e5484d;color:#fff;border-radius:14px;padding:16px;text-align:center;font-size:17px;box-sizing:border-box">捕まった — 鬼になる</div>
+        <div style="font-size:10.5px;color:#aaa">押すと全員に通知されます（取り消せません）</div>
+      </div>
+      <div style="border-top:2px solid #eee;padding:9px 13px;font-size:10px;color:#aaa;text-align:center">この画面は3m圏内にいる間だけ出る。離れると通常画面に戻る</div>
+    </div>
+    <div style="font:11px/1.5 system-ui,sans-serif;color:#777;background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px">新規：BLEで −61.0 dBm（≒3m）を検知したときだけ、逃走者側に大きな自己申告ボタンを出す。常時表示をやめることで誤タップを防ぐ。</div>
+  </div>
+
+  <!-- 06 鬼化 -->
+  <div data-screen-label="2a-06 鬼になった直後" style="display:flex;flex-direction:column;gap:6px;width:280px">
+    <div style="font:600 11px ui-monospace,monospace;color:#888">06 確認 → 鬼になった直後</div>
+    <div style="display:flex;gap:12px">
+      <div style="width:134px;height:560px;background:#fff;border:2px solid #2b2b2b;border-radius:16px;overflow:hidden;position:relative;box-sizing:border-box">
+        <div style="position:absolute;inset:0;background:#f6f6f4"></div>
+        <div style="position:absolute;left:8px;right:8px;top:150px;background:#fff;border:2px solid #2b2b2b;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:9px;box-shadow:0 6px 16px rgba(0,0,0,.18)">
+          <div style="font-size:13px;text-align:center">鬼になりますか？</div>
+          <div style="font-size:9.5px;color:#888;text-align:center;line-height:1.5">取り消せません。全員に通知されます</div>
+          <div style="background:#e5484d;color:#fff;border-radius:9px;padding:10px;text-align:center;font-size:12px">鬼になる</div>
+          <div style="border:1.5px solid #ccc;border-radius:9px;padding:8px;text-align:center;font-size:11px;color:#888">やめる</div>
+        </div>
+      </div>
+      <div style="width:134px;height:560px;background:#e5484d;border:2px solid #2b2b2b;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;box-sizing:border-box;padding:14px">
+        <div style="font-size:40px">👹</div>
+        <div style="font-size:17px;text-align:center;line-height:1.5">あなたは<br>鬼になった</div>
+        <div style="font-size:10.5px;opacity:.85;text-align:center;line-height:1.6">逃走者の位置が<br>見えるようになります</div>
+        <div style="border:2px solid #fff;border-radius:11px;padding:9px 16px;font-size:12px">鬼の画面へ</div>
+      </div>
+    </div>
+    <div style="font:11px/1.5 system-ui,sans-serif;color:#777;background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px">改善：「捕まった」のあと画面が変わらない問題に対し、全画面の切替演出を挟む。役割が変わったことを本人にも周囲にも分かるようにする。</div>
+  </div>
+
+  <!-- 07 エリア外 -->
+  <div data-screen-label="2a-07 エリア外警告" style="display:flex;flex-direction:column;gap:6px;width:280px">
+    <div style="font:600 11px ui-monospace,monospace;color:#888">07 エリア外警告</div>
+    <div style="width:280px;height:560px;background:#fff;border:2px solid #2b2b2b;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box">
+      <div style="background:#e5484d;color:#fff;padding:12px 13px;display:flex;align-items:center;gap:9px">
+        <div style="font-size:19px">🚨</div>
+        <div><div style="font-size:14px">プレイエリアの外です</div><div style="font-size:10px;opacity:.85">戻るまで振動と通知が続きます</div></div>
+      </div>
+      <div style="position:relative;flex:1;background:#eceae3">
+        <div style="position:absolute;left:0;right:0;top:110px;height:14px;background:#fff;border-top:1px solid #ddd8cc;border-bottom:1px solid #ddd8cc"></div>
+        <div style="position:absolute;left:96px;top:0;bottom:0;width:12px;background:#fff;border-left:1px solid #ddd8cc;border-right:1px solid #ddd8cc"></div>
+        <div style="position:absolute;inset:0;background:rgba(229,72,77,.16)"></div>
+        <div style="position:absolute;left:14px;top:24px;width:184px;height:250px;background:#eceae3;border:2px dashed #3b82f6"></div>
+        <div style="position:absolute;left:22px;top:32px;font:9.5px system-ui;color:#3b82f6;background:rgba(255,255,255,.9);padding:2px 5px;border-radius:4px">プレイエリア内</div>
+        <div style="position:absolute;right:22px;top:300px;display:flex;flex-direction:column;align-items:center">
+          <div style="font-size:9.5px;background:#e5484d;color:#fff;border-radius:5px;padding:1px 5px;margin-bottom:2px">自分</div>
+          <div style="width:15px;height:15px;border-radius:50%;background:#e5484d;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>
+        </div>
+        <div style="position:absolute;right:52px;top:286px;font-size:20px;transform:rotate(-140deg);color:#e5484d">➜</div>
+        <div style="position:absolute;left:14px;bottom:14px;right:14px;background:rgba(255,255,255,.94);border-radius:9px;padding:8px 10px;font:11px/1.5 system-ui;color:#555">エリアまで約 40m ・ 北西へ戻ってください</div>
+      </div>
+      <div style="border-top:2px solid #2b2b2b;padding:12px 13px;display:flex;flex-direction:column;gap:7px">
+        <div style="font-size:10.5px;color:#888">エリア判定はポリゴン（点と多角形の内外判定）</div>
+        <div style="background:#2b2b2b;color:#fff;border-radius:11px;padding:12px;text-align:center;font-size:14px">地図でエリアを見る</div>
+      </div>
+    </div>
+    <div style="font:11px/1.5 system-ui,sans-serif;color:#777;background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px">改善：警告時は画面全体を赤くかぶせ、戻る方向と距離を出す。エリア境界は破線＋外側の暗転で常時わかるように。</div>
+  </div>
+
+  <!-- 08 結果 -->
+  <div data-screen-label="2a-08 結果" style="display:flex;flex-direction:column;gap:6px;width:280px">
+    <div style="font:600 11px ui-monospace,monospace;color:#888">08 結果</div>
+    <div style="width:280px;height:560px;background:#fff;border:2px solid #2b2b2b;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box">
+      <div style="padding:18px 14px;text-align:center;border-bottom:2px solid #eee">
+        <div style="font-size:11px;color:#888">タイムアップ</div>
+        <div style="font-size:22px;margin-top:4px">逃走者 2人 が逃げ切り</div>
+      </div>
+      <div style="flex:1;padding:14px;display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:10.5px;color:#888">最後まで逃げ切った人</div>
+        <div style="display:flex;align-items:center;gap:9px;border:2px solid #4a9c5d;border-radius:11px;padding:9px 11px;background:rgba(74,156,93,.06)">
+          <div style="width:28px;height:28px;border-radius:50%;background:#4a9c5d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">た</div>
+          <div style="font-size:13.5px;flex:1">たくみ</div><div style="font-size:15px">🏆</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;border:2px solid #4a9c5d;border-radius:11px;padding:9px 11px;background:rgba(74,156,93,.06)">
+          <div style="width:28px;height:28px;border-radius:50%;background:#4a9c5d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">そ</div>
+          <div style="font-size:13.5px;flex:1">そら</div><div style="font-size:15px">🏆</div>
+        </div>
+        <div style="font-size:10.5px;color:#888;margin-top:6px">鬼になった人</div>
+        <div style="display:flex;align-items:center;gap:9px;border:2px solid #eee;border-radius:11px;padding:9px 11px">
+          <div style="width:28px;height:28px;border-radius:50%;background:#e5484d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">り</div>
+          <div style="flex:1"><div style="font-size:13.5px">りんや</div><div style="font-size:9.5px;color:#888">最初の鬼</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;border:2px solid #eee;border-radius:11px;padding:9px 11px">
+          <div style="width:28px;height:28px;border-radius:50%;background:#e5484d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">ゆ</div>
+          <div style="flex:1"><div style="font-size:13.5px">ゆい</div><div style="font-size:9.5px;color:#888">14:52 に捕まった</div></div>
+        </div>
+      </div>
+      <div style="padding:14px;border-top:2px solid #eee;display:flex;flex-direction:column;gap:8px">
+        <div style="background:#2b2b2b;color:#fff;border-radius:12px;padding:13px;text-align:center;font-size:15px">同じメンバーでもう一回</div>
+        <div style="border:2px solid #ddd;color:#888;border-radius:12px;padding:11px;text-align:center;font-size:13px">ホームに戻る</div>
+      </div>
+    </div>
+    <div style="font:11px/1.5 system-ui,sans-serif;color:#777;background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px">改善：鬼の名前を並べるだけだった結果画面に、勝敗と捕まった時刻を追加。</div>
+  </div>
+
+</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">つぎに試す: 「<a class="dv-oid" href="#2a">2a</a>を実装用に細かく詰めて」 · 「ゲーム中画面（03）の別レイアウト案が見たい」 · 「1b/1c/1dのトーンを2aに当てはめて」</p>
+</section>
+
+</body>
+</html>
