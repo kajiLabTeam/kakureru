@@ -1,3 +1,4 @@
+import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 
 /// あるビューア(役割)から、あるターゲット(役割)の位置が見えるかどうかを判定する。
@@ -55,4 +56,21 @@ int? calculateCountdownSeconds({
   final target = phase == GamePhase.beforeRelease ? releasedAt : endsAt;
   if (target == null) return null;
   return ((target - nowMillis) / 1000).ceil();
+}
+
+/// 「捕まった」ボタンを表示すべきかどうかを判定する。
+///
+/// まだ誰も追いかけていない鬼放出前(beforeRelease)は不要なため、
+/// 逃走者(role==fugitive)かつ鬼放出後(phase==released)のときだけ表示する。
+bool canReportCaught({required UserRole role, required GamePhase phase}) {
+  return role == UserRole.fugitive && phase == GamePhase.released;
+}
+
+/// 結果画面へ遷移すべきタイミングかどうかを判定する。
+///
+/// meta/status が FINISHED になった場合、または endsAt を過ぎた場合に真。
+/// 端末ごとの時計のズレを避けるため、比較には絶対時刻(serverNowMillis)を使う。
+bool isGameOver({required RoomStatus status, required int? endsAt, required int nowMillis}) {
+  if (status == RoomStatus.finished) return true;
+  return endsAt != null && nowMillis >= endsAt;
 }

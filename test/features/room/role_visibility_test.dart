@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 
@@ -160,6 +161,73 @@ void main() {
         nowMillis: 61000,
       );
       expect(result, -1);
+    });
+  });
+
+  group('isGameOver', () {
+    test('endsAt前かつWAITING/PLAYINGならまだ終了していない', () {
+      expect(
+        isGameOver(status: RoomStatus.playing, endsAt: 60000, nowMillis: 59999),
+        isFalse,
+      );
+    });
+
+    test('endsAtちょうどで終了とみなす', () {
+      expect(
+        isGameOver(status: RoomStatus.playing, endsAt: 60000, nowMillis: 60000),
+        isTrue,
+      );
+    });
+
+    test('endsAtを過ぎたら終了とみなす', () {
+      expect(
+        isGameOver(status: RoomStatus.playing, endsAt: 60000, nowMillis: 60001),
+        isTrue,
+      );
+    });
+
+    test('endsAt未確定でもstatusがFINISHEDなら終了とみなす', () {
+      expect(
+        isGameOver(status: RoomStatus.finished, endsAt: null, nowMillis: 0),
+        isTrue,
+      );
+    });
+
+    test('endsAt未確定でstatusもFINISHEDでなければ終了していない', () {
+      expect(
+        isGameOver(status: RoomStatus.waiting, endsAt: null, nowMillis: 999999),
+        isFalse,
+      );
+    });
+  });
+
+  group('canReportCaught', () {
+    test('逃走者かつ鬼放出後なら表示する', () {
+      expect(
+        canReportCaught(role: UserRole.fugitive, phase: GamePhase.released),
+        isTrue,
+      );
+    });
+
+    test('逃走者でも鬼放出前は表示しない', () {
+      expect(
+        canReportCaught(role: UserRole.fugitive, phase: GamePhase.beforeRelease),
+        isFalse,
+      );
+    });
+
+    test('鬼放出後でも自分が鬼なら表示しない', () {
+      expect(
+        canReportCaught(role: UserRole.demon, phase: GamePhase.released),
+        isFalse,
+      );
+    });
+
+    test('鬼かつ鬼放出前も表示しない', () {
+      expect(
+        canReportCaught(role: UserRole.demon, phase: GamePhase.beforeRelease),
+        isFalse,
+      );
     });
   });
 }

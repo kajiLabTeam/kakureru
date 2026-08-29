@@ -108,7 +108,7 @@ RTDBの `.read`/`.write` 権限は、**アクセス先のパス自身か、そ�
 
 ホストが解散時に他ユーザーの `users/{uid}` を削除できるようにルールを緩めることは行わない。`users/{uid}` の書き込みを本人以外にも許可すると、`role` や `pressureOffset` を第三者が書き換えられる穴になるため。
 
-そのため `RoomRepository.finishRoom` は `meta/status` を `"FINISHED"` に更新するだけで、`users` / `setting` / `meta` / `roomCodes` の実データは削除しない。これらの削除は **Phase 2 の `finishGame` Cloud Function**（Admin SDK でルールをバイパスして全参加者分をまとめて消せる）に任せる。
+そのため `RoomRepository.finishRoom` は `meta/status` を `"FINISHED"` にし `meta/endedAt` を記録するだけで、`users` / `setting` / それ以外の `meta` / `roomCodes` の実データは削除しない。これらの削除は **Phase 2 の `finishGame` Cloud Function**（Admin SDK でルールをバイパスして全参加者分をまとめて消せる）に任せる。
 
 **Phase 1 の間の既知の制約**: 削除処理が無いため、遊び終わったあとも `roomCodes/{code}` が残り続ける。4桁コードは10000通りしかないので、開発中に何度もルームを作り直していると枯渇しうる。Phase 2 実装までは、開発中に溜まった `roomCodes` / `rooms` を手動（Firebase Console）または簡単なクリーンアップスクリプトで消す運用が必要。
 
