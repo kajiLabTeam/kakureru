@@ -57,3 +57,7 @@ app.*.map.json
 serviceAccountKey.json
 *.pem
 *.p12
+
+# night-run: 実行中の状態ファイル・ログ(タスク内容や進捗を含む。定義自体はコミットする)
+night-run/state/*
+!night-run/state/.gitkeep
