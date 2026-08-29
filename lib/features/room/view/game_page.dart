@@ -14,8 +14,11 @@ import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/model/room.dart';
+import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/rectangle_area.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
@@ -90,7 +93,8 @@ class GamePage extends HookConsumerWidget {
       ref.read(pressureViewModelProvider.notifier)
         ..init()
         ..startSendingToRoom(roomId);
-      return () => ref.read(pressureViewModelProvider.notifier).stopSendingAndDispose();
+      return () =>
+          ref.read(pressureViewModelProvider.notifier).stopSendingAndDispose();
     }, [roomId]);
 
     // Wi-Fiスキャンもゲーム画面滞在中だけ行う。位置情報・気圧とは別の
@@ -143,7 +147,9 @@ class GamePage extends HookConsumerWidget {
     });
 
     final pressureState = ref.watch(pressureViewModelProvider);
-    final nearestVerticalPosition = ref.watch(nearestOpponentVerticalPositionProvider(roomId));
+    final nearestVerticalPosition = ref.watch(
+      nearestOpponentVerticalPositionProvider(roomId),
+    );
     final wifiDisplayMode = useState(_WifiDisplayMode.levels);
 
     // 送信中(Foreground Service稼働中)にソフトバックキーで誤ってアプリごと
@@ -155,14 +161,19 @@ class GamePage extends HookConsumerWidget {
           data: (room) {
             final now = serverNowMillis(offset);
             final myRole = _roleOf(room.users, myUid);
-            final phase = determineGamePhase(releasedAt: room.releasedAt, nowMillis: now);
+            final phase = determineGamePhase(
+              releasedAt: room.releasedAt,
+              nowMillis: now,
+            );
             final countdownSec = calculateCountdownSeconds(
               phase: phase,
               releasedAt: room.releasedAt,
               endsAt: room.endsAt,
               nowMillis: now,
             );
-            final countdownLabel = phase == GamePhase.beforeRelease ? '鬼放出まで' : '残り時間';
+            final countdownLabel = phase == GamePhase.beforeRelease
+                ? '鬼放出まで'
+                : '残り時間';
 
             // 役割による表示制御(7/13のプレイテストで決まった非対称な可視性)。
             // 自分は常に見える。相手は同role同士なら常に、異roleなら
@@ -186,16 +197,20 @@ class GamePage extends HookConsumerWidget {
                 .where((location) => isVisibleToMe(location.uid))
                 .toList();
             final visibleNearestVerticalPosition =
-                nearestVerticalPosition != null && isVisibleToMe(nearestVerticalPosition.uid)
+                nearestVerticalPosition != null &&
+                    isVisibleToMe(nearestVerticalPosition.uid)
                 ? nearestVerticalPosition
                 : null;
             final visibleWifiEntries = ref
                 .watch(wifiProximityLevelsProvider(roomId))
                 .where((entry) => isVisibleToMe(entry.uid))
                 .toList();
-            final rawNearestOpponentUid = ref.watch(nearestOpponentUidProvider(roomId));
+            final rawNearestOpponentUid = ref.watch(
+              nearestOpponentUidProvider(roomId),
+            );
             final visibleNearestOpponentUid =
-                rawNearestOpponentUid != null && isVisibleToMe(rawNearestOpponentUid)
+                rawNearestOpponentUid != null &&
+                    isVisibleToMe(rawNearestOpponentUid)
                 ? rawNearestOpponentUid
                 : null;
             final visibleWifiComparisons = visibleNearestOpponentUid != null
@@ -223,7 +238,10 @@ class GamePage extends HookConsumerWidget {
                   ),
                 if (myRole == UserRole.fugitive)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
                     child: FilledButton.tonalIcon(
                       icon: const Icon(Icons.warning_amber),
                       label: const Text('捕まった'),
@@ -235,18 +253,22 @@ class GamePage extends HookConsumerWidget {
                             content: const Text('鬼になります。この操作は取り消せません。'),
                             actions: [
                               TextButton(
-                                onPressed: () => Navigator.of(dialogContext).pop(false),
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(false),
                                 child: const Text('キャンセル'),
                               ),
                               FilledButton(
-                                onPressed: () => Navigator.of(dialogContext).pop(true),
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(true),
                                 child: const Text('捕まった'),
                               ),
                             ],
                           ),
                         );
                         if (confirmed == true) {
-                          await ref.read(roomRepositoryProvider).reportCaught(roomId);
+                          await ref
+                              .read(roomRepositoryProvider)
+                              .reportCaught(roomId);
                         }
                       },
                     ),
@@ -257,6 +279,7 @@ class GamePage extends HookConsumerWidget {
                     users: room.users,
                     myUid: myUid,
                     cachedPosition: cachedPosition.value,
+                    gameArea: room.setting.gameArea,
                   ),
                 ),
                 // マップの下に「鬼(または逃走者)との上下関係」と「Wi-Fi近接表示」を
@@ -271,21 +294,33 @@ class GamePage extends HookConsumerWidget {
                         pressureState: pressureState,
                         isCalibrated: _isCalibrated(room, myUid),
                         position: visibleNearestVerticalPosition,
-                        opponentRole: _roleOf(room.users, visibleNearestVerticalPosition?.uid),
+                        opponentRole: _roleOf(
+                          room.users,
+                          visibleNearestVerticalPosition?.uid,
+                        ),
                       ),
                       Expanded(
                         child: Column(
                           children: [
                             SegmentedButton<_WifiDisplayMode>(
                               segments: const [
-                                ButtonSegment(value: _WifiDisplayMode.levels, label: Text('3段階判定')),
-                                ButtonSegment(value: _WifiDisplayMode.rssiBars, label: Text('RSSI比較')),
+                                ButtonSegment(
+                                  value: _WifiDisplayMode.levels,
+                                  label: Text('3段階判定'),
+                                ),
+                                ButtonSegment(
+                                  value: _WifiDisplayMode.rssiBars,
+                                  label: Text('RSSI比較'),
+                                ),
                               ],
                               selected: {wifiDisplayMode.value},
-                              onSelectionChanged: (selection) => wifiDisplayMode.value = selection.first,
+                              onSelectionChanged: (selection) =>
+                                  wifiDisplayMode.value = selection.first,
                             ),
                             Expanded(
-                              child: wifiDisplayMode.value == _WifiDisplayMode.levels
+                              child:
+                                  wifiDisplayMode.value ==
+                                      _WifiDisplayMode.levels
                                   ? _WifiProximityLevelsView(
                                       entries: visibleWifiEntries,
                                       users: room.users,
@@ -319,6 +354,7 @@ class _LocationMap extends HookWidget {
     required this.users,
     required this.myUid,
     required this.cachedPosition,
+    required this.gameArea,
   });
 
   final List<UserLocation> locations;
@@ -326,13 +362,23 @@ class _LocationMap extends HookWidget {
   final String? myUid;
   final Position? cachedPosition;
 
-  /// 自分の位置が全く分からない間の暫定センター(東京駅)。
-  /// あくまで「世界地図の原点が出るよりまし」という仮の値。
-  static const _fallbackDefaultCenter = latlong.LatLng(35.681236, 139.767125);
+  /// ルーム設定で指定されたプレイエリア。未設定なら空。
+  final List<LatLng> gameArea;
 
   @override
   Widget build(BuildContext context) {
     final selfLocation = _findLocation(locations, myUid);
+
+    // プレイエリアが設定されていれば、地図はその範囲だけを映す。
+    // 初期表示をエリアにフィットさせ、地図の中心がエリアから出ないよう制限し、
+    // エリア外は影で覆う。未設定のルームでは従来どおり自分中心の地図にする。
+    final areaBounds = gameAreaBounds(gameArea);
+    // マスクと境界線の両方が使うので、毎秒のリビルドのたびに変換し直さない
+    // よう一度だけ変換する。
+    final areaPoints = useMemoized(
+      () => areaBounds == null ? null : toLatLngPoints(gameArea),
+      [gameArea],
+    );
 
     // 自分の位置の情報源には優先度がある: 実測(GPS) > 端末キャッシュ > 何も無い。
     // 精度の低いソースから高いソースへ切り替わったタイミングだけ地図を
@@ -351,8 +397,21 @@ class _LocationMap extends HookWidget {
     final mapController = useMemoized(MapController.new);
     final bestTierShown = useRef(0);
 
+    // GamePageは残り時間の更新で毎秒リビルドされる。CameraFitは同値でも
+    // 別インスタンスだと「変わった」と判定されFlutterMap側の再設定が
+    // 毎秒走るため、エリアが変わらない限り同じMapOptionsを使い回す。
+    final mapOptions = useMemoized(
+      () => buildGameMapOptions(
+        areaBounds: areaBounds,
+        fallbackCenter: currentCenter,
+      ),
+      [areaBounds],
+    );
+
     useEffect(() {
-      if (positionTier > bestTierShown.value) {
+      // エリア指定がある場合はエリア全体を映したままにする(自分の位置が
+      // 取れるたびに寄せ直すと、せっかくのエリア表示が崩れるため)。
+      if (areaBounds == null && positionTier > bestTierShown.value) {
         bestTierShown.value = positionTier;
         // MapControllerがまだレイアウト前だと move() が失敗しうるため、
         // フレーム確定後に呼ぶ。
@@ -371,7 +430,7 @@ class _LocationMap extends HookWidget {
       children: [
         FlutterMap(
           mapController: mapController,
-          options: MapOptions(initialCenter: currentCenter, initialZoom: 17),
+          options: mapOptions,
           children: [
             // Phase 1では手軽さを優先し、追加設定・課金設定が不要な
             // OpenStreetMapのタイルをそのまま使う(flutter_map採用)。
@@ -384,6 +443,13 @@ class _LocationMap extends HookWidget {
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'me.nenex.kakureru',
             ),
+            if (areaPoints != null)
+              PolygonLayer(
+                polygons: [
+                  _outsideMaskPolygon(areaPoints),
+                  _areaBorderPolygon(areaPoints),
+                ],
+              ),
             MarkerLayer(markers: locations.map(_buildMarker).toList()),
           ],
         ),
@@ -394,7 +460,10 @@ class _LocationMap extends HookWidget {
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(20),
@@ -405,7 +474,10 @@ class _LocationMap extends HookWidget {
                     SizedBox(
                       width: 14,
                       height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     ),
                     SizedBox(width: 8),
                     Text('現在地を取得中...', style: TextStyle(color: Colors.white)),
@@ -418,6 +490,38 @@ class _LocationMap extends HookWidget {
     );
   }
 
+  /// プレイエリアの外側を覆う影。外周を世界全体(緯度±90度・経度±180度)
+  /// まで広げた矩形を塗り、エリアの形を穴として抜くことで「範囲の外」
+  /// だけを暗くする。
+  ///
+  /// 外周をエリアの周りに小さく取る(エリア+一定マージンの矩形)方式だと、
+  /// カメラ中心はエリア内に制限されていてもズームだけは制限しておらず
+  /// (`buildGameMapOptions` は `minZoom` を設定していない)、ズームアウト
+  /// すればマージンの外側にすぐ地の地図が見えてしまう。外周を世界全体に
+  /// すれば、どれだけズームアウトしても常に画面全体を覆える。
+  Polygon<Object> _outsideMaskPolygon(List<latlong.LatLng> areaPoints) {
+    return Polygon(
+      points: const [
+        latlong.LatLng(-90, -180),
+        latlong.LatLng(-90, 180),
+        latlong.LatLng(90, 180),
+        latlong.LatLng(90, -180),
+      ],
+      holePointsList: [areaPoints],
+      color: Colors.black.withValues(alpha: 0.35),
+    );
+  }
+
+  /// プレイエリアの境界線。ルーム設定画面と同じ青い破線で揃えている。
+  Polygon<Object> _areaBorderPolygon(List<latlong.LatLng> areaPoints) {
+    return Polygon(
+      points: areaPoints,
+      borderStrokeWidth: 2,
+      borderColor: Colors.blue,
+      pattern: StrokePattern.dashed(segments: const [8, 4]),
+    );
+  }
+
   /// 自分の位置(実測・キャッシュとも)がまだ無い間の初期センター。
   /// ルーム内の他の参加者が既にいればその位置、いなければ固定の暫定座標。
   latlong.LatLng _initialFallbackCenter() {
@@ -425,17 +529,23 @@ class _LocationMap extends HookWidget {
       final other = locations.first;
       return latlong.LatLng(other.latitude, other.longitude);
     }
-    return _fallbackDefaultCenter;
+    return fallbackMapCenter;
   }
 
   Marker _buildMarker(UserLocation location) {
     final isSelf = location.uid == myUid;
-    final color = isSelf ? Colors.blue : _colorForRole(_findUser(users, location.uid)?.role);
+    final color = isSelf
+        ? Colors.blue
+        : _colorForRole(_findUser(users, location.uid)?.role);
 
     return Marker(
       point: latlong.LatLng(location.latitude, location.longitude),
       width: 40,
       height: 40,
+      // Icons.location_pinは下端に尖った先端があるアイコンなので、既定の
+      // Alignment.center(中央合わせ)のままだと先端が実座標より下にずれる。
+      // topCenterにして先端を座標に合わせる。
+      alignment: Alignment.topCenter,
       child: Icon(Icons.location_pin, color: color, size: 36),
     );
   }
@@ -558,10 +668,12 @@ class _NearestOpponentVerticalIndicator extends StatelessWidget {
 
   /// 実際に上下を表示できないなら理由を返す。表示できるならnull。
   String? _statusMessage() {
-    if (pressureState.sensorAvailability == PressureSensorAvailability.unavailable) {
+    if (pressureState.sensorAvailability ==
+        PressureSensorAvailability.unavailable) {
       return 'この端末は非対応';
     }
-    if (pressureState.sensorAvailability == PressureSensorAvailability.checking) {
+    if (pressureState.sensorAvailability ==
+        PressureSensorAvailability.checking) {
       return '確認中...';
     }
     if (!isCalibrated) {
@@ -615,7 +727,11 @@ class _WifiProximityLevelsView extends StatelessWidget {
         final user = _findUser(users, entry.uid);
         return ListTile(
           dense: true,
-          leading: Icon(Icons.circle, size: 12, color: _colorForRole(user?.role)),
+          leading: Icon(
+            Icons.circle,
+            size: 12,
+            color: _colorForRole(user?.role),
+          ),
           title: Text(user?.displayName ?? entry.uid),
           trailing: Text(_labelFor(entry.level)),
         );
@@ -660,7 +776,10 @@ class _WifiRssiCompareView extends StatelessWidget {
   Widget build(BuildContext context) {
     final targetUid = nearestUid;
     if (targetUid == null) {
-      return const Padding(padding: EdgeInsets.all(16), child: Text('比較対象が見つかりません(検知なし)'));
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('比較対象が見つかりません(検知なし)'),
+      );
     }
 
     final targetUser = _findUser(users, targetUid);
@@ -691,13 +810,23 @@ class _WifiRssiCompareView extends StatelessWidget {
     );
   }
 
-  Widget _buildApRow(int index, WifiApComparison comparison, String targetLabel, Color targetColor) {
-    final number = index < _circledNumbers.length ? _circledNumbers[index] : '${index + 1}';
+  Widget _buildApRow(
+    int index,
+    WifiApComparison comparison,
+    String targetLabel,
+    Color targetColor,
+  ) {
+    final number = index < _circledNumbers.length
+        ? _circledNumbers[index]
+        : '${index + 1}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          SizedBox(width: 48, child: Text('Wi-Fi$number', style: const TextStyle(fontSize: 12))),
+          SizedBox(
+            width: 48,
+            child: Text('Wi-Fi$number', style: const TextStyle(fontSize: 12)),
+          ),
           const Text('自分', style: TextStyle(fontSize: 12)),
           const SizedBox(width: 4),
           _bar(comparison.selfRssi, Colors.blue),

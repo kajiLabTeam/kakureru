@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
+import 'package:latlong2/latlong.dart' as latlong;
 
 void main() {
   group('calculateRectangleCorners', () {
@@ -57,6 +58,24 @@ void main() {
       final corners = calculateRectangleCorners(point, point);
 
       expect(corners, [point, point, point, point]);
+    });
+  });
+
+  group('toLatLngPoints', () {
+    test('RoomSetting.LatLngをlatlong2のLatLngへ順序を保って変換する', () {
+      final points = toLatLngPoints(const [
+        LatLng(lat: 35.0, lng: 139.0),
+        LatLng(lat: -34.0, lng: -58.0),
+      ]);
+
+      expect(points, [
+        const latlong.LatLng(35.0, 139.0),
+        const latlong.LatLng(-34.0, -58.0),
+      ]);
+    });
+
+    test('空リストなら空リストを返す', () {
+      expect(toLatLngPoints(const []), isEmpty);
     });
   });
 }

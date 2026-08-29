@@ -6,6 +6,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
@@ -25,9 +26,6 @@ class RoomSettingPage extends HookConsumerWidget {
 
   /// 全体時間の上限(分)。同様に仮の上限。
   static const _gameDurationMaxMinutes = 180;
-
-  /// 現在地が取れない間の暫定センター(東京駅)。GamePage参照。
-  static const _fallbackCenter = latlong.LatLng(35.681236, 139.767125);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -110,6 +108,9 @@ class RoomSettingPage extends HookConsumerWidget {
     final isDrawing = useState(false);
     final dragStart = useState<latlong.LatLng?>(null);
     final dragCurrent = useState<latlong.LatLng?>(null);
+    // 直近のドラッグがエリアとして小さすぎ/大きすぎて弾かれた理由。
+    // 弾かれた場合gameAreaは更新しない(直前の有効なエリアを保つ)。
+    final areaSizeError = useState<String?>(null);
     final isSaving = useState(false);
     final saveError = useState<Object?>(null);
 
@@ -164,7 +165,7 @@ class RoomSettingPage extends HookConsumerWidget {
                 SizedBox(
                   height: 320,
                   child: _AreaMap(
-                    initialCenter: initialCenter.value ?? _fallbackCenter,
+                    initialCenter: initialCenter.value ?? fallbackMapCenter,
                     myLocation: myLocation.value,
                     gameArea: gameArea.value,
                     isDrawing: isDrawing.value,
@@ -176,18 +177,32 @@ class RoomSettingPage extends HookConsumerWidget {
                     },
                     onDragUpdate: (point) => dragCurrent.value = point,
                     onDragEnd: () {
-                      if (dragStart.value != null &&
-                          dragCurrent.value != null) {
-                        gameArea.value = calculateRectangleCorners(
-                          LatLng(
-                            lat: dragStart.value!.latitude,
-                            lng: dragStart.value!.longitude,
-                          ),
-                          LatLng(
-                            lat: dragCurrent.value!.latitude,
-                            lng: dragCurrent.value!.longitude,
-                          ),
+                      final start = dragStart.value;
+                      final current = dragCurrent.value;
+                      if (start != null && current != null) {
+                        // 矩形の対角線の長さでサイズを検証する。数px程度の
+                        // タップに近いドラッグ(退化した矩形)や、地図を
+                        // 世界スケールまで引いてから引いた極端に大きい矩形を
+                        // 弾く(理由はgame_map_options.dartのコメント参照)。
+                        final diagonalMeters = Geolocator.distanceBetween(
+                          start.latitude,
+                          start.longitude,
+                          current.latitude,
+                          current.longitude,
                         );
+                        final error = describeGameAreaSizeError(
+                          diagonalMeters,
+                        );
+                        areaSizeError.value = error;
+                        if (error == null) {
+                          gameArea.value = calculateRectangleCorners(
+                            LatLng(lat: start.latitude, lng: start.longitude),
+                            LatLng(
+                              lat: current.latitude,
+                              lng: current.longitude,
+                            ),
+                          );
+                        }
                       }
                       dragStart.value = null;
                       dragCurrent.value = null;
@@ -212,6 +227,14 @@ class RoomSettingPage extends HookConsumerWidget {
                           child: Text(
                             '未設定です。ドラッグして範囲を指定してください',
                             style: TextStyle(color: Colors.orange),
+                          ),
+                        ),
+                      if (areaSizeError.value != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            areaSizeError.value!,
+                            style: const TextStyle(color: Colors.red),
                           ),
                         ),
                       OutlinedButton(
@@ -405,9 +428,7 @@ class _AreaMap extends HookWidget {
             polygons: [
               if (gameArea.length >= 3)
                 Polygon(
-                  points: gameArea
-                      .map((p) => latlong.LatLng(p.lat, p.lng))
-                      .toList(),
+                  points: toLatLngPoints(gameArea),
                   color: Colors.blue.withValues(alpha: 0.2),
                   borderStrokeWidth: 2,
                   borderColor: Colors.blue,
@@ -415,13 +436,18 @@ class _AreaMap extends HookWidget {
                 ),
               if (dragStart != null && dragCurrent != null)
                 Polygon(
-                  points: calculateRectangleCorners(
-                    LatLng(lat: dragStart!.latitude, lng: dragStart!.longitude),
-                    LatLng(
-                      lat: dragCurrent!.latitude,
-                      lng: dragCurrent!.longitude,
+                  points: toLatLngPoints(
+                    calculateRectangleCorners(
+                      LatLng(
+                        lat: dragStart!.latitude,
+                        lng: dragStart!.longitude,
+                      ),
+                      LatLng(
+                        lat: dragCurrent!.latitude,
+                        lng: dragCurrent!.longitude,
+                      ),
                     ),
-                  ).map((p) => latlong.LatLng(p.lat, p.lng)).toList(),
+                  ),
                   color: Colors.orange.withValues(alpha: 0.2),
                   borderStrokeWidth: 2,
                   borderColor: Colors.orange,
@@ -437,6 +463,9 @@ class _AreaMap extends HookWidget {
                   point: myLocation!,
                   width: 40,
                   height: 40,
+                  // Icons.location_pinの先端(下端)を座標に合わせる。
+                  // 既定のcenter合わせだと約18px下にずれる。
+                  alignment: Alignment.topCenter,
                   child: const Icon(
                     Icons.location_pin,
                     color: Colors.blue,
