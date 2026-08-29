@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:kakureru/features/room/model/room_setting.dart';
+import 'package:latlong2/latlong.dart' as latlong;
 
 /// ドラッグの開始点・終了点から、矩形の四隅をLatLngのListとして返す。
 ///
@@ -23,3 +24,9 @@ List<LatLng> calculateRectangleCorners(LatLng start, LatLng end) {
     LatLng(lat: maxLat, lng: minLng),
   ];
 }
+
+/// `RoomSetting.gameArea`(独自のLatLng)をflutter_map/latlong2が使う
+/// `latlong.LatLng` へ変換する。地図描画のたびに複数箇所で必要になる
+/// 変換なのでここに集約する。
+List<latlong.LatLng> toLatLngPoints(List<LatLng> points) =>
+    points.map((p) => latlong.LatLng(p.lat, p.lng)).toList();
