@@ -20,6 +20,7 @@ abstract class RoomUser with _$RoomUser {
     @Default(false) bool isHost,
     @Default(UserRole.fugitive) @JsonKey(unknownEnumValue: UserRole.fugitive) UserRole role,
     double? pressureOffset,
+    bool? pressureSensorAvailable,
     int? becameDemonAt,
     int? lastPhotoAt,
     @Default(0) int joinedAt,

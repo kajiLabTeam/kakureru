@@ -89,7 +89,7 @@ class GamePage extends HookConsumerWidget {
     // 何度呼んでも安全)。
     useEffect(() {
       ref.read(pressureViewModelProvider.notifier)
-        ..init()
+        ..init(roomId)
         ..startSendingToRoom(roomId);
       return () => ref.read(pressureViewModelProvider.notifier).stopSendingAndDispose();
     }, [roomId]);

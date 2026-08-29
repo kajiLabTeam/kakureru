@@ -84,6 +84,23 @@ class PressureRepository {
     _latestSmoothed = null;
   }
 
+  /// 気圧センサーの有無を、ホスト・参加者を把握できるようRTDBに記録する。
+  /// 未搭載の端末はキャリブレーション不要であることを他の参加者にも
+  /// 伝えるための情報で、必須では無いため失敗しても無視してよい。
+  Future<void> reportSensorAvailability(
+    String roomId, {
+    required bool available,
+  }) async {
+    try {
+      await _db
+          .ref('rooms/$roomId/users/$_uid/pressureSensorAvailable')
+          .set(available);
+    } on Object {
+      // 待機画面の表示が多少不正確になるだけで、キャリブレーション自体は
+      // 可能なため致命的ではない。
+    }
+  }
+
   /// ホストが自分の気圧を基準値として書き込む。
   Future<void> calibrateAsHost(String roomId, double myPressureHPa) async {
     await _db.ref('rooms/$roomId/meta/basePressure').set(myPressureHPa);

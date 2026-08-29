@@ -19,6 +19,7 @@ _RoomUser _$RoomUserFromJson(Map<String, dynamic> json) => _RoomUser(
       ) ??
       UserRole.fugitive,
   pressureOffset: (json['pressureOffset'] as num?)?.toDouble(),
+  pressureSensorAvailable: json['pressureSensorAvailable'] as bool?,
   becameDemonAt: (json['becameDemonAt'] as num?)?.toInt(),
   lastPhotoAt: (json['lastPhotoAt'] as num?)?.toInt(),
   joinedAt: (json['joinedAt'] as num?)?.toInt() ?? 0,
@@ -31,6 +32,7 @@ Map<String, dynamic> _$RoomUserToJson(_RoomUser instance) => <String, dynamic>{
   'isHost': instance.isHost,
   'role': _$UserRoleEnumMap[instance.role]!,
   'pressureOffset': instance.pressureOffset,
+  'pressureSensorAvailable': instance.pressureSensorAvailable,
   'becameDemonAt': instance.becameDemonAt,
   'lastPhotoAt': instance.lastPhotoAt,
   'joinedAt': instance.joinedAt,

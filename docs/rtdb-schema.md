@@ -32,6 +32,7 @@ rooms/
         displayName
         role              "FUGITIVE" | "DEMON"
         pressureOffset
+        pressureSensorAvailable  気圧センサーの有無(true/false)。判定前は未設定
         becameDemonAt
         lastPhotoAt
         joinedAt
