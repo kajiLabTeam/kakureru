@@ -23,14 +23,29 @@ night-run/run.sh build
 
 ### 2. 認証情報の準備（ホスト側の環境変数。コミットしない）
 
+`claude -p` の認証は次の**どちらか一方**でよい。
+
 | 変数 | 用途 | 取得方法 |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | コンテナ内の `claude -p` の認証 | Anthropic Consoleで発行するAPIキー。**このMacで対話的に使っているサブスクリプションのOAuthログインとは別物**。非対話実行にはAPIキー方式が必要 |
-| `GH_TOKEN` | `git push` / `gh pr create` の認証 | `kajiLabTeam/kakureru` への書き込み権限を持つGitHub Personal Access Token（`repo`スコープ） |
+| `ANTHROPIC_API_KEY` | コンテナ内の `claude -p` の認証(APIキー方式) | Anthropic Consoleで発行するAPIキー。従量課金でサブスクリプションとは別会計 |
+| `CLAUDE_CODE_OAUTH_TOKEN` | コンテナ内の `claude -p` の認証(サブスクリプション方式) | `claude setup-token` で発行する長期トークン。追加の課金なしでサブスクリプションの利用枠を使う代わりに、**レート制限は人間の対話利用ペースを想定したものなので、1晩で複数タスクを回すと途中で制限に達しやすい**(その場合はnight_runner.pyのbackoffで数回リトライした上でそのタスクは`failed`として安全に終わる。締切までに終わらないタスクが出うる、という程度のリスク) |
+
+`GH_TOKEN` は必須。
+
+| 変数 | 用途 | 取得方法 |
+|---|---|---|
+| `GH_TOKEN` | `git push` / `gh pr create` / `gh issue view` の認証 | `kajiLabTeam/kakureru` への書き込み権限を持つGitHub Personal Access Token（`repo`スコープ）。ホストで既に`gh auth login`済みなら `gh auth token` の値をそのまま使ってもよい |
+
+値はプロジェクトのファイルには書かない。ホームディレクトリなど**git管理外の場所**に環境変数ファイルを作り、使うたびに`source`する運用を推奨する(例: `~/.night-run-secrets.env`、`chmod 600`)。
 
 ```sh
-export ANTHROPIC_API_KEY="..."
+# ~/.night-run-secrets.env (例)
+export CLAUDE_CODE_OAUTH_TOKEN="..."   # または ANTHROPIC_API_KEY
 export GH_TOKEN="..."
+```
+
+```sh
+source ~/.night-run-secrets.env && night-run/run.sh start
 ```
 
 ### 3. ホスト側で `gh` を使えるようにする（ヒアリングSkill・起票Skill用）

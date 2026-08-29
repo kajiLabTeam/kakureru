@@ -4,7 +4,10 @@
 set -euo pipefail
 
 : "${GH_TOKEN:?GH_TOKEN が設定されていない(GitHub操作に必須)}"
-: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY が設定されていない(claude -pの認証に必須)}"
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    echo "FATAL: ANTHROPIC_API_KEY か CLAUDE_CODE_OAUTH_TOKEN のどちらかが必要(claude -pの認証に必須)" >&2
+    exit 1
+fi
 
 echo "[entrypoint] applying network egress allowlist..."
 /usr/local/bin/init-firewall.sh
@@ -39,13 +42,19 @@ fi
 chown -R runner:runner /workdir
 
 echo "[entrypoint] starting night_runner.py as non-root user 'runner'..."
-exec runuser -u runner -- env \
-    "HOME=/home/runner" \
-    "PATH=$PATH" \
-    "NIGHT_RUNNER_SANDBOX=1" \
-    "NIGHT_RUN_REPO_DIR=$REPO_DIR" \
-    "NIGHT_RUN_STATE_FILE=$STATE_FILE_PATH" \
-    "NIGHT_RUN_MAX_BUDGET_USD=${NIGHT_RUN_MAX_BUDGET_USD:-15}" \
-    "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
-    "GH_TOKEN=$GH_TOKEN" \
-    python3 "$REPO_DIR/night-run/night_runner.py"
+runner_env=(
+    "HOME=/home/runner"
+    "PATH=$PATH"
+    "NIGHT_RUNNER_SANDBOX=1"
+    "NIGHT_RUN_REPO_DIR=$REPO_DIR"
+    "NIGHT_RUN_STATE_FILE=$STATE_FILE_PATH"
+    "NIGHT_RUN_MAX_BUDGET_USD=${NIGHT_RUN_MAX_BUDGET_USD:-15}"
+    "GH_TOKEN=$GH_TOKEN"
+)
+# ANTHROPIC_API_KEY(APIキー課金)かCLAUDE_CODE_OAUTH_TOKEN(claude setup-tokenで発行する
+# サブスクリプション連携の長期トークン)のどちらかで動く。両方渡さない
+# (空文字を渡すと「設定されているが空」という別の状態になり、未設定より紛らわしいため)。
+[ -n "${ANTHROPIC_API_KEY:-}" ] && runner_env+=("ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && runner_env+=("CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
+
+exec runuser -u runner -- env "${runner_env[@]}" python3 "$REPO_DIR/night-run/night_runner.py"
