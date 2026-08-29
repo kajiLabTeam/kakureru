@@ -6,64 +6,80 @@
 
 **このシステムは実在するリポジトリ（`kajiLabTeam/kakureru`）へ実際にPRを作成する。初回は必ずドライラン（下記）を通してから本番投入すること。**
 
-## 全体の流れ
+## 使い方（日常運用）
 
-1. （ホスト・このMac、通常のClaude Codeセッション）`.claude/skills/night-run-hearing/` のヒアリングSkillで締切・タスクを確定し、`night-run/state/night-run-state.json` を書き出す
-2. （ホスト）`night-run/run.sh start` でサンドボックスコンテナを起動する（この一手だけは人間が明示的に実行する）
-3. （コンテナ内）`night_runner.py` がタスクを1件ずつ、クリーンな`claude -p`インスタンスで実装〜PR作成まで回す
-4. 朝、`night-run/state/night-run-state.json` の各タスクの `status` と `night-run/state/summary.txt` を確認する
+night-runは3つのSkillと1つのスクリプトの組み合わせ。**コマンドを覚える必要はなく、日本語で自然に頼めば発動する。**
 
-## 初回セットアップ
+| 場面 | 使うもの |
+|---|---|
+| 直したい/作りたいことを思いついたとき | 「issueを起票して」→ `github-task-intake` Skillが観点を確認しながらissue化する |
+| その日確定したissueをまとめて夜間に回したいとき | 「夜間実行して、6時まで」→ `night-run-hearing` Skillが対象issue・締切を確認 → `night-run/run.sh start`で起動 |
+| 実行中/翌朝に様子を見たいとき | 「night-runどうなってる」→ `night-run-status` Skillが完了/失敗/draft PRを棚卸しして報告 |
 
-### 1. Dockerイメージのビルド
+1サイクルの例:
 
-```sh
-night-run/run.sh build
-```
+1. 「issueを起票して。○○の不具合を直したい」 → Engineer/PM/PO/Designer(該当すればGame Designer)の観点を確認しながらissueが作られる
+2. issueが十分たまったら「夜間実行して、6時まで」 → 対象issueと締切を確認 → 承認すると`night-run/run.sh start`で起動(コンテナはターミナルを閉じても動き続ける)
+3. 翌朝「night-runどうなってる」 → 各issueの結果(done/failed)とPR URLが出る。**draft PRは必ず人間がレビューしてからマージする**(自動マージはしない設計)
 
-### 2. 認証情報の準備（ホスト側の環境変数。コミットしない）
+## 初回セットアップ（メンバーごとに1回）
 
-`claude -p` の認証は次の**どちらか一方**でよい。
+night-runは**メンバーごとに個別の認証情報**を使う(誰が実行したかがgit/GitHub側の記録に残る)。以下をそれぞれ自分のマシンで行う。
 
-| 変数 | 用途 | 取得方法 |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | コンテナ内の `claude -p` の認証(APIキー方式) | Anthropic Consoleで発行するAPIキー。従量課金でサブスクリプションとは別会計 |
-| `CLAUDE_CODE_OAUTH_TOKEN` | コンテナ内の `claude -p` の認証(サブスクリプション方式) | `claude setup-token` で発行する長期トークン。追加の課金なしでサブスクリプションの利用枠を使う代わりに、**レート制限は人間の対話利用ペースを想定したものなので、1晩で複数タスクを回すと途中で制限に達しやすい**(その場合はnight_runner.pyのbackoffで数回リトライした上でそのタスクは`failed`として安全に終わる。締切までに終わらないタスクが出うる、という程度のリスク) |
-
-`GH_TOKEN` は必須。
-
-| 変数 | 用途 | 取得方法 |
-|---|---|---|
-| `GH_TOKEN` | `git push` / `gh pr create` / `gh issue view` の認証 | `kajiLabTeam/kakureru` への書き込み権限を持つGitHub Personal Access Token（`repo`スコープ）。ホストで既に`gh auth login`済みなら `gh auth token` の値をそのまま使ってもよい |
-
-値はプロジェクトのファイルには書かない。ホームディレクトリなど**git管理外の場所**に環境変数ファイルを作り、使うたびに`source`する運用を推奨する(例: `~/.night-run-secrets.env`、`chmod 600`)。
-
-```sh
-# ~/.night-run-secrets.env (例)
-export CLAUDE_CODE_OAUTH_TOKEN="..."   # または ANTHROPIC_API_KEY
-export GH_TOKEN="..."
-```
-
-```sh
-source ~/.night-run-secrets.env && night-run/run.sh start
-```
-
-### 3. ホスト側で `gh` を使えるようにする（ヒアリングSkill・起票Skill用）
-
-`.claude/skills/night-run-hearing/`（issue実在確認）と `.claude/skills/github-task-intake/`（issue起票）は、コンテナの外・このホストの通常セッションで動く。ホストにも `gh` CLI がインストール・認証済みである必要がある。
+### 1. `gh` CLIのインストール・認証
 
 ```sh
 brew install gh
 gh auth login
 ```
 
-### 4. 一度、night-run一式を `main` にマージする
+これでヒアリング・起票Skill(ホスト側で動く部分)が使えるようになる。
 
-`night_runner.py` はタスクの合間に `git reset --hard origin/main` する（`git_cleanup()`）。**このリポジトリ自身がその対象なので、`night-run/` 一式が `main` に入っていないと、次のタスクへ進む際に消えてしまう。** 初回は普通のPRフローでこのディレクトリ一式を `main` にマージしてから使うこと。
+### 2. Dockerイメージのビルド（初回、以後は`night-run/`が更新されたら都度）
 
-## ドライラン（本番投入前に必須）
+```sh
+night-run/run.sh build
+```
 
-設計書9.6節。締切を数分後に短縮し、軽量なタスク（既存コードの小さな修正）1件で通しで動かす。
+### 3. 夜間実行(コンテナ内の`claude -p`)用の認証トークンを用意する
+
+**方式A: サブスクリプションのトークンを使う(追加課金なし。個人のPro/Max等がある場合)**
+
+```sh
+claude setup-token
+```
+
+ブラウザでの認証後、長期トークンが表示される。これを`CLAUDE_CODE_OAUTH_TOKEN`として使う。**レート制限は人間の対話利用ペース想定なので、1晩に複数タスクを回すと途中で制限に達しやすい**(致命的ではない。backoffで数回リトライした上でそのタスクは`failed`として安全に終わる)。
+
+**方式B: APIキーを使う（[Anthropic Console](https://console.anthropic.com/)で発行、従量課金）**
+
+`ANTHROPIC_API_KEY`として使う。方式A/Bはどちらか一方でよい。
+
+### 4. 秘密情報ファイルを作る(プロジェクトの外・git管理外)
+
+```sh
+cat > ~/.night-run-secrets.env <<'EOF'
+export CLAUDE_CODE_OAUTH_TOKEN="上で発行した値"   # または export ANTHROPIC_API_KEY="..."
+export GH_TOKEN="$(gh auth token)"
+EOF
+chmod 600 ~/.night-run-secrets.env
+```
+
+`GH_TOKEN`は`gh auth login`済みのトークンをそのまま流用している(`repo`スコープがあればOK。専用の絞ったPATを別途発行してもよい)。
+
+以後、night-runを使うときは毎回このファイルを`source`する:
+
+```sh
+source ~/.night-run-secrets.env && night-run/run.sh start
+```
+
+### 5. 一度、night-run一式を `main` にマージする
+
+`night_runner.py` はタスクの合間に `git reset --hard origin/main` する（`git_cleanup()`）。**このリポジトリ自身がその対象なので、`night-run/` 一式が `main` に入っていないと、次のタスクへ進む際に消えてしまう。** 初回は普通のPRフローでこのディレクトリ一式を `main` にマージしてから使うこと(このメッセージが読めている時点で、この手順は既に済んでいるはず)。
+
+## ドライラン（`night-run/`本体に手を入れたら再実施）
+
+2026-08-30に一度実施済み(issue #12、締切10分後・軽量タスク1件で完走・draft PR #18を確認)。`night-run/`配下のスクリプト自体を変更したときは、以下の手順でもう一度確認すること。設計書9.6節。
 
 1. ヒアリングSkillを実行する際、「何時まで」の質問に対して**現在時刻から5〜10分後**を答える
 2. タスクは1件、既存コードの小さな修正など軽量なものにする
@@ -75,17 +91,13 @@ gh auth login
    - 正常完走した場合、`gh pr view`での実在確認（9.8節）を経て`done`になっていること
 5. 問題があれば該当箇所を直し、もう一度ドライランする。**通るまで本番の締切・タスクでは実行しない**
 
-## 本番実行
+## コマンド早見表
 
 ```sh
-# 1. ヒアリングSkillで night-run/state/night-run-state.json を作る(このセッションで会話する)
-# 2. 起動
-night-run/run.sh start
-# 3. 経過を見る(閉じてもコンテナは動き続ける)
-night-run/run.sh logs
-# 途中経過はホストから直接読める(bind mountされているため)
-cat night-run/state/night-run-state.json
-tail -f night-run/state/alerts.log
+source ~/.night-run-secrets.env && night-run/run.sh start   # 起動
+night-run/run.sh logs                                       # ログを追う(閉じてもコンテナは動き続ける)
+cat night-run/state/night-run-state.json                    # 途中経過(ホストから直接読める)
+tail -f night-run/state/alerts.log                          # 異常があればここに出る
 ```
 
 止めたいときは `night-run/run.sh stop`。**進行中のタスクは中断され、`done`にならない**（次に`run.sh start`し直すとstateの`pending`/`in_progress`から再開を試みるが、`in_progress`のまま止まったタスクは`main()`が拾わないので、手動で`status`を`pending`に戻すか診断ブランチの内容を確認してから判断すること — 常駐化・自動復旧は今回のスコープ外）。
