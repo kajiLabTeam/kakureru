@@ -1,28 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+
+part 'role_theme.freezed.dart';
 
 /// 役割(鬼/逃走者)を一目で見分けるための表示情報(ヘッダー背景色・文言・アイコン)。
 ///
 /// 「画面を見ただけでは自分が鬼か逃走者か分かりにくい」という課題(issue #12)に
 /// 対応するためのもの。docs/ui-mockup-2a.html の画面03(鬼)・画面04(逃走者)の
 /// 配色(鬼=赤 #E5484D、逃走者=緑 #4A9C5D)と「あなたは 鬼/逃走者」の文言に合わせている。
-@immutable
-class RoleTheme {
-  /// [color] [label] [icon] をまとめて指定する。
-  const RoleTheme({
-    required this.color,
-    required this.label,
-    required this.icon,
-  });
-
-  /// ヘッダーの背景色。
-  final Color color;
-
-  /// ヘッダーに表示する「あなたは 鬼/逃走者」の文言。
-  final String label;
-
-  /// ヘッダーに添えるアイコン。
-  final IconData icon;
+@freezed
+abstract class RoleTheme with _$RoleTheme {
+  const factory RoleTheme({
+    required Color color,
+    required String label,
+    required IconData icon,
+  }) = _RoleTheme;
 }
 
 const _demonColor = Color(0xFFE5484D);

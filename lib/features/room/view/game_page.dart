@@ -53,8 +53,11 @@ class GamePage extends HookConsumerWidget {
     final locationState = ref.watch(locationViewModelProvider);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
     // 「自分がどちらの役割か」はヘッダーの色・文言で常に一目で分かるようにする
-    // (issue #12)。roomAsyncがまだloading/errorの間は役割が確定しないため、
-    // その場合はヘッダーを役割色に染めず既定表示のままにする。
+    // (issue #12)。roomAsyncがまだloading/errorの間、または自分がusersに
+    // 見つからない間は役割が確定しないため、その場合はヘッダーを役割色に
+    // 染めず既定表示のままにする。RTDB上は参加時に必ずroleが書き込まれる
+    // (docs/rtdb-schema.md)ため、usersに見つかった時点でのroleの既定値
+    // フォールバック(RoomUser.role参照)は実運用では発生しない想定。
     final headerRole = _roleOf(room?.users ?? const [], myUid);
     final headerRoleTheme = headerRole != null ? roleThemeOf(headerRole) : null;
 
