@@ -45,6 +45,7 @@ dependencies:
   hooks_riverpod: ^3.4.2
   json_annotation: ^4.9.0
   permission_handler: ^11.3.1
+  shared_preferences: ^2.5.5
   sensors_plus: ^6.1.1
   wifi_scan: ^0.4.1
   device_info_plus: ^11.1.1
