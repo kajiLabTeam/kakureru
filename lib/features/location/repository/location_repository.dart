@@ -48,7 +48,10 @@ class LocationRepository {
       // lat/lngが欠けたデータをRTDBへ書くと、他の参加者のwatchLocationsが
       // UserLocation.fromMapの型キャストで例外を出し続けるため、ここで弾く。
       if (lat is! num || lng is! num) return;
-      _db.ref('rooms/$roomId/locations/$_uid').set({
+      // set()だとlocations/{uid}配下に別タイマーが書き込んだwifiScan/pressureを
+      // 丸ごと上書きして消してしまう(docs/rtdb-schema.md「設計の意図」参照)ため、
+      // update()で自分が持つキーだけを部分更新する。
+      _db.ref('rooms/$roomId/locations/$_uid').update({
         'lat': lat,
         'lng': lng,
         'altitude': data['altitude'],
