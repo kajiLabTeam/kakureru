@@ -19,6 +19,7 @@ import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
+import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view/game_result_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
@@ -51,6 +52,11 @@ class GamePage extends HookConsumerWidget {
     final offset = ref.watch(serverTimeOffsetProvider).value ?? 0;
     final locationState = ref.watch(locationViewModelProvider);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
+    // 「自分がどちらの役割か」はヘッダーの色・文言で常に一目で分かるようにする
+    // (issue #12)。roomAsyncがまだloading/errorの間は役割が確定しないため、
+    // その場合はヘッダーを役割色に染めず既定表示のままにする。
+    final headerRole = _roleOf(room?.users ?? const [], myUid);
+    final headerRoleTheme = headerRole != null ? roleThemeOf(headerRole) : null;
 
     // 残り時間を1秒ごとに再計算するためのティッカー。
     // .info/serverTimeOffset 自体はズレが変化した時にしか流れてこないため、
@@ -181,7 +187,19 @@ class GamePage extends HookConsumerWidget {
     // 閉じてしまうと位置送信が止まるため、最小化に倒す(プラグイン推奨パターン)。
     return WithForegroundTask(
       child: Scaffold(
-        appBar: AppBar(title: const Text('ゲーム中')),
+        appBar: AppBar(
+          backgroundColor: headerRoleTheme?.color,
+          foregroundColor: headerRoleTheme != null ? Colors.white : null,
+          title: Text(headerRoleTheme?.label ?? 'ゲーム中'),
+          actions: headerRoleTheme != null
+              ? [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Icon(headerRoleTheme.icon),
+                  ),
+                ]
+              : null,
+        ),
         body: roomAsync.when(
           data: (room) {
             final now = serverNowMillis(offset);
