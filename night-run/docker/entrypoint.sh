@@ -27,8 +27,15 @@ if [ ! -d "$REPO_DIR/.git" ]; then
     echo "[entrypoint] cloning $REPO_URL into $REPO_DIR ..."
     git clone "$REPO_URL" "$REPO_DIR"
 else
-    echo "[entrypoint] $REPO_DIR already exists, fetching..."
+    # fetchだけだとworking treeは前回終了時点のまま(前夜の古いnight_runner.py等)。
+    # これから起動するpython3プロセスはファイルを起動時に一度だけ読み込むので、
+    # ここでorigin/mainに合わせておかないと、night_runner.py自体の更新が
+    # (git_cleanup()が後で効くとしても)このプロセスには反映されない。
+    echo "[entrypoint] $REPO_DIR already exists, syncing to latest origin/main..."
     git -C "$REPO_DIR" fetch origin
+    git -C "$REPO_DIR" checkout -f main
+    git -C "$REPO_DIR" reset --hard origin/main
+    git -C "$REPO_DIR" clean -fd
 fi
 
 mkdir -p "$STATE_DIR"
