@@ -48,6 +48,17 @@ fi
 
 chown -R runner:runner /workdir
 
+# Claude Codeには--dangerously-skip-permissionsとは別に「ワークスペース信頼」の
+# ゲートがあり、初回はインタラクティブな承認が要る(非対話実行だと素通りできず
+# claude -pがエラーで落ちる)。/home/runnerはnamed volumeではなくコンテナ起動の
+# たびに作り直されるため、毎回明示的に信頼済み扱いにしておく。
+echo "[entrypoint] pre-accepting Claude Code workspace trust for $REPO_DIR..."
+mkdir -p /home/runner
+cat > /home/runner/.claude.json <<JSON
+{"projects": {"$REPO_DIR": {"hasTrustDialogAccepted": true}}}
+JSON
+chown runner:runner /home/runner/.claude.json
+
 echo "[entrypoint] starting night_runner.py as non-root user 'runner'..."
 runner_env=(
     "HOME=/home/runner"
