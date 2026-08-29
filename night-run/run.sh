@@ -11,7 +11,7 @@
 #   night-run/run.sh rm      # 停止済みコンテナを削除する(次のstartのため)
 #
 # 必須の環境変数(ホスト側で事前に export しておく。詳細はnight-run/README.md):
-#   ANTHROPIC_API_KEY   claude -p の認証
+#   ANTHROPIC_API_KEY か CLAUDE_CODE_OAUTH_TOKEN のどちらか   claude -p の認証
 #   GH_TOKEN            git push / gh pr create の認証(対象repoへの書き込み権限が要る)
 set -euo pipefail
 
@@ -36,21 +36,28 @@ case "$cmd" in
         docker build -t "$IMAGE_NAME" "$REPO_ROOT/night-run/docker"
         ;;
     start)
-        require_env ANTHROPIC_API_KEY
         require_env GH_TOKEN
+        if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "エラー: ANTHROPIC_API_KEY か CLAUDE_CODE_OAUTH_TOKEN のどちらかが設定されていない。night-run/README.md のセットアップ手順を確認すること。" >&2
+            exit 1
+        fi
         if [ ! -f "$STATE_DIR/night-run-state.json" ]; then
             echo "エラー: $STATE_DIR/night-run-state.json が無い。先にヒアリングSkillで作成すること。" >&2
             exit 1
         fi
         mkdir -p "$STATE_DIR"
         docker volume create "$VOLUME_NAME" >/dev/null
+
+        docker_env_args=(-e GH_TOKEN)
+        [ -n "${ANTHROPIC_API_KEY:-}" ] && docker_env_args+=(-e ANTHROPIC_API_KEY)
+        [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && docker_env_args+=(-e CLAUDE_CODE_OAUTH_TOKEN)
+
         docker run -d \
             --name "$CONTAINER_NAME" \
             --cap-add=NET_ADMIN --cap-add=NET_RAW \
             -v "$VOLUME_NAME:/workdir" \
             -v "$STATE_DIR:/workdir/state" \
-            -e ANTHROPIC_API_KEY \
-            -e GH_TOKEN \
+            "${docker_env_args[@]}" \
             -e NIGHT_RUN_REPO_URL="${NIGHT_RUN_REPO_URL:-https://github.com/kajiLabTeam/kakureru.git}" \
             -e NIGHT_RUN_MAX_BUDGET_USD="${NIGHT_RUN_MAX_BUDGET_USD:-15}" \
             "$IMAGE_NAME"
