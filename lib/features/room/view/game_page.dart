@@ -17,6 +17,7 @@ import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
+import 'package:kakureru/features/room/view/game_result_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
@@ -117,6 +118,30 @@ class GamePage extends HookConsumerWidget {
       }
       return null;
     }, [room?.releasedAt, tick.value]);
+
+    // ゲーム終了(endsAtを過ぎた、またはmeta/statusがFINISHEDになった)を
+    // 検知したら結果画面へ遷移する。tickを依存に入れて毎秒チェックし直す
+    // (endsAt自体は変化しないため、これが無いとendsAtが確定した最初の
+    // 一瞬しか判定されない)。
+    final hasNavigatedToResult = useRef(false);
+    useEffect(() {
+      if (hasNavigatedToResult.value || room == null) return null;
+      final gameOver = isGameOver(
+        status: room.status,
+        endsAt: room.endsAt,
+        nowMillis: serverNowMillis(offset),
+      );
+      if (!gameOver) return null;
+      hasNavigatedToResult.value = true;
+      final demonNames = room.users
+          .where((u) => u.role == UserRole.demon)
+          .map((u) => u.displayName)
+          .toList();
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => GameResultPage(demonNames: demonNames)),
+      );
+      return null;
+    }, [room?.status, room?.endsAt, tick.value]);
 
     // 誰かがDEMONになったら(ホストの指名受諾・自己申告どちらでも)全員に
     // 知らせる。表示制御(役割による可視性)とは別軸の情報のため、
@@ -221,7 +246,7 @@ class GamePage extends HookConsumerWidget {
                       style: TextStyle(color: Colors.red),
                     ),
                   ),
-                if (myRole == UserRole.fugitive)
+                if (myRole != null && canReportCaught(role: myRole, phase: phase))
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: FilledButton.tonalIcon(

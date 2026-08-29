@@ -106,7 +106,10 @@ class RoomRepository {
 
   /// ルームを終了状態にする(解散)。
   Future<void> finishRoom(String roomId) async {
-    await _db.ref('rooms/$roomId/meta/status').set('FINISHED');
+    await _db.ref('rooms/$roomId/meta').update({
+      'status': 'FINISHED',
+      'endedAt': ServerValue.timestamp,
+    });
   }
 
   /// ホストがゲームを開始する。
