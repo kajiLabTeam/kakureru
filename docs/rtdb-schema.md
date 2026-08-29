@@ -43,6 +43,9 @@ rooms/
         lng
         altitude
         pressure
+        wifiScan
+          bssidRssi        {bssid: rssi} 上位N件のみ(送信サイズ抑制のため)
+          scannedAt
         updatedAt
     visible/
       {uid}/              Functions が書き出す派生データ
@@ -70,6 +73,7 @@ roomCodes/
 ## 設計の意図
 
 - **`locations/` を `users/` から分離**しているのは更新頻度が違うため。位置は数秒おきに書き換わるが、プロフィールやロールはほとんど変わらない。同じノードに混ぜると、購読側が不要な再描画を強いられる
+- **`locations/{uid}` 配下は lat/lng・pressure・wifiScan がそれぞれ別間隔のタイマーで独立に書き込む**ため、`locations/{uid}` に対しては `update()` で自分が持つキーだけを部分更新すること。`set()` でノード全体を上書きすると、他のタイマーが直前に書いた兄弟キーを消してしまう
 - **`visible/` は Cloud Functions が書き出す派生データ**。クライアントに `locations/` 全体を読ませず、「その人が見てよい相手の位置」だけを配る。距離判定をクライアント側でやると、改造クライアントが生の位置を全部読めてしまうため
 - **`startedAt` はサーバー時刻で確定**させる。端末時計のずれでカウントダウンが人によって異なるのを防ぐ
 - **`roomCodes/` は逆引き専用**。4桁コードから `roomId` を引くためだけに存在し、ルーム本体とは別ツリーに置く

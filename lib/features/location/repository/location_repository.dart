@@ -48,7 +48,11 @@ class LocationRepository {
       // lat/lngが欠けたデータをRTDBへ書くと、他の参加者のwatchLocationsが
       // UserLocation.fromMapの型キャストで例外を出し続けるため、ここで弾く。
       if (lat is! num || lng is! num) return;
-      _db.ref('rooms/$roomId/locations/$_uid').set({
+      // set()だと同じノードにwifiScan/pressureが子キーとして
+      // 別途書き込まれているとき、ここで丸ごと上書きして消してしまう
+      // (Issue #8: Wi-Fi・気圧の距離感が表示されない不具合の原因)。
+      // update()にして自分が持つキーだけを部分更新する。
+      _db.ref('rooms/$roomId/locations/$_uid').update({
         'lat': lat,
         'lng': lng,
         'altitude': data['altitude'],
