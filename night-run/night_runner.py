@@ -277,6 +277,15 @@ def handle_hard_limit_exceeded(task, state):
     create_draft_pr_from_branch(task, branch, reason="締切バッファを超過したため強制終了")
 
 
+def _issue_urls(task):
+    """issue_urlは単一issueなら文字列、依存関係でまとめたタスクなら配列で持つ。
+    どちらでも扱えるようにリストへ正規化する。"""
+    raw = task.get("issue_url") or task.get("issue_urls") or []
+    if isinstance(raw, str):
+        return [raw] if raw else []
+    return list(raw)
+
+
 # --- タスクプロンプトの組み立て(3章) ---
 def build_prompt(task, state):
     resume_note = ""
@@ -289,6 +298,17 @@ def build_prompt(task, state):
             f"ゼロから作り直さないでください。\n"
         )
 
+    urls = _issue_urls(task)
+    if len(urls) <= 1:
+        issue_fetch_instruction = f"`gh issue view {urls[0] if urls else ''}` でこのタスクの内容(issue本文)を取得し、実装する。"
+    else:
+        view_lines = "\n".join(f"   - `gh issue view {u}`" for u in urls)
+        issue_fetch_instruction = (
+            f"以下の複数issue(依存関係により1タスクにまとめられている)をすべて取得し、"
+            f"まとめて実装する。片方だけ実装して終わりにしないこと:\n{view_lines}"
+        )
+    closes_line = " ".join(f"Closes {u}" for u in urls) if urls else ""
+
     return f"""あなたはkakureruリポジトリの実装エージェントです。以下の1タスクを実装からPR作成まで完走させてください。
 
 ## タスク
@@ -296,7 +316,7 @@ def build_prompt(task, state):
 - 使用するブランチ: `{task['branch']}`(まだ存在しなければ `origin/main` から新規作成する)
 {resume_note}
 ## 手順
-1. `gh issue view {task.get('issue_url', '')}` でこのタスクの内容(issue本文)を取得し、実装する。実装規約はAGENTS.md/CLAUDE.mdに従うこと
+1. {issue_fetch_instruction} 実装規約はAGENTS.md/CLAUDE.mdに従うこと
    (状態管理でのhooks/Riverpodの使い分け、データクラスはFreezed限定、等)。
 2. 各段階が終わるたびに以下を実行し、進捗を記録する(必須。レートリミット等で中断しても再開できるようにするため):
    `python3 night-run/update_step.py "{task['title']}" "<段階名: 実装/デバッグ/レビュー/修正/コンフリクト解消/PR作成>" [レビューラウンド数]`
@@ -308,7 +328,7 @@ def build_prompt(task, state):
    **重要**: `git reset --hard` / `git clean` / `git push --force`(force-with-lease含む)は、このリポジトリの
    安全網で常にブロックされる。使う必要が生じたらやり方が間違っているサインなので、代わりに新しいコミットで対応すること。
 6. `gh pr create` でPRを作成する。
-   - グリーン かつ reviewer承認 → 通常PR(ready)。本文に `Closes {task.get('issue_url', '')}` を含め、マージ時にissueが自動クローズされるようにする
+   - グリーン かつ reviewer承認 → 通常PR(ready)。本文に `{closes_line}` を含め、マージ時に対象issueが自動クローズされるようにする
    - 打ち切りの場合 → `--draft` を付け、本文に「完了した内容」「未完了の点」「次にやるべきこと」を書く(このケースはまだ未完了なので `Closes` は書かない)
 
 ## 最後の出力
