@@ -15,5 +15,6 @@
 | [night-run-hearing](night-run-hearing/SKILL.md) | 「夜間実行して」等で発動する、夜間自律タスク実行のヒアリング。締切・タスク・依存関係を確定した上で、実行エンジン(Claude night-run/Antigravity `/goal`)を選んでもらい、それぞれの成果物(`night-run-state.json`、または`/goal`に貼り付けるプロンプト文)を作るところまでで、実際の自律実行はここでは行わない。Claude night-runの実行本体は別途`night-run/run.sh`で行う。詳細は`night-run/README.md`。 |
 | [night-run-status](night-run-status/SKILL.md) | 「night-runどうなってる」等で発動する、night-runの進捗確認。state・alerts.log・summary.txt・稼働中コンテナの有無を読み取り専用で棚卸しして報告する。 |
 | [github-task-intake](github-task-intake/SKILL.md) | 「issueを起票して」等で発動する、GitHub Issueへのタスク起票。Engineer/PM/PO/Designer(該当すればGame Designer)の観点で人間と一緒に理解を深めてからissueを作成する。night-runがタスクを拾う前に曖昧さを削っておくためのもの。 |
+| [ui-mockup-reference](ui-mockup-reference/SKILL.md) | UI・デザイン(画面レイアウト・配色・文言・コンポーネント)を触るときに発動。実装前に必ず `docs/ui-mockup-2a.html`(実画面ベースの改修モック8画面)を参照し、対応する画面のレイアウト・配色ルール・文言との整合を確認してから作業する。 |
 
 新しいスキルを追加したら、この表にも1行追記すること。frontmatterの `description` は全スキル分が毎セッションのコンテキストに常時読み込まれるので、トリガー条件（いつ発動すべきか）に絞って書き、手順や説明は本文に書くこと——スキルが増えるほどdescriptionの肥大が固定コストとして効いてくる。
