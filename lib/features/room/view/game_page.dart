@@ -6,6 +6,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/local_notifications.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
@@ -343,12 +344,28 @@ class GamePage extends HookConsumerWidget {
                 return Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        countdownSec == null
-                            ? '$countdownLabel: 計算中...'
-                            : '$countdownLabel: ${countdownSec < 0 ? 0 : countdownSec}秒',
-                        style: Theme.of(context).textTheme.headlineSmall,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            countdownLabel,
+                            style: const TextStyle(
+                              color: appMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            countdownSec == null
+                                ? '計算中...'
+                                : '${countdownSec < 0 ? 0 : countdownSec}秒',
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600,
+                              fontSize: 20,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     if (locationState.permissionDenied)
@@ -356,81 +373,91 @@ class GamePage extends HookConsumerWidget {
                         padding: EdgeInsets.symmetric(horizontal: 16),
                         child: Text(
                           '位置情報の権限(常に許可)がないため、自分の位置を送信できません',
-                          style: TextStyle(color: Colors.red),
+                          style: TextStyle(color: Color(0xFFE5484D)),
                         ),
                       ),
                     // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた
                     // ときだけ出す「鬼になる」に一本化した。ローディング表示・
                     // エラー処理・確定演出(CaughtTransitionOverlay)は、旧
                     // 「捕まった」ボタンのものをそのまま踏襲している。
+                    // この「鬼になる」ボタン(BLE 3m接近検知時)はissue #29の
+                    // スコープ外(2a-05相当。既存のUIのまま一切変更しないと
+                    // ユーザー確認済み)。アプリ全体のテーマ変更の影響も受け
+                    // ないよう、Flutter標準のThemeDataで局所的に上書きする。
                     if (myRole != null &&
                         canReportCaught(role: myRole, phase: phase) &&
                         bleBecomeDemonDetected)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        child: FilledButton.icon(
-                          icon: isSubmittingCaught.value
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.priority_high),
-                          label: const Text('鬼になる'),
-                          onPressed: isSubmittingCaught.value
-                              ? null
-                              : () async {
-                                  final confirmed = await showDialog<bool>(
-                                    context: context,
-                                    builder: (dialogContext) => AlertDialog(
-                                      title: const Text('鬼が近くにいます'),
-                                      content: const Text(
-                                        'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
-                                        '鬼になりますか?この操作は取り消せません。',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.of(
-                                            dialogContext,
-                                          ).pop(false),
-                                          child: const Text('キャンセル'),
-                                        ),
-                                        FilledButton(
-                                          onPressed: () => Navigator.of(
-                                            dialogContext,
-                                          ).pop(true),
-                                          child: const Text('鬼になる'),
-                                        ),
-                                      ],
+                      Theme(
+                        data: ThemeData(useMaterial3: true),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          child: FilledButton.icon(
+                            icon: isSubmittingCaught.value
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
                                     ),
-                                  );
-                                  if (confirmed != true) return;
-
-                                  isSubmittingCaught.value = true;
-                                  try {
-                                    await ref
-                                        .read(roomRepositoryProvider)
-                                        .reportCaught(roomId);
-                                    showCaughtTransition.value = true;
-                                  } catch (e) {
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text('送信に失敗しました: $e'),
+                                  )
+                                : const Icon(Icons.priority_high),
+                            label: const Text('鬼になる'),
+                            onPressed: isSubmittingCaught.value
+                                ? null
+                                : () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dialogContext) => Theme(
+                                        data: ThemeData(useMaterial3: true),
+                                        child: AlertDialog(
+                                          title: const Text('鬼が近くにいます'),
+                                          content: const Text(
+                                            'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
+                                            '鬼になりますか?この操作は取り消せません。',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.of(
+                                                dialogContext,
+                                              ).pop(false),
+                                              child: const Text('キャンセル'),
+                                            ),
+                                            FilledButton(
+                                              onPressed: () => Navigator.of(
+                                                dialogContext,
+                                              ).pop(true),
+                                              child: const Text('鬼になる'),
+                                            ),
+                                          ],
                                         ),
-                                      );
+                                      ),
+                                    );
+                                    if (confirmed != true) return;
+
+                                    isSubmittingCaught.value = true;
+                                    try {
+                                      await ref
+                                          .read(roomRepositoryProvider)
+                                          .reportCaught(roomId);
+                                      showCaughtTransition.value = true;
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text('送信に失敗しました: $e'),
+                                          ),
+                                        );
+                                      }
+                                    } finally {
+                                      isSubmittingCaught.value = false;
                                     }
-                                  } finally {
-                                    isSubmittingCaught.value = false;
-                                  }
-                                },
+                                  },
+                          ),
                         ),
                       ),
                     Expanded(
@@ -685,7 +712,7 @@ class _LocationMap extends HookWidget {
     return Polygon(
       points: areaPoints,
       borderStrokeWidth: 2,
-      borderColor: Colors.blue,
+      borderColor: _selfColor,
       pattern: StrokePattern.dashed(segments: const [8, 4]),
     );
   }
@@ -703,7 +730,7 @@ class _LocationMap extends HookWidget {
   Marker _buildMarker(UserLocation location) {
     final isSelf = location.uid == myUid;
     final user = _findUser(users, location.uid);
-    final color = isSelf ? Colors.blue : _colorForRole(user?.role);
+    final color = isSelf ? _selfColor : _colorForRole(user?.role);
     final label = markerLabelFor(uid: location.uid, myUid: myUid, user: user);
 
     return Marker(
@@ -752,9 +779,14 @@ class _LocationMap extends HookWidget {
   }
 }
 
+/// 自分自身を表す色(青)。docs/ui-mockup-2a.htmlの配色ルール
+/// (赤=鬼/青=自分/緑=逃走者)に合わせている。
+const _selfColor = Color(0xFF3B82F6);
+
 // 取得できた位置を単純に色分けして表示する。地図・上下バー共通で使う。
+// role_theme.dartと同じ配色(鬼=赤/逃走者=緑)に揃える。
 Color _colorForRole(UserRole? role) {
-  return role == UserRole.demon ? Colors.red : Colors.green;
+  return role == null ? Colors.grey : roleThemeOf(role).color;
 }
 
 /// GPSピンに表示するラベルテキストを返す(issue #13)。
@@ -858,7 +890,7 @@ class _NearestOpponentVerticalIndicator extends StatelessWidget {
                             alignment: Alignment.center,
                             children: [
                               // 自分の中心線。太線+色ではっきり区別する。
-                              Container(height: 4, color: Colors.blue),
+                              Container(height: 4, color: _selfColor),
                               _buildDot(height),
                             ],
                           );
@@ -1037,7 +1069,7 @@ class _WifiRssiCompareView extends StatelessWidget {
           ),
           const Text('自分', style: TextStyle(fontSize: 12)),
           const SizedBox(width: 4),
-          _bar(comparison.selfRssi, Colors.blue),
+          _bar(comparison.selfRssi, _selfColor),
           const SizedBox(width: 12),
           Text(targetLabel, style: TextStyle(fontSize: 12, color: targetColor)),
           const SizedBox(width: 4),

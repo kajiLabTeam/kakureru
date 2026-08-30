@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/core/theme/app_theme.dart';
+import 'package:kakureru/core/utils/avatar_initial.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/calibration_status.dart';
@@ -15,6 +17,10 @@ import 'package:kakureru/features/room/single_flight_action.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
+
+const _demonColor = Color(0xFFE5484D);
+const _doneColor = Color(0xFF3A8A4A);
+const _pendingColor = Color(0xFFC88A1E);
 
 class RoomWaitingPage extends HookConsumerWidget {
   final String roomId;
@@ -134,10 +140,34 @@ class RoomWaitingPage extends HookConsumerWidget {
           return Column(
             children: [
               Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'ルームコード: ${room.roomCode}',
-                  style: Theme.of(context).textTheme.headlineMedium,
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                child: Row(
+                  children: [
+                    const Text(
+                      'ルームコード',
+                      style: TextStyle(color: appMuted, fontSize: 12),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: appInk, width: 2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        room.roomCode,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                          letterSpacing: 3,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (isHost && room.status == RoomStatus.waiting)
@@ -157,19 +187,26 @@ class RoomWaitingPage extends HookConsumerWidget {
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 4,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('参加者'),
+                    Text(
+                      '参加者 ${room.users.length}人',
+                      style: const TextStyle(color: appMuted, fontSize: 12),
+                    ),
                     if (requiredCount > 0)
                       Text(
                         'キャリブレーション $doneCount/$requiredCount人 完了',
                         style: TextStyle(
                           color: doneCount == requiredCount
-                              ? Colors.green
-                              : Colors.orange,
-                          fontWeight: FontWeight.bold,
+                              ? _doneColor
+                              : _pendingColor,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
                         ),
                       ),
                   ],
@@ -177,33 +214,85 @@ class RoomWaitingPage extends HookConsumerWidget {
               ),
               Expanded(
                 child: ListView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 4,
+                  ),
                   children: room.users.map((u) {
                     final status =
                         calibrationStatuses[u.id] ?? CalibrationStatus.pending;
                     final isPending =
                         room.pendingDemonUid == u.id &&
                         u.role != UserRole.demon;
+                    final avatarColor = u.role == UserRole.demon
+                        ? _demonColor
+                        : _doneColor;
+                    final borderColor = u.role == UserRole.demon
+                        ? _demonColor
+                        : status == CalibrationStatus.pending
+                        ? _pendingColor
+                        : appFaintBorder;
+                    final subtitleColor = u.role == UserRole.demon
+                        ? _demonColor
+                        : status == CalibrationStatus.pending
+                        ? _pendingColor
+                        : appMuted;
 
-                    return ListTile(
-                      title: Text(u.displayName),
-                      subtitle: Text(
-                        u.role == UserRole.demon
-                            ? '鬼'
-                            : isPending
-                            ? '逃走者(鬼に指名中...)'
-                            : '逃走者',
-                        style: TextStyle(
-                          color: u.role == UserRole.demon ? Colors.red : null,
-                        ),
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: borderColor, width: 2),
+                        borderRadius: BorderRadius.circular(11),
+                        color: u.role == UserRole.demon
+                            ? _demonColor.withValues(alpha: 0.05)
+                            : status == CalibrationStatus.pending
+                            ? const Color(0xFFFFFAF0)
+                            : null,
+                      ),
+                      child: Row(
                         children: [
-                          if (u.isHost)
-                            const Padding(
-                              padding: EdgeInsets.only(right: 8),
-                              child: Text('ホスト'),
+                          CircleAvatar(
+                            radius: 13,
+                            backgroundColor: avatarColor,
+                            child: Text(
+                              avatarInitial(u.displayName),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  u.displayName,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                                Text(
+                                  [
+                                    if (u.role == UserRole.demon)
+                                      '鬼'
+                                    else if (isPending)
+                                      '逃走者(鬼に指名中...)'
+                                    else
+                                      '逃走者',
+                                    if (u.isHost) 'ホスト',
+                                  ].join(' ・ '),
+                                  style: TextStyle(
+                                    color: subtitleColor,
+                                    fontSize: 9.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                           _CalibrationStatusIcon(status: status),
                           if (isHost && u.role != UserRole.demon)
                             Padding(
@@ -277,7 +366,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                   padding: EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
                     'プレイエリアが未設定です。「設定」からエリアを指定してください',
-                    style: TextStyle(color: Colors.orange),
+                    style: TextStyle(color: _pendingColor),
                   ),
                 ),
               if (isHost && !allCalibrated && pendingNames.isNotEmpty)
@@ -285,7 +374,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
                     'キャリブレーション未完了: ${pendingNames.join('、')}',
-                    style: const TextStyle(color: Colors.orange),
+                    style: const TextStyle(color: _pendingColor),
                   ),
                 ),
               if (isHost)
@@ -318,7 +407,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Text(
                     '${startError.value}',
-                    style: const TextStyle(color: Colors.red),
+                    style: const TextStyle(color: _demonColor),
                   ),
                 ),
             ],
@@ -350,13 +439,17 @@ class _CalibrationStatusIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (status) {
       case CalibrationStatus.done:
-        return const Icon(Icons.check_circle, color: Colors.green);
+        return const Icon(Icons.check_circle, color: _doneColor, size: 18);
       case CalibrationStatus.pending:
-        return const Icon(Icons.radio_button_unchecked, color: Colors.orange);
+        return const Icon(
+          Icons.radio_button_unchecked,
+          color: _pendingColor,
+          size: 18,
+        );
       case CalibrationStatus.unavailable:
         return Tooltip(
           message: '気圧センサー非対応',
-          child: Icon(Icons.sensors_off, color: Colors.grey.shade400),
+          child: Icon(Icons.sensors_off, color: Colors.grey.shade400, size: 18),
         );
     }
   }
@@ -392,12 +485,12 @@ class _CalibrationSection extends ConsumerWidget {
         PressureSensorAvailability.unavailable) {
       return const Row(
         children: [
-          Icon(Icons.sensors_off, color: Colors.grey),
+          Icon(Icons.sensors_off, color: appMuted),
           SizedBox(width: 8),
           Expanded(
             child: Text(
               'この端末は気圧センサーに非対応です(キャリブレーション不要)',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(color: appMuted, fontSize: 12),
             ),
           ),
         ],
@@ -407,11 +500,11 @@ class _CalibrationSection extends ConsumerWidget {
     if (myCalibrated) {
       return const Row(
         children: [
-          Icon(Icons.check_circle, color: Colors.green),
+          Icon(Icons.check_circle, color: _doneColor),
           SizedBox(width: 8),
           Text(
             'キャリブレーション完了',
-            style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+            style: TextStyle(color: _doneColor, fontWeight: FontWeight.w600),
           ),
         ],
       );
@@ -452,7 +545,13 @@ class _CalibrationSection extends ConsumerWidget {
           label: const Text('キャリブレーションする(未実施)'),
         ),
         if (hint != null)
-          Padding(padding: const EdgeInsets.only(top: 4), child: Text(hint)),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              hint,
+              style: const TextStyle(color: appMuted, fontSize: 12),
+            ),
+          ),
       ],
     );
   }
