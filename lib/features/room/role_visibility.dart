@@ -6,9 +6,10 @@ import 'package:kakureru/features/room/model/room_user.dart';
 /// 7/13のプレイテストで「最初の1人を見つけるまでの鬼がきつい」という
 /// 課題が出たため、鬼側が先に情報を得られる非対称な可視性にしている:
 /// - 同じ役割同士は常に見える(チームメイトを隠す理由が無い)
-/// - 鬼→逃走者: releasedAt を過ぎたら見える
-/// - 逃走者→鬼: releasedAt + fugitiveInfoDelaySec(=最初の1分は鬼タイム)
-///   を過ぎたら見える
+/// - 鬼→逃走者: releasedAt を過ぎたら(released フェーズ)見える
+/// - 逃走者→鬼: 鬼放出前(beforeRelease)は一切見えない(issue #10)、
+///   放出後も releasedAt + fugitiveInfoDelaySec(=最初の1分は鬼タイム)
+///   を過ぎるまで見えない
 ///
 /// Phase 1ではクライアント側の表示制御のみ(Phase 3でvisible/方式へ移行、
 /// docs/rtdb-schema.md参照)。
@@ -22,10 +23,19 @@ bool isRoleVisible({
   if (viewerRole == targetRole) return true;
   if (releasedAt == null) return false;
 
-  if (viewerRole == UserRole.demon) {
-    return nowMillis >= releasedAt;
+  final phase = determineGamePhase(releasedAt: releasedAt, nowMillis: nowMillis);
+
+  switch (viewerRole) {
+    case UserRole.demon:
+      // 鬼→逃走者: 鬼放出後(releasedフェーズ)なら見える
+      return phase == GamePhase.released;
+    case UserRole.fugitive:
+      // 逃走者→鬼: 鬼放出前(beforeRelease)は一切見せない(issue #10)。
+      // タイムスタンプ比較だけに依存すると、サーバー時刻のズレで意図せず
+      // 表示されるリスクがあるため、フェーズを使って明示的にブロックする。
+      if (phase == GamePhase.beforeRelease) return false;
+      return nowMillis >= releasedAt + fugitiveInfoDelaySec * 1000;
   }
-  return nowMillis >= releasedAt + fugitiveInfoDelaySec * 1000;
 }
 
 /// ゲームの局面。鬼放出前か後か。
