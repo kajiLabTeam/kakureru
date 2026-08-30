@@ -9,6 +9,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/utils/local_notifications.dart';
 import 'package:kakureru/core/utils/server_time.dart';
+import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
+import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
@@ -114,6 +116,14 @@ class GamePage extends HookConsumerWidget {
       return () => ref.read(wifiScanRepositoryProvider).stopScanning();
     }, [roomId]);
 
+    // BLEの広告・スキャンもゲーム画面滞在中だけ行う(issue #16)。myUidが
+    // 確定するまで(FirebaseAuthの復元前など)は開始できない。
+    useEffect(() {
+      if (myUid == null) return null;
+      ref.read(bleViewModelProvider.notifier).start(myUid);
+      return () => ref.read(bleViewModelProvider.notifier).stop();
+    }, [myUid]);
+
     // 鬼放出の瞬間に一度だけ端末を振動させ、通知も出す。ポケットに入れた
     // まま遊ぶ運用のため、振動だけだと画面を見ていないと気づけない。
     // tickを依存に入れて毎秒チェックし直す(releasedAt自体は変化しない
@@ -185,6 +195,7 @@ class GamePage extends HookConsumerWidget {
       nearestOpponentVerticalPositionProvider(roomId),
     );
     final wifiDisplayMode = useState(_WifiDisplayMode.levels);
+    final bleDetections = ref.watch(bleViewModelProvider);
 
     // 送信中(Foreground Service稼働中)にソフトバックキーで誤ってアプリごと
     // 閉じてしまうと位置送信が止まるため、最小化に倒す(プラグイン推奨パターン)。
@@ -263,6 +274,26 @@ class GamePage extends HookConsumerWidget {
                 ? ref.watch(topWifiComparisonsProvider(roomId))
                 : const <WifiApComparison>[];
 
+            // BLEで対象の役割の相手が至近距離(3m程度)にいるかどうか(issue #16)。
+            // 「捕まった」ボタン(常時表示・自己申告)とは別に、確実な捕捉を
+            // 支援するためのボタンを検知時だけ追加で出す。
+            final opponentRoleForBle = myRole == UserRole.demon
+                ? UserRole.fugitive
+                : UserRole.demon;
+            final opponentShortUids = myRole == null
+                ? const <String>{}
+                : room.users
+                      .where(
+                        (u) => u.role == opponentRoleForBle && u.id != myUid,
+                      )
+                      .map((u) => shortenUid(u.id))
+                      .toSet();
+            final bleBecomeDemonDetected = isOpponentWithinBecomeDemonRange(
+              detections: bleDetections,
+              opponentShortUids: opponentShortUids,
+              nowMillis: now,
+            );
+
             return Column(
               children: [
                 Padding(
@@ -280,6 +311,48 @@ class GamePage extends HookConsumerWidget {
                     child: Text(
                       '位置情報の権限(常に許可)がないため、自分の位置を送信できません',
                       style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                if (myRole != null &&
+                    canReportCaught(role: myRole, phase: phase) &&
+                    bleBecomeDemonDetected)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.priority_high),
+                      label: const Text('鬼になる'),
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('鬼が近くにいます'),
+                            content: const Text(
+                              'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
+                              '鬼になりますか?この操作は取り消せません。',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(false),
+                                child: const Text('キャンセル'),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(true),
+                                child: const Text('鬼になる'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          await ref
+                              .read(roomRepositoryProvider)
+                              .reportCaught(roomId);
+                        }
+                      },
                     ),
                   ),
                 if (myRole != null && canReportCaught(role: myRole, phase: phase))

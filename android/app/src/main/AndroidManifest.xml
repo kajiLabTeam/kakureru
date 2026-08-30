@@ -11,6 +11,17 @@
 <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
 <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+<!-- BLEでの至近距離検知(issue #16)。位置情報からは使わない
+     (uidをmanufacturerDataに載せて識別するだけ)ため、Android 12+では
+     neverForLocationを付けてBLUETOOTH_SCANに位置情報権限を要求させない。
+     Android 11以前向けにレガシー権限も残す。 -->
+<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+<uses-permission
+    android:name="android.permission.BLUETOOTH_SCAN"
+    android:usesPermissionFlags="neverForLocation"/>
+<uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
+<uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <application
         android:label="kakureru"
         android:name="${applicationName}"
