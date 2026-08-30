@@ -18,21 +18,20 @@ abstract class RoomUser with _$RoomUser {
     @Default('') String displayName,
     @Default('') String deviceId,
     @Default(false) bool isHost,
-    @Default(UserRole.fugitive) @JsonKey(unknownEnumValue: UserRole.fugitive) UserRole role,
+    @Default(UserRole.fugitive)
+    @JsonKey(unknownEnumValue: UserRole.fugitive)
+    UserRole role,
     double? pressureOffset,
     bool? pressureSensorAvailable,
     int? becameDemonAt,
     int? lastPhotoAt,
     @Default(0) int joinedAt,
-    int? leftAt,
   }) = _RoomUser;
 
   const RoomUser._();
 
-  /// 離脱猶予中(leaveRoomでソフト削除されたが、まだ復帰できる状態)かどうか。
-  bool get hasLeft => leftAt != null;
-
-  factory RoomUser.fromJson(Map<String, dynamic> json) => _$RoomUserFromJson(json);
+  factory RoomUser.fromJson(Map<String, dynamic> json) =>
+      _$RoomUserFromJson(json);
 
   /// RTDBの `users/{uid}` は uid がパスのキーであり値の中には無いため、
   /// 呼び出し側から id を別途渡して合成する。

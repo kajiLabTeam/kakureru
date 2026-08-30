@@ -76,14 +76,12 @@ class RoomWaitingPage extends HookConsumerWidget {
     // 誰かが離脱したら「(名前)さんが抜けました」で明示的に知らせる(issue #11)。
     useLeftUserNotifications(ref, context, roomId);
 
-    // PopScope.onPopInvokedWithResultのdidPopで判定していたが、GamePageの
-    // WithForegroundTaskが内部で使っているWillPopScope(最小化するか
-    // どうかの判定)と競合し、実際には最小化しただけ(ページを離れていない)
-    // のにleaveRoomが呼ばれてしまう不具合があった。ウィジェットが実際に
-    // 破棄されるタイミング(dispose)で判定する方が、pop周りの解釈に
-    // 依存せず確実。ゲーム開始に伴うGamePageへのpushReplacementでも
-    // このウィジェットは破棄されるが、それは離脱ではないのでhasNavigated
-    // で区別する。
+    // 以前はPopScope.onPopInvokedWithResultのdidPopで判定していたが、
+    // GamePage側でWithForegroundTaskのWillPopScopeと競合してdidPopの
+    // 解釈が信頼できなくなる不具合があったため、ウィジェットが実際に
+    // 破棄されるタイミング(dispose)で判定する方式に統一した。ゲーム開始に
+    // 伴うGamePageへのpushReplacementでもこのウィジェットは破棄されるが、
+    // それは離脱ではないのでhasNavigatedで区別する。
     useEffect(() {
       return () {
         if (!hasNavigated.value) {
@@ -98,19 +96,12 @@ class RoomWaitingPage extends HookConsumerWidget {
         data: (room) {
           final isHost = room.hostUserId == myUid;
           final hostCalibrated = room.basePressure != null;
-          // 離脱猶予中(hasLeft)の人は今この場にいないので指名候補から外す
-          // (指名しても本人が受諾操作できず、進行が止まってしまうため)。
           final demonCandidates = room.users
-              .where((u) => u.role != UserRole.demon && !u.hasLeft)
+              .where((u) => u.role != UserRole.demon)
               .toList();
 
-          // 離脱猶予中(hasLeft)の人はキャリブレーション判定から除外する。
-          // 除外しないと、センサー有りの人が未キャリブレーションのまま
-          // 離脱した場合、その人が戻ってこない限り永久に
-          // allCalibratedがtrueにならずゲームを開始できなくなる。
-          final activeUsers = room.users.where((u) => !u.hasLeft);
           final calibrationStatuses = {
-            for (final u in activeUsers)
+            for (final u in room.users)
               u.id: calibrationStatusFor(
                 isHost: u.id == room.hostUserId,
                 sensorAvailable: u.pressureSensorAvailable,
@@ -211,10 +202,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                               child: Text('ホスト'),
                             ),
                           _CalibrationStatusIcon(status: status),
-                          // demonCandidates(78行目)と同じ理由で、離脱猶予中の
-                          // 人には「鬼にする」を出さない(指名しても本人が
-                          // 受諾操作できず、進行が止まってしまうため)。
-                          if (isHost && u.role != UserRole.demon && !u.hasLeft)
+                          if (isHost && u.role != UserRole.demon)
                             Padding(
                               padding: const EdgeInsets.only(left: 8),
                               child: room.pendingDemonUid == u.id

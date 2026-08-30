@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -15,7 +14,6 @@ import 'package:kakureru/features/pressure/model/pressure_sensor_availability.da
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
-import 'package:kakureru/features/room/left_user_notifications.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -183,40 +181,20 @@ class GamePage extends HookConsumerWidget {
       previousDemonUids.value = currentDemonUids;
     });
 
-    // 誰かが離脱したら、地図のピン等とは別に「(名前)さんが抜けました」で
-    // 明示的に知らせる(issue #11)。
-    useLeftUserNotifications(ref, context, roomId);
-
     final pressureState = ref.watch(pressureViewModelProvider);
     final nearestVerticalPosition = ref.watch(
       nearestOpponentVerticalPositionProvider(roomId),
     );
     final wifiDisplayMode = useState(_WifiDisplayMode.levels);
 
-    // 送信中(Foreground Service稼働中)にソフトバックキーで誤ってアプリごと
-    // 閉じてしまうと位置送信が止まるため、WithForegroundTaskが内部で
-    // 最小化に倒す(プラグイン推奨パターン)。
-    //
-    // leaveRoomの発火は、PopScope.onPopInvokedWithResult(didPop)ではなく
-    // このウィジェットが実際に破棄されるタイミング(dispose)で判定する。
-    // WithForegroundTaskは内部でWillPopScopeを使って最小化するかどうかを
-    // 判定しており、外側にPopScopeを重ねるとdidPopの解釈が競合し、
-    // 実際には最小化しただけ(ページを離れていない)なのにleaveRoomが
-    // 呼ばれてしまう不具合があった。disposeなら、実際にウィジェットが
-    // 消えたときにしか発火しないため確実。ゲーム終了に伴うGameResultPageへの
-    // pushReplacementでもこのウィジェットは破棄されるが、それは離脱では
-    // ないのでhasNavigatedToResultで区別する。
-    useEffect(() {
-      return () {
-        if (!hasNavigatedToResult.value) {
-          unawaited(ref.read(roomRepositoryProvider).leaveRoom(roomId));
-        }
-      };
-    }, const []);
-
-    return WithForegroundTask(
+    // ゲーム画面からは戻れない(バックボタン・OSのスワイプ戻る等、
+    // どの経路でもポップさせない)。canPop: falseにすると、
+    // AppBarが自動生成する戻る矢印も含めてポップ操作自体を常にブロックする。
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: false,
           backgroundColor: headerRoleTheme?.color,
           foregroundColor: headerRoleTheme != null ? Colors.white : null,
           title: Text(headerRoleTheme?.label ?? 'ゲーム中'),

@@ -6,12 +6,8 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
-import 'package:kakureru/features/room/model/room_user.dart';
 
 class RoomRepository {
-  /// 離脱後、同じ端末(同じuid)なら復帰できる猶予時間。
-  static const rejoinWindow = Duration(minutes: 5);
-
   final FirebaseDatabase _db;
   final FirebaseAuth _auth;
   final _random = Random();
@@ -21,16 +17,6 @@ class RoomRepository {
       _auth = auth ?? FirebaseAuth.instance;
 
   String get _uid => _auth.currentUser!.uid;
-
-  /// 端末時計とサーバー時刻のズレ(`.info/serverTimeOffset`)を加味した、
-  /// 現在のサーバー時刻(エポックミリ秒)。lib/core/utils/server_time.dart の
-  /// serverNowMillis と同じ考え方だが、こちらはRiverpodのref(Provider)に
-  /// 依存できないRepository内で使うため、その場で一度だけ読みに行く。
-  Future<int> _serverNowMillis() async {
-    final snapshot = await _db.ref('.info/serverTimeOffset').onValue.first;
-    final offsetMillis = (snapshot.snapshot.value as num?)?.toInt() ?? 0;
-    return DateTime.now().millisecondsSinceEpoch + offsetMillis;
-  }
 
   /// ルームを作成して roomId を返す
   Future<String> createRoom({
@@ -193,11 +179,7 @@ class RoomRepository {
     });
   }
 
-  /// コードからルームに参加する。
-  ///
-  /// 同じuid(同じ端末)で、[rejoinWindow]以内に離脱した記録が残っていれば、
-  /// role等の状態を維持したまま復帰させる(leftAtを消すだけ)。それ以外
-  /// (初参加、猶予切れ、別端末)は通常の新規参加として上書きする。
+  /// コードからルームに参加する
   Future<String> joinRoom({
     required String code,
     required String displayName,
@@ -208,29 +190,7 @@ class RoomRepository {
 
     final roomId = (snapshot.value as Map)['roomId'] as String;
 
-    final userRef = _db.ref('rooms/$roomId/users/$_uid');
-    final existingSnapshot = await userRef.get();
-    if (existingSnapshot.exists) {
-      final existing = RoomUser.fromMap(
-        _uid,
-        existingSnapshot.value as Map<dynamic, dynamic>,
-      );
-      final leftAt = existing.leftAt;
-      if (leftAt != null) {
-        // leftAtはServerValue.timestamp(サーバー時刻)なので、比較にも
-        // 端末時計ではなくサーバー時刻を使う。端末時計がずれていると、
-        // 猶予内の復帰が誤って猶予切れ扱いになる(逆もありうる)ため。
-        final elapsed = Duration(
-          milliseconds: await _serverNowMillis() - leftAt,
-        );
-        if (elapsed <= rejoinWindow) {
-          await userRef.child('leftAt').remove();
-          return roomId;
-        }
-      }
-    }
-
-    await userRef.set({
+    await _db.ref('rooms/$roomId/users/$_uid').set({
       'displayName': displayName,
       'deviceId': deviceId,
       'isHost': false,
@@ -295,24 +255,19 @@ class RoomRepository {
   /// ルームから退出する。RoomWaitingPage/GamePageの`PopScope`から、
   /// 戻る操作(ハードウェア/AppBarの戻るボタン)で画面を離れたときに呼ばれる。
   ///
-  /// users/{uid} は削除せず、leftAtを立てるだけの「ソフト離脱」にする
-  /// ([rejoinWindow]以内に同じuidで再度joinRoomすれば、role等を維持した
-  /// まま復帰できるようにするため)。位置情報(locations/{uid})は復帰まで
-  /// 更新が止まる古い座標を地図に残さないよう、退出時点で消す
-  /// (docs/rtdb-schema.md上、locations/{uid} は本人のみ書き込み可)。
+  /// users/{uid} を消すだけでは locations/{uid} が残り、他の参加者の
+  /// 地図に離脱後もピンが残り続けてしまうため、自分の位置情報も合わせて
+  /// 消す(docs/rtdb-schema.md上、locations/{uid} は本人のみ書き込み可)。
   ///
   /// **既知の制約**: 戻る操作による明示的な離脱しか検知できない。アプリの
   /// 強制終了・クラッシュ・OSによるプロセスkillではこのメソッドが呼ばれず、
-  /// leftAtが立たないまま(復帰扱いのまま)になる。厳密に検知するには
+  /// users/{uid}・locations/{uid}はRTDB上に残り続ける。厳密に検知するには
   /// RTDBのonDisconnect()(presence機構)への移行が必要だが、Phase 1では
-  /// スコープ外としている。また、leftAt設定の後にlocations削除を行う2段階の
-  /// 処理のため、ネットワーク瞬断等で後者だけ失敗すると、離脱通知(leftAt基準)
+  /// スコープ外としている。また、users削除の後にlocations削除を行う2段階の
+  /// 処理のため、ネットワーク瞬断等で後者だけ失敗すると、離脱通知(users基準)
   /// は正しく出る一方で地図上の位置ピンだけ残る可能性がある。
-  /// [rejoinWindow]を過ぎても、users/{uid}は自動では削除されない
-  /// (次にjoinRoomされた時点で通常の新規参加として上書きされるか、
-  /// ルーム自体がfinishするまでそのまま残る)。
   Future<void> leaveRoom(String roomId) async {
-    await _db.ref('rooms/$roomId/users/$_uid/leftAt').set(ServerValue.timestamp);
+    await _db.ref('rooms/$roomId/users/$_uid').remove();
     await _db.ref('rooms/$roomId/locations/$_uid').remove();
   }
 }
