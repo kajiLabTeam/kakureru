@@ -14,6 +14,16 @@ void main() {
       expect(result.length, BleProximityThresholds.shortUidLength);
       expect(uid.startsWith(result), isTrue);
     });
+
+    test('先頭が同じ2つのuidは同じshortUidになる(既知の制約)', () {
+      // shortUidLength文字までしか広告データに載せられないため、先頭が
+      // 一致する別人のuidを区別できないのは設計上の既知の制約
+      // (ble_proximity_calculator.dartのコメント参照)。1部屋あたりの人数を
+      // 考えれば衝突は現実的に起きないと判断している。
+      final uidA = '${'a' * BleProximityThresholds.shortUidLength}-user-a';
+      final uidB = '${'a' * BleProximityThresholds.shortUidLength}-user-b';
+      expect(shortenUid(uidA), shortenUid(uidB));
+    });
   });
 
   group('encodeAdvertisePayload / decodeAdvertisePayload', () {
@@ -29,6 +39,13 @@ void main() {
 
     test('空のバイト列は復元できない', () {
       expect(decodeAdvertisePayload(const []), isNull);
+    });
+
+    test('不正なUTF-8バイト列は復元できない', () {
+      // 0xFFはUTF-8のどの先頭バイトパターンにも該当しない不正な値。
+      // ゲームと無関係な他アプリの広告がたまたま同じmanufacturerIdを
+      // 使っていた場合等に、デコード時の例外で落ちないことを確認する。
+      expect(decodeAdvertisePayload(const [0xff, 0xfe]), isNull);
     });
   });
 

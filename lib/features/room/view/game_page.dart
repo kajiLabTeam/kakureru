@@ -276,7 +276,10 @@ class GamePage extends HookConsumerWidget {
 
             // BLEで対象の役割の相手が至近距離(3m程度)にいるかどうか(issue #16)。
             // 「捕まった」ボタン(常時表示・自己申告)とは別に、確実な捕捉を
-            // 支援するためのボタンを検知時だけ追加で出す。
+            // 支援するためのボタンを検知時だけ追加で出す。isVisibleToMeで
+            // 絞るのは、他の近接表示(Wi-Fi・気圧)と同じく「鬼タイム」中は
+            // 逃走者から鬼の至近距離情報も見せない、という既存の非対称な
+            // 可視性ルール(role_visibility.dart)をBLEにも適用するため。
             final opponentRoleForBle = myRole == UserRole.demon
                 ? UserRole.fugitive
                 : UserRole.demon;
@@ -284,14 +287,20 @@ class GamePage extends HookConsumerWidget {
                 ? const <String>{}
                 : room.users
                       .where(
-                        (u) => u.role == opponentRoleForBle && u.id != myUid,
+                        (u) =>
+                            u.role == opponentRoleForBle &&
+                            u.id != myUid &&
+                            isVisibleToMe(u.id),
                       )
                       .map((u) => shortenUid(u.id))
                       .toSet();
+            // BLEの検知時刻(detectedAtMillis)は端末ローカル時計で記録している
+            // ため、freshness判定もサーバー時刻(now)ではなく端末ローカル時刻で
+            // 比較する必要がある(単位を揃えないとserverTimeOffset分ずれる)。
             final bleBecomeDemonDetected = isOpponentWithinBecomeDemonRange(
               detections: bleDetections,
               opponentShortUids: opponentShortUids,
-              nowMillis: now,
+              nowMillis: DateTime.now().millisecondsSinceEpoch,
             );
 
             return Column(
