@@ -359,6 +359,10 @@ class GamePage extends HookConsumerWidget {
                           style: TextStyle(color: Colors.red),
                         ),
                       ),
+                    // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた
+                    // ときだけ出す「鬼になる」に一本化した。ローディング表示・
+                    // エラー処理・確定演出(CaughtTransitionOverlay)は、旧
+                    // 「捕まった」ボタンのものをそのまま踏襲している。
                     if (myRole != null &&
                         canReportCaught(role: myRole, phase: phase) &&
                         bleBecomeDemonDetected)
@@ -368,47 +372,6 @@ class GamePage extends HookConsumerWidget {
                           vertical: 4,
                         ),
                         child: FilledButton.icon(
-                          icon: const Icon(Icons.priority_high),
-                          label: const Text('鬼になる'),
-                          onPressed: () async {
-                            final confirmed = await showDialog<bool>(
-                              context: context,
-                              builder: (dialogContext) => AlertDialog(
-                                title: const Text('鬼が近くにいます'),
-                                content: const Text(
-                                  'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
-                                  '鬼になりますか?この操作は取り消せません。',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(dialogContext).pop(false),
-                                    child: const Text('キャンセル'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () =>
-                                        Navigator.of(dialogContext).pop(true),
-                                    child: const Text('鬼になる'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirmed == true) {
-                              await ref
-                                  .read(roomRepositoryProvider)
-                                  .reportCaught(roomId);
-                            }
-                          },
-                        ),
-                      ),
-                    if (myRole != null &&
-                        canReportCaught(role: myRole, phase: phase))
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        child: FilledButton.tonalIcon(
                           icon: isSubmittingCaught.value
                               ? const SizedBox(
                                   width: 16,
@@ -417,17 +380,18 @@ class GamePage extends HookConsumerWidget {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(Icons.warning_amber),
-                          label: const Text('捕まった'),
+                              : const Icon(Icons.priority_high),
+                          label: const Text('鬼になる'),
                           onPressed: isSubmittingCaught.value
                               ? null
                               : () async {
                                   final confirmed = await showDialog<bool>(
                                     context: context,
                                     builder: (dialogContext) => AlertDialog(
-                                      title: const Text('捕まりましたか?'),
+                                      title: const Text('鬼が近くにいます'),
                                       content: const Text(
-                                        '鬼になります。この操作は取り消せません。',
+                                        'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
+                                        '鬼になりますか?この操作は取り消せません。',
                                       ),
                                       actions: [
                                         TextButton(
@@ -440,7 +404,7 @@ class GamePage extends HookConsumerWidget {
                                           onPressed: () => Navigator.of(
                                             dialogContext,
                                           ).pop(true),
-                                          child: const Text('捕まった'),
+                                          child: const Text('鬼になる'),
                                         ),
                                       ],
                                     ),
