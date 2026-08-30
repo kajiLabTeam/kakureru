@@ -159,6 +159,77 @@ void main() {
     });
   });
 
+  group('applyProximityHysteresis', () {
+    final baseTime = DateTime(2026, 1, 1, 12, 30);
+
+    test('直前がclose/farで猶予時間内なら、その判定を保持する', () {
+      final result = applyProximityHysteresis(
+        lastDisplayedLevel: ProximityLevel.close,
+        lastGoodAt: baseTime,
+        now: baseTime.add(const Duration(seconds: 30)),
+      );
+      expect(result, ProximityLevel.close);
+    });
+
+    test('猶予時間を過ぎたらnotDetectedになる', () {
+      final result = applyProximityHysteresis(
+        lastDisplayedLevel: ProximityLevel.close,
+        lastGoodAt: baseTime,
+        now: baseTime.add(const Duration(minutes: 1)),
+      );
+      expect(result, ProximityLevel.notDetected);
+    });
+
+    test('直前の判定が無ければnotDetectedのまま', () {
+      final result = applyProximityHysteresis(
+        lastDisplayedLevel: null,
+        lastGoodAt: null,
+        now: baseTime,
+      );
+      expect(result, ProximityLevel.notDetected);
+    });
+
+    test('直前の判定自体がnotDetectedなら保持しない', () {
+      final result = applyProximityHysteresis(
+        lastDisplayedLevel: ProximityLevel.notDetected,
+        lastGoodAt: baseTime,
+        now: baseTime.add(const Duration(seconds: 1)),
+      );
+      expect(result, ProximityLevel.notDetected);
+    });
+  });
+
+  group('applyNearestUidHysteresis', () {
+    final baseTime = DateTime(2026, 1, 1, 12, 30);
+
+    test('猶予時間内なら直前のuidを保持する', () {
+      final result = applyNearestUidHysteresis(
+        lastUid: 'oni1',
+        lastFoundAt: baseTime,
+        now: baseTime.add(const Duration(seconds: 30)),
+      );
+      expect(result, 'oni1');
+    });
+
+    test('猶予時間を過ぎたらnullになる', () {
+      final result = applyNearestUidHysteresis(
+        lastUid: 'oni1',
+        lastFoundAt: baseTime,
+        now: baseTime.add(const Duration(minutes: 1)),
+      );
+      expect(result, isNull);
+    });
+
+    test('一度も見つかっていなければnull', () {
+      final result = applyNearestUidHysteresis(
+        lastUid: null,
+        lastFoundAt: null,
+        now: baseTime,
+      );
+      expect(result, isNull);
+    });
+  });
+
   group('findNearestUid', () {
     test('複数の鬼候補から、共通APのRSSI差平均が最小の1人を選ぶ', () {
       final self = {'a': -50, 'b': -55, 'c': -60};
