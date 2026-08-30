@@ -78,8 +78,13 @@ class RoomWaitingPage extends HookConsumerWidget {
                 .where((u) => u.role != UserRole.demon && !u.hasLeft)
                 .toList();
 
+            // 離脱猶予中(hasLeft)の人はキャリブレーション判定から除外する。
+            // 除外しないと、センサー有りの人が未キャリブレーションのまま
+            // 離脱した場合、その人が戻ってこない限り永久に
+            // allCalibratedがtrueにならずゲームを開始できなくなる。
+            final activeUsers = room.users.where((u) => !u.hasLeft);
             final calibrationStatuses = {
-              for (final u in room.users)
+              for (final u in activeUsers)
                 u.id: calibrationStatusFor(
                   isHost: u.id == room.hostUserId,
                   sensorAvailable: u.pressureSensorAvailable,
@@ -181,7 +186,12 @@ class RoomWaitingPage extends HookConsumerWidget {
                                 child: Text('ホスト'),
                               ),
                             _CalibrationStatusIcon(status: status),
-                            if (isHost && u.role != UserRole.demon)
+                            // demonCandidates(78行目)と同じ理由で、離脱猶予中の
+                            // 人には「鬼にする」を出さない(指名しても本人が
+                            // 受諾操作できず、進行が止まってしまうため)。
+                            if (isHost &&
+                                u.role != UserRole.demon &&
+                                !u.hasLeft)
                               Padding(
                                 padding: const EdgeInsets.only(left: 8),
                                 child: room.pendingDemonUid == u.id

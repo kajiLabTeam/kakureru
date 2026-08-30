@@ -22,6 +22,16 @@ class RoomRepository {
 
   String get _uid => _auth.currentUser!.uid;
 
+  /// 端末時計とサーバー時刻のズレ(`.info/serverTimeOffset`)を加味した、
+  /// 現在のサーバー時刻(エポックミリ秒)。lib/core/utils/server_time.dart の
+  /// serverNowMillis と同じ考え方だが、こちらはRiverpodのref(Provider)に
+  /// 依存できないRepository内で使うため、その場で一度だけ読みに行く。
+  Future<int> _serverNowMillis() async {
+    final snapshot = await _db.ref('.info/serverTimeOffset').onValue.first;
+    final offsetMillis = (snapshot.snapshot.value as num?)?.toInt() ?? 0;
+    return DateTime.now().millisecondsSinceEpoch + offsetMillis;
+  }
+
   /// ルームを作成して roomId を返す
   Future<String> createRoom({
     required String displayName,
@@ -207,8 +217,11 @@ class RoomRepository {
       );
       final leftAt = existing.leftAt;
       if (leftAt != null) {
+        // leftAtはServerValue.timestamp(サーバー時刻)なので、比較にも
+        // 端末時計ではなくサーバー時刻を使う。端末時計がずれていると、
+        // 猶予内の復帰が誤って猶予切れ扱いになる(逆もありうる)ため。
         final elapsed = Duration(
-          milliseconds: DateTime.now().millisecondsSinceEpoch - leftAt,
+          milliseconds: await _serverNowMillis() - leftAt,
         );
         if (elapsed <= rejoinWindow) {
           await userRef.child('leftAt').remove();
