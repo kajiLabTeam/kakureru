@@ -11,6 +11,7 @@ import 'package:kakureru/features/room/calibration_status.dart';
 import 'package:kakureru/features/room/left_user_notifications.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/single_flight_action.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
@@ -26,6 +27,8 @@ class RoomWaitingPage extends HookConsumerWidget {
     final isStarting = useState(false);
     final startError = useState<Object?>(null);
     final hasNavigated = useState(false);
+    final isNominatingRandom = useState(false);
+    final randomNominationGuard = useMemoized(SingleFlightAction.new);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
 
     useEffect(() {
@@ -34,13 +37,13 @@ class RoomWaitingPage extends HookConsumerWidget {
     }, const []);
 
     // ref.listenではなくuseEffect(roomAsync.value依存)にしているのは、
-    // 5分以内の復帰(issue #11)でこのページに新規マウントされた場合、
-    // 最初のスナップショットの時点で既に room.status == playing
-    // (離脱前から進行中のゲームに戻ってきた)ことがあるため。ref.listenは
-    // 登録後の「変化」にしか反応しないので、初回から既にplayingだと
-    // GamePageへの遷移も鬼指名の自動受諾も発火しなかった(復帰後に
-    // 待機画面のまま止まってしまう不具合の原因)。useEffectなら初回到達分の
-    // 評価も行われる。
+    // 既にゲームが進行中(room.status == playing)のルームに、コード入力
+    // だけで新規参加してこのページに新規マウントされるケースがあるため
+    // (joinRoomはroom.statusを見ずに参加を許可する)。最初のスナップショット
+    // の時点で既にplayingだと、ref.listenは登録後の「変化」にしか反応しない
+    // ので、GamePageへの遷移も鬼指名の自動受諾も発火しなかった(待機画面の
+    // まま止まってしまう不具合の原因)。useEffectなら初回到達分の評価も
+    // 行われる。
     useEffect(() {
       final room = roomAsync.value;
       if (room == null) return null;
@@ -232,16 +235,31 @@ class RoomWaitingPage extends HookConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: OutlinedButton(
                     onPressed:
-                        room.pendingDemonUid != null || demonCandidates.isEmpty
+                        isNominatingRandom.value ||
+                            room.pendingDemonUid != null ||
+                            demonCandidates.isEmpty
                         ? null
                         : () {
-                            final target =
-                                demonCandidates[Random().nextInt(
-                                  demonCandidates.length,
-                                )];
-                            ref
-                                .read(roomRepositoryProvider)
-                                .nominateDemon(roomId, target.id);
+                            // 連打対策: RTDBへの反映(room.pendingDemonUidの更新)には
+                            // ネットワーク往復の遅延があり、その間はボタンがまだ有効な
+                            // ままなので、SingleFlightActionで同一フレーム内の連打も
+                            // 含めて多重発火を防ぐ。
+                            unawaited(
+                              randomNominationGuard.run(() async {
+                                isNominatingRandom.value = true;
+                                try {
+                                  final target =
+                                      demonCandidates[Random().nextInt(
+                                        demonCandidates.length,
+                                      )];
+                                  await ref
+                                      .read(roomRepositoryProvider)
+                                      .nominateDemon(roomId, target.id);
+                                } finally {
+                                  isNominatingRandom.value = false;
+                                }
+                              }),
+                            );
                           },
                     child: const Text('鬼をランダムで決める'),
                   ),
