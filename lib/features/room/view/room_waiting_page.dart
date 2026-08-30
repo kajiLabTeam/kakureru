@@ -33,9 +33,17 @@ class RoomWaitingPage extends HookConsumerWidget {
       return null;
     }, const []);
 
-    ref.listen(roomStreamProvider(roomId), (prev, next) {
-      final room = next.value;
-      if (room == null) return;
+    // ref.listenではなくuseEffect(roomAsync.value依存)にしているのは、
+    // 5分以内の復帰(issue #11)でこのページに新規マウントされた場合、
+    // 最初のスナップショットの時点で既に room.status == playing
+    // (離脱前から進行中のゲームに戻ってきた)ことがあるため。ref.listenは
+    // 登録後の「変化」にしか反応しないので、初回から既にplayingだと
+    // GamePageへの遷移も鬼指名の自動受諾も発火しなかった(復帰後に
+    // 待機画面のまま止まってしまう不具合の原因)。useEffectなら初回到達分の
+    // 評価も行われる。
+    useEffect(() {
+      final room = roomAsync.value;
+      if (room == null) return null;
 
       if (room.status == RoomStatus.playing && !hasNavigated.value) {
         hasNavigated.value = true;
@@ -44,7 +52,7 @@ class RoomWaitingPage extends HookConsumerWidget {
         ).pushReplacement(
           MaterialPageRoute(builder: (_) => GamePage(roomId: roomId)),
         );
-        return;
+        return null;
       }
 
       // 自分が鬼に指名されたら、自分でroleを更新して受諾する
@@ -54,7 +62,8 @@ class RoomWaitingPage extends HookConsumerWidget {
       if (room.pendingDemonUid == myUid && myself?.role != UserRole.demon) {
         ref.read(roomRepositoryProvider).acceptDemonNomination(roomId, myUid!);
       }
-    });
+      return null;
+    }, [roomAsync.value]);
 
     // 誰かが離脱したら「(名前)さんが抜けました」で明示的に知らせる(issue #11)。
     useLeftUserNotifications(ref, context, roomId);
