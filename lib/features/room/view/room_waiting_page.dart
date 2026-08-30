@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/calibration_status.dart';
+import 'package:kakureru/features/room/left_user_notifications.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
@@ -39,7 +41,9 @@ class RoomWaitingPage extends HookConsumerWidget {
         hasNavigated.value = true;
         Navigator.of(
           context,
-        ).pushReplacement(MaterialPageRoute(builder: (_) => GamePage(roomId: roomId)));
+        ).pushReplacement(
+          MaterialPageRoute(builder: (_) => GamePage(roomId: roomId)),
+        );
         return;
       }
 
@@ -52,190 +56,237 @@ class RoomWaitingPage extends HookConsumerWidget {
       }
     });
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('待機中')),
-      body: roomAsync.when(
-        data: (room) {
-          final isHost = room.hostUserId == myUid;
-          final hostCalibrated = room.basePressure != null;
-          final demonCandidates = room.users.where((u) => u.role != UserRole.demon).toList();
+    // 誰かが離脱したら「(名前)さんが抜けました」で明示的に知らせる(issue #11)。
+    useLeftUserNotifications(ref, context, roomId);
 
-          final calibrationStatuses = {
-            for (final u in room.users)
-              u.id: calibrationStatusFor(
-                isHost: u.id == room.hostUserId,
-                sensorAvailable: u.pressureSensorAvailable,
-                basePressure: room.basePressure,
-                pressureOffset: u.pressureOffset,
-              ),
-          };
-          final requiredCount = calibrationStatuses.values
-              .where((s) => s != CalibrationStatus.unavailable)
-              .length;
-          final doneCount = calibrationStatuses.values
-              .where((s) => s == CalibrationStatus.done)
-              .length;
-          final allCalibrated = isCalibrationComplete(calibrationStatuses.values);
-          final pendingNames = room.users
-              .where((u) => calibrationStatuses[u.id] == CalibrationStatus.pending)
-              .map((u) => u.displayName)
-              .toList();
-          final myCalibrated = myUid != null && calibrationStatuses[myUid] == CalibrationStatus.done;
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) return;
+        // 戻る操作で待機画面を離れたら離脱扱いにする。ゲーム開始に伴う
+        // GamePageへのpushReplacementはpopではないためここは通らない。
+        unawaited(ref.read(roomRepositoryProvider).leaveRoom(roomId));
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('待機中')),
+        body: roomAsync.when(
+          data: (room) {
+            final isHost = room.hostUserId == myUid;
+            final hostCalibrated = room.basePressure != null;
+            final demonCandidates = room.users
+                .where((u) => u.role != UserRole.demon)
+                .toList();
 
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'ルームコード: ${room.roomCode}',
-                  style: Theme.of(context).textTheme.headlineMedium,
+            final calibrationStatuses = {
+              for (final u in room.users)
+                u.id: calibrationStatusFor(
+                  isHost: u.id == room.hostUserId,
+                  sensorAvailable: u.pressureSensorAvailable,
+                  basePressure: room.basePressure,
+                  pressureOffset: u.pressureOffset,
                 ),
-              ),
-              if (isHost && room.status == RoomStatus.waiting)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.settings),
-                    label: const Text('設定'),
-                    onPressed: () => Navigator.of(
-                      context,
-                    ).push(MaterialPageRoute(builder: (_) => RoomSettingPage(roomId: roomId))),
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('参加者'),
-                    if (requiredCount > 0)
-                      Text(
-                        'キャリブレーション $doneCount/$requiredCount人 完了',
-                        style: TextStyle(
-                          color: doneCount == requiredCount ? Colors.green : Colors.orange,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView(
-                  children: room.users.map((u) {
-                    final status =
-                        calibrationStatuses[u.id] ?? CalibrationStatus.pending;
-                    final isPending = room.pendingDemonUid == u.id && u.role != UserRole.demon;
+            };
+            final requiredCount = calibrationStatuses.values
+                .where((s) => s != CalibrationStatus.unavailable)
+                .length;
+            final doneCount = calibrationStatuses.values
+                .where((s) => s == CalibrationStatus.done)
+                .length;
+            final allCalibrated = isCalibrationComplete(
+              calibrationStatuses.values,
+            );
+            final pendingNames = room.users
+                .where(
+                  (u) => calibrationStatuses[u.id] == CalibrationStatus.pending,
+                )
+                .map((u) => u.displayName)
+                .toList();
+            final myCalibrated =
+                myUid != null &&
+                calibrationStatuses[myUid] == CalibrationStatus.done;
 
-                    return ListTile(
-                      title: Text(u.displayName),
-                      subtitle: Text(
-                        u.role == UserRole.demon
-                            ? '鬼'
-                            : isPending
-                            ? '逃走者(鬼に指名中...)'
-                            : '逃走者',
-                        style: TextStyle(color: u.role == UserRole.demon ? Colors.red : null),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (u.isHost) const Padding(padding: EdgeInsets.only(right: 8), child: Text('ホスト')),
-                          _CalibrationStatusIcon(status: status),
-                          if (isHost && u.role != UserRole.demon)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: room.pendingDemonUid == u.id
-                                  ? ActionChip(
-                                      label: const Text('取り消す'),
-                                      onPressed: () => ref
-                                          .read(roomRepositoryProvider)
-                                          .cancelDemonNomination(roomId),
-                                    )
-                                  : ActionChip(
-                                      label: const Text('鬼にする'),
-                                      onPressed: room.pendingDemonUid != null
-                                          ? null
-                                          : () => ref
-                                                .read(roomRepositoryProvider)
-                                                .nominateDemon(roomId, u.id),
-                                    ),
-                            ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              if (isHost)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: OutlinedButton(
-                    onPressed: room.pendingDemonUid != null || demonCandidates.isEmpty
-                        ? null
-                        : () {
-                            final target = demonCandidates[Random().nextInt(demonCandidates.length)];
-                            ref.read(roomRepositoryProvider).nominateDemon(roomId, target.id);
-                          },
-                    child: const Text('鬼をランダムで決める'),
-                  ),
-                ),
-              _CalibrationSection(
-                roomId: roomId,
-                isHost: isHost,
-                hostCalibrated: hostCalibrated,
-                myCalibrated: myCalibrated,
-                basePressure: room.basePressure,
-                pressureState: pressureState,
-              ),
-              if (isHost && room.setting.gameArea.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    'プレイエリアが未設定です。「設定」からエリアを指定してください',
-                    style: TextStyle(color: Colors.orange),
-                  ),
-                ),
-              if (isHost && !allCalibrated && pendingNames.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    'キャリブレーション未完了: ${pendingNames.join('、')}',
-                    style: const TextStyle(color: Colors.orange),
-                  ),
-                ),
-              if (isHost)
+            return Column(
+              children: [
                 Padding(
                   padding: const EdgeInsets.all(24),
-                  child: FilledButton(
-                    onPressed:
-                        isStarting.value ||
-                            room.setting.gameArea.isEmpty ||
-                            !allCalibrated
-                        ? null
-                        : () async {
-                            isStarting.value = true;
-                            startError.value = null;
-                            try {
-                              await ref.read(roomRepositoryProvider).startGame(roomId);
-                            } on Object catch (e) {
-                              startError.value = e;
-                            } finally {
-                              isStarting.value = false;
-                            }
-                          },
-                    child: const Text('ゲーム開始'),
+                  child: Text(
+                    'ルームコード: ${room.roomCode}',
+                    style: Theme.of(context).textTheme.headlineMedium,
                   ),
                 ),
-              if (startError.value != null)
+                if (isHost && room.status == RoomStatus.waiting)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.settings),
+                      label: const Text('設定'),
+                      onPressed: () =>
+                          Navigator.of(
+                            context,
+                          ).push(
+                            MaterialPageRoute(
+                              builder: (_) => RoomSettingPage(roomId: roomId),
+                            ),
+                          ),
+                    ),
+                  ),
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Text('${startError.value}', style: const TextStyle(color: Colors.red)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('参加者'),
+                      if (requiredCount > 0)
+                        Text(
+                          'キャリブレーション $doneCount/$requiredCount人 完了',
+                          style: TextStyle(
+                            color: doneCount == requiredCount
+                                ? Colors.green
+                                : Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('エラー: $e')),
+                Expanded(
+                  child: ListView(
+                    children: room.users.map((u) {
+                      final status =
+                          calibrationStatuses[u.id] ??
+                          CalibrationStatus.pending;
+                      final isPending =
+                          room.pendingDemonUid == u.id &&
+                          u.role != UserRole.demon;
+
+                      return ListTile(
+                        title: Text(u.displayName),
+                        subtitle: Text(
+                          u.role == UserRole.demon
+                              ? '鬼'
+                              : isPending
+                              ? '逃走者(鬼に指名中...)'
+                              : '逃走者',
+                          style: TextStyle(
+                            color: u.role == UserRole.demon ? Colors.red : null,
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (u.isHost)
+                              const Padding(
+                                padding: EdgeInsets.only(right: 8),
+                                child: Text('ホスト'),
+                              ),
+                            _CalibrationStatusIcon(status: status),
+                            if (isHost && u.role != UserRole.demon)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: room.pendingDemonUid == u.id
+                                    ? ActionChip(
+                                        label: const Text('取り消す'),
+                                        onPressed: () => ref
+                                            .read(roomRepositoryProvider)
+                                            .cancelDemonNomination(roomId),
+                                      )
+                                    : ActionChip(
+                                        label: const Text('鬼にする'),
+                                        onPressed: room.pendingDemonUid != null
+                                            ? null
+                                            : () => ref
+                                                  .read(roomRepositoryProvider)
+                                                  .nominateDemon(roomId, u.id),
+                                      ),
+                              ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                if (isHost)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: OutlinedButton(
+                      onPressed:
+                          room.pendingDemonUid != null ||
+                              demonCandidates.isEmpty
+                          ? null
+                          : () {
+                              final target =
+                                  demonCandidates[Random().nextInt(
+                                    demonCandidates.length,
+                                  )];
+                              ref
+                                  .read(roomRepositoryProvider)
+                                  .nominateDemon(roomId, target.id);
+                            },
+                      child: const Text('鬼をランダムで決める'),
+                    ),
+                  ),
+                _CalibrationSection(
+                  roomId: roomId,
+                  isHost: isHost,
+                  hostCalibrated: hostCalibrated,
+                  myCalibrated: myCalibrated,
+                  basePressure: room.basePressure,
+                  pressureState: pressureState,
+                ),
+                if (isHost && room.setting.gameArea.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      'プレイエリアが未設定です。「設定」からエリアを指定してください',
+                      style: TextStyle(color: Colors.orange),
+                    ),
+                  ),
+                if (isHost && !allCalibrated && pendingNames.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      'キャリブレーション未完了: ${pendingNames.join('、')}',
+                      style: const TextStyle(color: Colors.orange),
+                    ),
+                  ),
+                if (isHost)
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: FilledButton(
+                      onPressed:
+                          isStarting.value ||
+                              room.setting.gameArea.isEmpty ||
+                              !allCalibrated
+                          ? null
+                          : () async {
+                              isStarting.value = true;
+                              startError.value = null;
+                              try {
+                                await ref
+                                    .read(roomRepositoryProvider)
+                                    .startGame(roomId);
+                              } on Object catch (e) {
+                                startError.value = e;
+                              } finally {
+                                isStarting.value = false;
+                              }
+                            },
+                      child: const Text('ゲーム開始'),
+                    ),
+                  ),
+                if (startError.value != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      '${startError.value}',
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+              ],
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('エラー: $e')),
+        ),
       ),
     );
   }
@@ -298,7 +349,8 @@ class _CalibrationSection extends ConsumerWidget {
   }
 
   Widget _buildMyStatus(WidgetRef ref) {
-    if (pressureState.sensorAvailability == PressureSensorAvailability.unavailable) {
+    if (pressureState.sensorAvailability ==
+        PressureSensorAvailability.unavailable) {
       return const Row(
         children: [
           Icon(Icons.sensors_off, color: Colors.grey),
@@ -326,9 +378,14 @@ class _CalibrationSection extends ConsumerWidget {
       );
     }
 
-    final checking = pressureState.sensorAvailability == PressureSensorAvailability.checking;
+    final checking =
+        pressureState.sensorAvailability == PressureSensorAvailability.checking;
     final myPressureReady = pressureState.myPressureHPa != null;
-    final canCalibrate = !checking && myPressureReady && !pressureState.isCalibrating && (isHost || hostCalibrated);
+    final canCalibrate =
+        !checking &&
+        myPressureReady &&
+        !pressureState.isCalibrating &&
+        (isHost || hostCalibrated);
 
     String? hint;
     if (checking) {
@@ -355,7 +412,8 @@ class _CalibrationSection extends ConsumerWidget {
               : null,
           label: const Text('キャリブレーションする(未実施)'),
         ),
-        if (hint != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(hint)),
+        if (hint != null)
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(hint)),
       ],
     );
   }
