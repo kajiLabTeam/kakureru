@@ -47,11 +47,19 @@ class RoomWaitingPage extends HookConsumerWidget {
 
       if (room.status == RoomStatus.playing && !hasNavigated.value) {
         hasNavigated.value = true;
-        Navigator.of(
-          context,
-        ).pushReplacement(
-          MaterialPageRoute(builder: (_) => GamePage(roomId: roomId)),
-        );
+        // useEffectはref.watchによるリビルドと同じフレーム内・ビルド直後に
+        // 同期実行されるため、ここで即座にNavigatorを操作すると
+        // 「ビルド中にNavigator操作をした」という一瞬のエラー画面が出る
+        // (最終的には遷移自体は成功するが、ちらつきが起きる)。
+        // addPostFrameCallbackでこのフレームの確定後まで遅延させる。
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!context.mounted) return;
+          Navigator.of(
+            context,
+          ).pushReplacement(
+            MaterialPageRoute(builder: (_) => GamePage(roomId: roomId)),
+          );
+        });
         return null;
       }
 
