@@ -72,8 +72,10 @@ class RoomWaitingPage extends HookConsumerWidget {
           data: (room) {
             final isHost = room.hostUserId == myUid;
             final hostCalibrated = room.basePressure != null;
+            // 離脱猶予中(hasLeft)の人は今この場にいないので指名候補から外す
+            // (指名しても本人が受諾操作できず、進行が止まってしまうため)。
             final demonCandidates = room.users
-                .where((u) => u.role != UserRole.demon)
+                .where((u) => u.role != UserRole.demon && !u.hasLeft)
                 .toList();
 
             final calibrationStatuses = {

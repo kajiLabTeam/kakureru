@@ -67,6 +67,65 @@ void main() {
     expect(find.text('ボブさんが抜けました'), findsOneWidget);
   });
 
+  testWidgets('leftAtが新たに立ったらSnackBarを表示する(ソフト離脱)', (tester) async {
+    final controller = StreamController<Room>.broadcast();
+    addTearDown(controller.close);
+
+    const alice = RoomUser(id: 'alice', displayName: 'アリス');
+    const bob = RoomUser(id: 'bob', displayName: 'ボブ');
+    final bobLeft = bob.copyWith(leftAt: 1000);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          roomStreamProvider(
+            _roomId,
+          ).overrideWith((ref) => controller.stream),
+        ],
+        child: const MaterialApp(home: _Harness()),
+      ),
+    );
+    await tester.pump();
+
+    controller.add(_roomWith([alice, bob]));
+    await tester.pump();
+    expect(find.text('ボブさんが抜けました'), findsNothing);
+
+    controller.add(_roomWith([alice, bobLeft]));
+    await tester.pump();
+    expect(find.text('ボブさんが抜けました'), findsOneWidget);
+  });
+
+  testWidgets('leftAtが消えたらSnackBarで復帰を知らせる', (tester) async {
+    final controller = StreamController<Room>.broadcast();
+    addTearDown(controller.close);
+
+    const alice = RoomUser(id: 'alice', displayName: 'アリス');
+    const bob = RoomUser(id: 'bob', displayName: 'ボブ');
+    final bobLeft = bob.copyWith(leftAt: 1000);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          roomStreamProvider(
+            _roomId,
+          ).overrideWith((ref) => controller.stream),
+        ],
+        child: const MaterialApp(home: _Harness()),
+      ),
+    );
+    await tester.pump();
+
+    // baseline: bobは既に離脱猶予中の状態から始める
+    controller.add(_roomWith([alice, bobLeft]));
+    await tester.pump();
+    expect(find.text('ボブさんが戻ってきました'), findsNothing);
+
+    controller.add(_roomWith([alice, bob], createdAt: 1));
+    await tester.pump();
+    expect(find.text('ボブさんが戻ってきました'), findsOneWidget);
+  });
+
   testWidgets('誰も抜けていなければSnackBarを表示しない', (tester) async {
     final controller = StreamController<Room>.broadcast();
     addTearDown(controller.close);
