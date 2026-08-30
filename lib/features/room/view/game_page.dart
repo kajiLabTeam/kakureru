@@ -8,6 +8,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/utils/local_notifications.dart';
 import 'package:kakureru/core/utils/server_time.dart';
+import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
+import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
@@ -120,6 +122,14 @@ class GamePage extends HookConsumerWidget {
       return () => ref.read(wifiScanRepositoryProvider).stopScanning();
     }, [roomId]);
 
+    // BLEの広告・スキャンもゲーム画面滞在中だけ行う(issue #16)。myUidが
+    // 確定するまで(FirebaseAuthの復元前など)は開始できない。
+    useEffect(() {
+      if (myUid == null) return null;
+      ref.read(bleViewModelProvider.notifier).start(myUid);
+      return () => ref.read(bleViewModelProvider.notifier).stop();
+    }, [myUid]);
+
     // 鬼放出の瞬間に一度だけ端末を振動させ、通知も出す。ポケットに入れた
     // まま遊ぶ運用のため、振動だけだと画面を見ていないと気づけない。
     // tickを依存に入れて毎秒チェックし直す(releasedAt自体は変化しない
@@ -217,6 +227,7 @@ class GamePage extends HookConsumerWidget {
       nearestOpponentVerticalPositionProvider(roomId),
     );
     final wifiDisplayMode = useState(_WifiDisplayMode.levels);
+    final bleDetections = ref.watch(bleViewModelProvider);
 
     // ゲーム画面からは戻れない(バックボタン・OSのスワイプ戻る等、
     // どの経路でもポップさせない)。canPop: falseにすると、
@@ -300,6 +311,35 @@ class GamePage extends HookConsumerWidget {
                     ? ref.watch(topWifiComparisonsProvider(roomId))
                     : const <WifiApComparison>[];
 
+                // BLEで対象の役割の相手が至近距離(3m程度)にいるかどうか(issue #16)。
+                // 「捕まった」ボタン(常時表示・自己申告)とは別に、確実な捕捉を
+                // 支援するためのボタンを検知時だけ追加で出す。isVisibleToMeで
+                // 絞るのは、他の近接表示(Wi-Fi・気圧)と同じく「鬼タイム」中は
+                // 逃走者から鬼の至近距離情報も見せない、という既存の非対称な
+                // 可視性ルール(role_visibility.dart)をBLEにも適用するため。
+                final opponentRoleForBle = myRole == UserRole.demon
+                    ? UserRole.fugitive
+                    : UserRole.demon;
+                final opponentShortUids = myRole == null
+                    ? const <String>{}
+                    : room.users
+                          .where(
+                            (u) =>
+                                u.role == opponentRoleForBle &&
+                                u.id != myUid &&
+                                isVisibleToMe(u.id),
+                          )
+                          .map((u) => shortenUid(u.id))
+                          .toSet();
+                // BLEの検知時刻(detectedAtMillis)は端末ローカル時計で記録している
+                // ため、freshness判定もサーバー時刻(now)ではなく端末ローカル時刻で
+                // 比較する必要がある(単位を揃えないとserverTimeOffset分ずれる)。
+                final bleBecomeDemonDetected = isOpponentWithinBecomeDemonRange(
+                  detections: bleDetections,
+                  opponentShortUids: opponentShortUids,
+                  nowMillis: DateTime.now().millisecondsSinceEpoch,
+                );
+
                 return Column(
                   children: [
                     Padding(
@@ -319,14 +359,19 @@ class GamePage extends HookConsumerWidget {
                           style: TextStyle(color: Colors.red),
                         ),
                       ),
+                    // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた
+                    // ときだけ出す「鬼になる」に一本化した。ローディング表示・
+                    // エラー処理・確定演出(CaughtTransitionOverlay)は、旧
+                    // 「捕まった」ボタンのものをそのまま踏襲している。
                     if (myRole != null &&
-                        canReportCaught(role: myRole, phase: phase))
+                        canReportCaught(role: myRole, phase: phase) &&
+                        bleBecomeDemonDetected)
                       Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 4,
                         ),
-                        child: FilledButton.tonalIcon(
+                        child: FilledButton.icon(
                           icon: isSubmittingCaught.value
                               ? const SizedBox(
                                   width: 16,
@@ -335,17 +380,18 @@ class GamePage extends HookConsumerWidget {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(Icons.warning_amber),
-                          label: const Text('捕まった'),
+                              : const Icon(Icons.priority_high),
+                          label: const Text('鬼になる'),
                           onPressed: isSubmittingCaught.value
                               ? null
                               : () async {
                                   final confirmed = await showDialog<bool>(
                                     context: context,
                                     builder: (dialogContext) => AlertDialog(
-                                      title: const Text('捕まりましたか?'),
+                                      title: const Text('鬼が近くにいます'),
                                       content: const Text(
-                                        '鬼になります。この操作は取り消せません。',
+                                        'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
+                                        '鬼になりますか?この操作は取り消せません。',
                                       ),
                                       actions: [
                                         TextButton(
@@ -358,7 +404,7 @@ class GamePage extends HookConsumerWidget {
                                           onPressed: () => Navigator.of(
                                             dialogContext,
                                           ).pop(true),
-                                          child: const Text('捕まった'),
+                                          child: const Text('鬼になる'),
                                         ),
                                       ],
                                     ),
