@@ -20,6 +20,7 @@ import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
+import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
 import 'package:kakureru/features/room/view/game_result_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
@@ -70,6 +71,12 @@ class GamePage extends HookConsumerWidget {
       });
       return timer.cancel;
     }, const []);
+
+    // 「捕まった」ボタンのフィードバック用状態(issue #15)。押してから
+    // RTDBへの書き込みが終わるまではボタンをローディング表示にし、
+    // 成功したら全画面演出(CaughtTransitionOverlay)を出す。
+    final isSubmittingCaught = useState(false);
+    final showCaughtTransition = useState(false);
 
     // ゲーム画面に入ったら位置送信・購読を開始し、離れたら止める。
     useEffect(() {
@@ -138,6 +145,10 @@ class GamePage extends HookConsumerWidget {
     final hasNavigatedToResult = useRef(false);
     useEffect(() {
       if (hasNavigatedToResult.value || room == null) return null;
+      // 「捕まった」確定演出(CaughtTransitionOverlay)の表示中に結果画面へ
+      // 差し替えてしまうと演出が一瞬で消えてしまう。演出を閉じた後の
+      // tick更新で改めて判定させるため、ここでは何もせず抜ける。
+      if (showCaughtTransition.value) return null;
       final gameOver = isGameOver(
         status: room.status,
         endsAt: room.endsAt,
@@ -155,7 +166,7 @@ class GamePage extends HookConsumerWidget {
         ),
       );
       return null;
-    }, [room?.status, room?.endsAt, tick.value]);
+    }, [room?.status, room?.endsAt, tick.value, showCaughtTransition.value]);
 
     // 誰かがDEMONになったら(ホストの指名受諾・自己申告どちらでも)全員に
     // 知らせる。表示制御(役割による可視性)とは別軸の情報のため、
@@ -171,11 +182,31 @@ class GamePage extends HookConsumerWidget {
 
       final previous = previousDemonUids.value;
       if (previous != null) {
-        for (final uid in currentDemonUids.difference(previous)) {
+        final demonTheme = roleThemeOf(UserRole.demon);
+        final uidsToNotify = uidsToNotifyOfDemonChange(
+          previousDemonUids: previous,
+          currentDemonUids: currentDemonUids,
+          myUid: myUid,
+        );
+        for (final uid in uidsToNotify) {
           final name = _findUser(nextRoom.users, uid)?.displayName ?? '誰か';
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('$nameが鬼になりました')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: demonTheme.color,
+              content: Row(
+                children: [
+                  Icon(demonTheme.icon, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '$nameが鬼になりました',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
       }
       previousDemonUids.value = currentDemonUids;
@@ -192,208 +223,248 @@ class GamePage extends HookConsumerWidget {
     // AppBarが自動生成する戻る矢印も含めてポップ操作自体を常にブロックする。
     return PopScope(
       canPop: false,
-      child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          backgroundColor: headerRoleTheme?.color,
-          foregroundColor: headerRoleTheme != null ? Colors.white : null,
-          title: Text(headerRoleTheme?.label ?? 'ゲーム中'),
-          actions: headerRoleTheme != null
-              ? [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: Icon(headerRoleTheme.icon),
-                  ),
-                ]
-              : null,
-        ),
-        body: roomAsync.when(
-          data: (room) {
-            final now = serverNowMillis(offset);
-            final myRole = _roleOf(room.users, myUid);
-            final phase = determineGamePhase(
-              releasedAt: room.releasedAt,
-              nowMillis: now,
-            );
-            final countdownSec = calculateCountdownSeconds(
-              phase: phase,
-              releasedAt: room.releasedAt,
-              endsAt: room.endsAt,
-              nowMillis: now,
-            );
-            final countdownLabel = phase == GamePhase.beforeRelease
-                ? '鬼放出まで'
-                : '残り時間';
+      child: Stack(
+        children: [
+          Scaffold(
+            appBar: AppBar(
+              automaticallyImplyLeading: false,
+              backgroundColor: headerRoleTheme?.color,
+              foregroundColor: headerRoleTheme != null ? Colors.white : null,
+              title: Text(headerRoleTheme?.label ?? 'ゲーム中'),
+              actions: headerRoleTheme != null
+                  ? [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Icon(headerRoleTheme.icon),
+                      ),
+                    ]
+                  : null,
+            ),
+            body: roomAsync.when(
+              data: (room) {
+                final now = serverNowMillis(offset);
+                final myRole = _roleOf(room.users, myUid);
+                final phase = determineGamePhase(
+                  releasedAt: room.releasedAt,
+                  nowMillis: now,
+                );
+                final countdownSec = calculateCountdownSeconds(
+                  phase: phase,
+                  releasedAt: room.releasedAt,
+                  endsAt: room.endsAt,
+                  nowMillis: now,
+                );
+                final countdownLabel = phase == GamePhase.beforeRelease
+                    ? '鬼放出まで'
+                    : '残り時間';
 
-            // 役割による表示制御(7/13のプレイテストで決まった非対称な可視性)。
-            // 自分は常に見える。相手は同role同士なら常に、異roleなら
-            // releasedAt(鬼→逃走者)/releasedAt+fugitiveInfoDelaySec
-            // (逃走者→鬼)を過ぎるまで見えない。地図・上下バー・Wi-Fi表示
-            // すべてにこれを適用する。
-            bool isVisibleToMe(String uid) {
-              if (uid == myUid) return true;
-              final targetRole = _roleOf(room.users, uid);
-              if (myRole == null || targetRole == null) return false;
-              return isRoleVisible(
-                viewerRole: myRole,
-                targetRole: targetRole,
-                releasedAt: room.releasedAt,
-                fugitiveInfoDelaySec: room.setting.fugitiveInfoDelaySec,
-                nowMillis: now,
-              );
-            }
+                // 役割による表示制御(7/13のプレイテストで決まった非対称な可視性)。
+                // 自分は常に見える。相手は同role同士なら常に、異roleなら
+                // releasedAt(鬼→逃走者)/releasedAt+fugitiveInfoDelaySec
+                // (逃走者→鬼)を過ぎるまで見えない。地図・上下バー・Wi-Fi表示
+                // すべてにこれを適用する。
+                bool isVisibleToMe(String uid) {
+                  if (uid == myUid) return true;
+                  final targetRole = _roleOf(room.users, uid);
+                  if (myRole == null || targetRole == null) return false;
+                  return isRoleVisible(
+                    viewerRole: myRole,
+                    targetRole: targetRole,
+                    releasedAt: room.releasedAt,
+                    fugitiveInfoDelaySec: room.setting.fugitiveInfoDelaySec,
+                    nowMillis: now,
+                  );
+                }
 
-            final visibleLocations = locationState.locations
-                .where((location) => isVisibleToMe(location.uid))
-                .toList();
-            final visibleNearestVerticalPosition =
-                nearestVerticalPosition != null &&
-                    isVisibleToMe(nearestVerticalPosition.uid)
-                ? nearestVerticalPosition
-                : null;
-            final visibleWifiEntries = ref
-                .watch(wifiProximityLevelsProvider(roomId))
-                .where((entry) => isVisibleToMe(entry.uid))
-                .toList();
-            final rawNearestOpponentUid = ref.watch(
-              nearestOpponentUidProvider(roomId),
-            );
-            final visibleNearestOpponentUid =
-                rawNearestOpponentUid != null &&
-                    isVisibleToMe(rawNearestOpponentUid)
-                ? rawNearestOpponentUid
-                : null;
-            final visibleWifiComparisons = visibleNearestOpponentUid != null
-                ? ref.watch(topWifiComparisonsProvider(roomId))
-                : const <WifiApComparison>[];
+                final visibleLocations = locationState.locations
+                    .where((location) => isVisibleToMe(location.uid))
+                    .toList();
+                final visibleNearestVerticalPosition =
+                    nearestVerticalPosition != null &&
+                        isVisibleToMe(nearestVerticalPosition.uid)
+                    ? nearestVerticalPosition
+                    : null;
+                final visibleWifiEntries = ref
+                    .watch(wifiProximityLevelsProvider(roomId))
+                    .where((entry) => isVisibleToMe(entry.uid))
+                    .toList();
+                final rawNearestOpponentUid = ref.watch(
+                  nearestOpponentUidProvider(roomId),
+                );
+                final visibleNearestOpponentUid =
+                    rawNearestOpponentUid != null &&
+                        isVisibleToMe(rawNearestOpponentUid)
+                    ? rawNearestOpponentUid
+                    : null;
+                final visibleWifiComparisons = visibleNearestOpponentUid != null
+                    ? ref.watch(topWifiComparisonsProvider(roomId))
+                    : const <WifiApComparison>[];
 
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    countdownSec == null
-                        ? '$countdownLabel: 計算中...'
-                        : '$countdownLabel: ${countdownSec < 0 ? 0 : countdownSec}秒',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                ),
-                if (locationState.permissionDenied)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      '位置情報の権限(常に許可)がないため、自分の位置を送信できません',
-                      style: TextStyle(color: Colors.red),
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        countdownSec == null
+                            ? '$countdownLabel: 計算中...'
+                            : '$countdownLabel: ${countdownSec < 0 ? 0 : countdownSec}秒',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
                     ),
-                  ),
-                if (myRole != null &&
-                    canReportCaught(role: myRole, phase: phase))
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    child: FilledButton.tonalIcon(
-                      icon: const Icon(Icons.warning_amber),
-                      label: const Text('捕まった'),
-                      onPressed: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (dialogContext) => AlertDialog(
-                            title: const Text('捕まりましたか?'),
-                            content: const Text('鬼になります。この操作は取り消せません。'),
-                            actions: [
-                              TextButton(
-                                onPressed: () =>
-                                    Navigator.of(dialogContext).pop(false),
-                                child: const Text('キャンセル'),
-                              ),
-                              FilledButton(
-                                onPressed: () =>
-                                    Navigator.of(dialogContext).pop(true),
-                                child: const Text('捕まった'),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (confirmed == true) {
-                          await ref
-                              .read(roomRepositoryProvider)
-                              .reportCaught(roomId);
-                        }
-                      },
-                    ),
-                  ),
-                Expanded(
-                  child: _LocationMap(
-                    locations: visibleLocations,
-                    users: room.users,
-                    myUid: myUid,
-                    cachedPosition: cachedPosition.value,
-                    gameArea: room.setting.gameArea,
-                  ),
-                ),
-                // マップの下に「鬼(または逃走者)との上下関係」と「Wi-Fi近接表示」を
-                // 横並びで置く。ゲーム中にちらっと見てすぐ分かることを優先し、
-                // どちらも常に同時に見える位置にしている。
-                SizedBox(
-                  height: 200,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _NearestOpponentVerticalIndicator(
-                        pressureState: pressureState,
-                        isCalibrated: _isCalibrated(room, myUid),
-                        position: visibleNearestVerticalPosition,
-                        opponentRole: _roleOf(
-                          room.users,
-                          visibleNearestVerticalPosition?.uid,
+                    if (locationState.permissionDenied)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          '位置情報の権限(常に許可)がないため、自分の位置を送信できません',
+                          style: TextStyle(color: Colors.red),
                         ),
                       ),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            SegmentedButton<_WifiDisplayMode>(
-                              segments: const [
-                                ButtonSegment(
-                                  value: _WifiDisplayMode.levels,
-                                  label: Text('3段階判定'),
+                    if (myRole != null &&
+                        canReportCaught(role: myRole, phase: phase))
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        child: FilledButton.tonalIcon(
+                          icon: isSubmittingCaught.value
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.warning_amber),
+                          label: const Text('捕まった'),
+                          onPressed: isSubmittingCaught.value
+                              ? null
+                              : () async {
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (dialogContext) => AlertDialog(
+                                      title: const Text('捕まりましたか?'),
+                                      content: const Text(
+                                        '鬼になります。この操作は取り消せません。',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.of(
+                                            dialogContext,
+                                          ).pop(false),
+                                          child: const Text('キャンセル'),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.of(
+                                            dialogContext,
+                                          ).pop(true),
+                                          child: const Text('捕まった'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirmed != true) return;
+
+                                  isSubmittingCaught.value = true;
+                                  try {
+                                    await ref
+                                        .read(roomRepositoryProvider)
+                                        .reportCaught(roomId);
+                                    showCaughtTransition.value = true;
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text('送信に失敗しました: $e'),
+                                        ),
+                                      );
+                                    }
+                                  } finally {
+                                    isSubmittingCaught.value = false;
+                                  }
+                                },
+                        ),
+                      ),
+                    Expanded(
+                      child: _LocationMap(
+                        locations: visibleLocations,
+                        users: room.users,
+                        myUid: myUid,
+                        cachedPosition: cachedPosition.value,
+                        gameArea: room.setting.gameArea,
+                      ),
+                    ),
+                    // マップの下に「鬼(または逃走者)との上下関係」と「Wi-Fi近接表示」を
+                    // 横並びで置く。ゲーム中にちらっと見てすぐ分かることを優先し、
+                    // どちらも常に同時に見える位置にしている。
+                    SizedBox(
+                      height: 200,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _NearestOpponentVerticalIndicator(
+                            pressureState: pressureState,
+                            isCalibrated: _isCalibrated(room, myUid),
+                            position: visibleNearestVerticalPosition,
+                            opponentRole: _roleOf(
+                              room.users,
+                              visibleNearestVerticalPosition?.uid,
+                            ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              children: [
+                                SegmentedButton<_WifiDisplayMode>(
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: _WifiDisplayMode.levels,
+                                      label: Text('3段階判定'),
+                                    ),
+                                    ButtonSegment(
+                                      value: _WifiDisplayMode.rssiBars,
+                                      label: Text('RSSI比較'),
+                                    ),
+                                  ],
+                                  selected: {wifiDisplayMode.value},
+                                  onSelectionChanged: (selection) =>
+                                      wifiDisplayMode.value = selection.first,
                                 ),
-                                ButtonSegment(
-                                  value: _WifiDisplayMode.rssiBars,
-                                  label: Text('RSSI比較'),
+                                Expanded(
+                                  child:
+                                      wifiDisplayMode.value ==
+                                          _WifiDisplayMode.levels
+                                      ? _WifiProximityLevelsView(
+                                          entries: visibleWifiEntries,
+                                          users: room.users,
+                                        )
+                                      : _WifiRssiCompareView(
+                                          comparisons: visibleWifiComparisons,
+                                          nearestUid: visibleNearestOpponentUid,
+                                          users: room.users,
+                                        ),
                                 ),
                               ],
-                              selected: {wifiDisplayMode.value},
-                              onSelectionChanged: (selection) =>
-                                  wifiDisplayMode.value = selection.first,
                             ),
-                            Expanded(
-                              child:
-                                  wifiDisplayMode.value ==
-                                      _WifiDisplayMode.levels
-                                  ? _WifiProximityLevelsView(
-                                      entries: visibleWifiEntries,
-                                      users: room.users,
-                                    )
-                                  : _WifiRssiCompareView(
-                                      comparisons: visibleWifiComparisons,
-                                      nearestUid: visibleNearestOpponentUid,
-                                      users: room.users,
-                                    ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('エラー: $e')),
-        ),
+                    ),
+                  ],
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('エラー: $e')),
+            ),
+          ),
+          // 「捕まった」確定直後の全画面演出(issue #15)。マップ等の下に
+          // 溜まっている再描画とは独立に、Stackの最前面に重ねるだけにする。
+          if (showCaughtTransition.value)
+            CaughtTransitionOverlay(
+              onContinue: () => showCaughtTransition.value = false,
+            ),
+        ],
       ),
     );
   }

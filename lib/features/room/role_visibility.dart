@@ -48,8 +48,12 @@ enum GamePhase {
 }
 
 /// 現在時刻がreleasedAtの前か後かを判定する。releasedAtが未確定ならbeforeRelease扱い。
-GamePhase determineGamePhase({required int? releasedAt, required int nowMillis}) {
-  if (releasedAt == null || nowMillis < releasedAt) return GamePhase.beforeRelease;
+GamePhase determineGamePhase({
+  required int? releasedAt,
+  required int nowMillis,
+}) {
+  if (releasedAt == null || nowMillis < releasedAt)
+    return GamePhase.beforeRelease;
   return GamePhase.released;
 }
 
@@ -76,11 +80,33 @@ bool canReportCaught({required UserRole role, required GamePhase phase}) {
   return role == UserRole.fugitive && phase == GamePhase.released;
 }
 
+/// 新たに鬼になった参加者のうち、SnackBarで通知すべきuidの集合を返す。
+///
+/// 自分自身(myUid)は除く。「捕まった」ボタンで自分が鬼になった場合は
+/// GamePage側で別途CaughtTransitionOverlay(全画面演出)を出すため、
+/// 同じ変化に対してSnackBarも表示すると二重の通知になってしまう(issue #15)。
+Set<String> uidsToNotifyOfDemonChange({
+  required Set<String> previousDemonUids,
+  required Set<String> currentDemonUids,
+  required String? myUid,
+}) {
+  return currentDemonUids
+      .difference(
+        previousDemonUids,
+      )
+      .where((uid) => uid != myUid)
+      .toSet();
+}
+
 /// 結果画面へ遷移すべきタイミングかどうかを判定する。
 ///
 /// meta/status が FINISHED になった場合、または endsAt を過ぎた場合に真。
 /// 端末ごとの時計のズレを避けるため、比較には絶対時刻(serverNowMillis)を使う。
-bool isGameOver({required RoomStatus status, required int? endsAt, required int nowMillis}) {
+bool isGameOver({
+  required RoomStatus status,
+  required int? endsAt,
+  required int nowMillis,
+}) {
   if (status == RoomStatus.finished) return true;
   return endsAt != null && nowMillis >= endsAt;
 }
