@@ -149,6 +149,51 @@ List<WifiApComparison> selectTopCommonAccessPoints(
   return comparisons.take(count).toList();
 }
 
+/// ヒステリシスの猶予時間。この時間内に一度でも近接検知(close/far)できて
+/// いれば、直後の1回が閾値割れでnotDetectedになっても直前の判定を保持する。
+/// Wi-Fiスキャンは端末ごとに非同期・約25秒間隔で行われRSSIも揺らぐため、
+/// 1回分のノイズを吸収できるよう間隔よりやや長めに取っている(issue #8)。
+const proximityHysteresisGraceDuration = Duration(seconds: 45);
+
+/// 今回の生の判定がnotDetectedだった場合に、実際に表示する判定を決める。
+///
+/// Wi-Fiスキャンは端末間で非同期・約25秒間隔のため、RSSIの揺らぎで境界付近の
+/// APが出入りするだけで一瞬notDetectedへ振れることがある(issue #8 追加調査:
+/// 「近いのに検知なしになる」)。直近[graceDuration]以内に近接検知できていた
+/// 場合は、今回notDetectedでも直前の判定をそのまま返す。
+///
+/// 呼び出し側は「生の判定がnotDetectedのときだけ」この関数を呼ぶ想定
+/// (生の判定がclose/farならそのまま使い、[lastGoodAt]をその時刻で更新する)。
+ProximityLevel applyProximityHysteresis({
+  required ProximityLevel? lastDisplayedLevel,
+  required DateTime? lastGoodAt,
+  required DateTime now,
+  Duration graceDuration = proximityHysteresisGraceDuration,
+}) {
+  if (lastDisplayedLevel == null ||
+      lastDisplayedLevel == ProximityLevel.notDetected) {
+    return ProximityLevel.notDetected;
+  }
+  if (lastGoodAt == null) return ProximityLevel.notDetected;
+  if (now.difference(lastGoodAt) <= graceDuration) return lastDisplayedLevel;
+  return ProximityLevel.notDetected;
+}
+
+/// [findNearestUid]の今回の結果がnullだった場合に、実際に表示するuidを決める。
+/// 考え方は[applyProximityHysteresis]と同じ。
+///
+/// 呼び出し側は「今回の[findNearestUid]がnullのときだけ」この関数を呼ぶ想定。
+String? applyNearestUidHysteresis({
+  required String? lastUid,
+  required DateTime? lastFoundAt,
+  required DateTime now,
+  Duration graceDuration = proximityHysteresisGraceDuration,
+}) {
+  if (lastUid == null || lastFoundAt == null) return null;
+  if (now.difference(lastFoundAt) <= graceDuration) return lastUid;
+  return null;
+}
+
 /// 複数の候補の中から、自分に最も近い1人のuidを選ぶ。
 ///
 /// 「最も近い」= 共通APのRSSI差平均が最小。共通APが
