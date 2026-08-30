@@ -96,6 +96,51 @@ void main() {
         isFalse,
       );
     });
+
+    // issue #10: 鬼放出前は逃走者に鬼のGPS位置を見せないようにする
+    group('issue #10: 鬼放出前は逃走者→鬼の可視性をブロックする', () {
+      test('fugitiveInfoDelaySec=0でもbeforeRelease中は鬼が見えない', () {
+        // delay が 0 のとき従来実装では nowMillis >= releasedAt と等価になるが、
+        // phase ベースの明示ブロックにより beforeRelease 中は絶対に見えない。
+        expect(
+          isRoleVisible(
+            viewerRole: UserRole.fugitive,
+            targetRole: UserRole.demon,
+            releasedAt: releasedAt,
+            fugitiveInfoDelaySec: 0,
+            nowMillis: releasedAt - 1, // 放出1ms前
+          ),
+          isFalse,
+        );
+      });
+
+      test('fugitiveInfoDelaySec=0でreleasedAtちょうどなら鬼が見える', () {
+        expect(
+          isRoleVisible(
+            viewerRole: UserRole.fugitive,
+            targetRole: UserRole.demon,
+            releasedAt: releasedAt,
+            fugitiveInfoDelaySec: 0,
+            nowMillis: releasedAt, // 放出ちょうど
+          ),
+          isTrue,
+        );
+      });
+
+      test('beforeRelease中は鬼→鬼は見える(同役割)', () {
+        // 同じ役割同士はフェーズに関わらず常に見える。
+        expect(
+          isRoleVisible(
+            viewerRole: UserRole.demon,
+            targetRole: UserRole.demon,
+            releasedAt: releasedAt,
+            fugitiveInfoDelaySec: fugitiveInfoDelaySec,
+            nowMillis: releasedAt - 1,
+          ),
+          isTrue,
+        );
+      });
+    });
   });
 
   group('determineGamePhase', () {
