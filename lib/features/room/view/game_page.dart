@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -151,7 +150,9 @@ class GamePage extends HookConsumerWidget {
           .map((u) => u.displayName)
           .toList();
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => GameResultPage(demonNames: demonNames)),
+        MaterialPageRoute(
+          builder: (_) => GameResultPage(demonNames: demonNames),
+        ),
       );
       return null;
     }, [room?.status, room?.endsAt, tick.value]);
@@ -186,11 +187,14 @@ class GamePage extends HookConsumerWidget {
     );
     final wifiDisplayMode = useState(_WifiDisplayMode.levels);
 
-    // 送信中(Foreground Service稼働中)にソフトバックキーで誤ってアプリごと
-    // 閉じてしまうと位置送信が止まるため、最小化に倒す(プラグイン推奨パターン)。
-    return WithForegroundTask(
+    // ゲーム画面からは戻れない(バックボタン・OSのスワイプ戻る等、
+    // どの経路でもポップさせない)。canPop: falseにすると、
+    // AppBarが自動生成する戻る矢印も含めてポップ操作自体を常にブロックする。
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: false,
           backgroundColor: headerRoleTheme?.color,
           foregroundColor: headerRoleTheme != null ? Colors.white : null,
           title: Text(headerRoleTheme?.label ?? 'ゲーム中'),
@@ -282,7 +286,8 @@ class GamePage extends HookConsumerWidget {
                       style: TextStyle(color: Colors.red),
                     ),
                   ),
-                if (myRole != null && canReportCaught(role: myRole, phase: phase))
+                if (myRole != null &&
+                    canReportCaught(role: myRole, phase: phase))
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,

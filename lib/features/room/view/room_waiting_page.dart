@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/calibration_status.dart';
+import 'package:kakureru/features/room/left_user_notifications.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
@@ -31,16 +33,34 @@ class RoomWaitingPage extends HookConsumerWidget {
       return null;
     }, const []);
 
-    ref.listen(roomStreamProvider(roomId), (prev, next) {
-      final room = next.value;
-      if (room == null) return;
+    // ref.listenではなくuseEffect(roomAsync.value依存)にしているのは、
+    // 5分以内の復帰(issue #11)でこのページに新規マウントされた場合、
+    // 最初のスナップショットの時点で既に room.status == playing
+    // (離脱前から進行中のゲームに戻ってきた)ことがあるため。ref.listenは
+    // 登録後の「変化」にしか反応しないので、初回から既にplayingだと
+    // GamePageへの遷移も鬼指名の自動受諾も発火しなかった(復帰後に
+    // 待機画面のまま止まってしまう不具合の原因)。useEffectなら初回到達分の
+    // 評価も行われる。
+    useEffect(() {
+      final room = roomAsync.value;
+      if (room == null) return null;
 
       if (room.status == RoomStatus.playing && !hasNavigated.value) {
         hasNavigated.value = true;
-        Navigator.of(
-          context,
-        ).pushReplacement(MaterialPageRoute(builder: (_) => GamePage(roomId: roomId)));
-        return;
+        // useEffectはref.watchによるリビルドと同じフレーム内・ビルド直後に
+        // 同期実行されるため、ここで即座にNavigatorを操作すると
+        // 「ビルド中にNavigator操作をした」という一瞬のエラー画面が出る
+        // (最終的には遷移自体は成功するが、ちらつきが起きる)。
+        // addPostFrameCallbackでこのフレームの確定後まで遅延させる。
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!context.mounted) return;
+          Navigator.of(
+            context,
+          ).pushReplacement(
+            MaterialPageRoute(builder: (_) => GamePage(roomId: roomId)),
+          );
+        });
+        return null;
       }
 
       // 自分が鬼に指名されたら、自分でroleを更新して受諾する
@@ -50,7 +70,25 @@ class RoomWaitingPage extends HookConsumerWidget {
       if (room.pendingDemonUid == myUid && myself?.role != UserRole.demon) {
         ref.read(roomRepositoryProvider).acceptDemonNomination(roomId, myUid!);
       }
-    });
+      return null;
+    }, [roomAsync.value]);
+
+    // 誰かが離脱したら「(名前)さんが抜けました」で明示的に知らせる(issue #11)。
+    useLeftUserNotifications(ref, context, roomId);
+
+    // 以前はPopScope.onPopInvokedWithResultのdidPopで判定していたが、
+    // GamePage側でWithForegroundTaskのWillPopScopeと競合してdidPopの
+    // 解釈が信頼できなくなる不具合があったため、ウィジェットが実際に
+    // 破棄されるタイミング(dispose)で判定する方式に統一した。ゲーム開始に
+    // 伴うGamePageへのpushReplacementでもこのウィジェットは破棄されるが、
+    // それは離脱ではないのでhasNavigatedで区別する。
+    useEffect(() {
+      return () {
+        if (!hasNavigated.value) {
+          unawaited(ref.read(roomRepositoryProvider).leaveRoom(roomId));
+        }
+      };
+    }, const []);
 
     return Scaffold(
       appBar: AppBar(title: const Text('待機中')),
@@ -58,7 +96,9 @@ class RoomWaitingPage extends HookConsumerWidget {
         data: (room) {
           final isHost = room.hostUserId == myUid;
           final hostCalibrated = room.basePressure != null;
-          final demonCandidates = room.users.where((u) => u.role != UserRole.demon).toList();
+          final demonCandidates = room.users
+              .where((u) => u.role != UserRole.demon)
+              .toList();
 
           final calibrationStatuses = {
             for (final u in room.users)
@@ -75,12 +115,18 @@ class RoomWaitingPage extends HookConsumerWidget {
           final doneCount = calibrationStatuses.values
               .where((s) => s == CalibrationStatus.done)
               .length;
-          final allCalibrated = isCalibrationComplete(calibrationStatuses.values);
+          final allCalibrated = isCalibrationComplete(
+            calibrationStatuses.values,
+          );
           final pendingNames = room.users
-              .where((u) => calibrationStatuses[u.id] == CalibrationStatus.pending)
+              .where(
+                (u) => calibrationStatuses[u.id] == CalibrationStatus.pending,
+              )
               .map((u) => u.displayName)
               .toList();
-          final myCalibrated = myUid != null && calibrationStatuses[myUid] == CalibrationStatus.done;
+          final myCalibrated =
+              myUid != null &&
+              calibrationStatuses[myUid] == CalibrationStatus.done;
 
           return Column(
             children: [
@@ -97,9 +143,14 @@ class RoomWaitingPage extends HookConsumerWidget {
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.settings),
                     label: const Text('設定'),
-                    onPressed: () => Navigator.of(
-                      context,
-                    ).push(MaterialPageRoute(builder: (_) => RoomSettingPage(roomId: roomId))),
+                    onPressed: () =>
+                        Navigator.of(
+                          context,
+                        ).push(
+                          MaterialPageRoute(
+                            builder: (_) => RoomSettingPage(roomId: roomId),
+                          ),
+                        ),
                   ),
                 ),
               Padding(
@@ -112,7 +163,9 @@ class RoomWaitingPage extends HookConsumerWidget {
                       Text(
                         'キャリブレーション $doneCount/$requiredCount人 完了',
                         style: TextStyle(
-                          color: doneCount == requiredCount ? Colors.green : Colors.orange,
+                          color: doneCount == requiredCount
+                              ? Colors.green
+                              : Colors.orange,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -124,7 +177,9 @@ class RoomWaitingPage extends HookConsumerWidget {
                   children: room.users.map((u) {
                     final status =
                         calibrationStatuses[u.id] ?? CalibrationStatus.pending;
-                    final isPending = room.pendingDemonUid == u.id && u.role != UserRole.demon;
+                    final isPending =
+                        room.pendingDemonUid == u.id &&
+                        u.role != UserRole.demon;
 
                     return ListTile(
                       title: Text(u.displayName),
@@ -134,12 +189,18 @@ class RoomWaitingPage extends HookConsumerWidget {
                             : isPending
                             ? '逃走者(鬼に指名中...)'
                             : '逃走者',
-                        style: TextStyle(color: u.role == UserRole.demon ? Colors.red : null),
+                        style: TextStyle(
+                          color: u.role == UserRole.demon ? Colors.red : null,
+                        ),
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (u.isHost) const Padding(padding: EdgeInsets.only(right: 8), child: Text('ホスト')),
+                          if (u.isHost)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 8),
+                              child: Text('ホスト'),
+                            ),
                           _CalibrationStatusIcon(status: status),
                           if (isHost && u.role != UserRole.demon)
                             Padding(
@@ -170,11 +231,17 @@ class RoomWaitingPage extends HookConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: OutlinedButton(
-                    onPressed: room.pendingDemonUid != null || demonCandidates.isEmpty
+                    onPressed:
+                        room.pendingDemonUid != null || demonCandidates.isEmpty
                         ? null
                         : () {
-                            final target = demonCandidates[Random().nextInt(demonCandidates.length)];
-                            ref.read(roomRepositoryProvider).nominateDemon(roomId, target.id);
+                            final target =
+                                demonCandidates[Random().nextInt(
+                                  demonCandidates.length,
+                                )];
+                            ref
+                                .read(roomRepositoryProvider)
+                                .nominateDemon(roomId, target.id);
                           },
                     child: const Text('鬼をランダムで決める'),
                   ),
@@ -216,7 +283,9 @@ class RoomWaitingPage extends HookConsumerWidget {
                             isStarting.value = true;
                             startError.value = null;
                             try {
-                              await ref.read(roomRepositoryProvider).startGame(roomId);
+                              await ref
+                                  .read(roomRepositoryProvider)
+                                  .startGame(roomId);
                             } on Object catch (e) {
                               startError.value = e;
                             } finally {
@@ -229,7 +298,10 @@ class RoomWaitingPage extends HookConsumerWidget {
               if (startError.value != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
-                  child: Text('${startError.value}', style: const TextStyle(color: Colors.red)),
+                  child: Text(
+                    '${startError.value}',
+                    style: const TextStyle(color: Colors.red),
+                  ),
                 ),
             ],
           );
@@ -298,7 +370,8 @@ class _CalibrationSection extends ConsumerWidget {
   }
 
   Widget _buildMyStatus(WidgetRef ref) {
-    if (pressureState.sensorAvailability == PressureSensorAvailability.unavailable) {
+    if (pressureState.sensorAvailability ==
+        PressureSensorAvailability.unavailable) {
       return const Row(
         children: [
           Icon(Icons.sensors_off, color: Colors.grey),
@@ -326,9 +399,14 @@ class _CalibrationSection extends ConsumerWidget {
       );
     }
 
-    final checking = pressureState.sensorAvailability == PressureSensorAvailability.checking;
+    final checking =
+        pressureState.sensorAvailability == PressureSensorAvailability.checking;
     final myPressureReady = pressureState.myPressureHPa != null;
-    final canCalibrate = !checking && myPressureReady && !pressureState.isCalibrating && (isHost || hostCalibrated);
+    final canCalibrate =
+        !checking &&
+        myPressureReady &&
+        !pressureState.isCalibrating &&
+        (isHost || hostCalibrated);
 
     String? hint;
     if (checking) {
@@ -355,7 +433,8 @@ class _CalibrationSection extends ConsumerWidget {
               : null,
           label: const Text('キャリブレーションする(未実施)'),
         ),
-        if (hint != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(hint)),
+        if (hint != null)
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(hint)),
       ],
     );
   }
