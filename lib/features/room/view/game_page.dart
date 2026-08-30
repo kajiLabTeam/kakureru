@@ -580,19 +580,44 @@ class _LocationMap extends HookWidget {
 
   Marker _buildMarker(UserLocation location) {
     final isSelf = location.uid == myUid;
-    final color = isSelf
-        ? Colors.blue
-        : _colorForRole(_findUser(users, location.uid)?.role);
+    final user = _findUser(users, location.uid);
+    final color = isSelf ? Colors.blue : _colorForRole(user?.role);
+    final label = markerLabelFor(uid: location.uid, myUid: myUid, user: user);
 
     return Marker(
       point: latlong.LatLng(location.latitude, location.longitude),
-      width: 40,
-      height: 40,
+      // ラベル表示のため横幅を拡張(名前が長い場合は省略表示)。
+      // 縦はピンアイコン(36) + ラベル(~18) で余裕を持たせる。
+      width: 72,
+      height: 56,
       // Icons.location_pinは下端に尖った先端があるアイコンなので、既定の
       // Alignment.center(中央合わせ)のままだと先端が実座標より下にずれる。
       // topCenterにして先端を座標に合わせる。
       alignment: Alignment.topCenter,
-      child: Icon(Icons.location_pin, color: color, size: 36),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.location_pin, color: color, size: 36),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                height: 1.1,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -605,10 +630,25 @@ class _LocationMap extends HookWidget {
   }
 }
 
-// 役割による表示制御(誰に誰が見えるか)は別タスクで扱う。ここでは
-// 取得できた位置を単純に色分けして表示するだけ。地図・上下バー共通で使う。
+// 取得できた位置を単純に色分けして表示する。地図・上下バー共通で使う。
 Color _colorForRole(UserRole? role) {
   return role == UserRole.demon ? Colors.red : Colors.green;
+}
+
+/// GPSピンに表示するラベルテキストを返す(issue #13)。
+///
+/// 自分のピンは「自分」と表示して一目で分かるようにする。
+/// 他のプレイヤーは [RoomUser.displayName] を表示する。
+/// displayName が空(参加直後でまだ届いていない等)のときは「?」をフォールバックにする。
+@visibleForTesting
+String markerLabelFor({
+  required String uid,
+  required String? myUid,
+  required RoomUser? user,
+}) {
+  if (uid == myUid) return '自分';
+  final name = user?.displayName ?? '';
+  return name.isEmpty ? '?' : name;
 }
 
 RoomUser? _findUser(List<RoomUser> users, String uid) {
