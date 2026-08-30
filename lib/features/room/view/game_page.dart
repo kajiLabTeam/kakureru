@@ -630,8 +630,7 @@ class _LocationMap extends HookWidget {
   }
 }
 
-// 役割による表示制御(誰に誰が見えるか)は別タスクで扱う。ここでは
-// 取得できた位置を単純に色分けして表示するだけ。地図・上下バー共通で使う。
+// 取得できた位置を単純に色分けして表示する。地図・上下バー共通で使う。
 Color _colorForRole(UserRole? role) {
   return role == UserRole.demon ? Colors.red : Colors.green;
 }
@@ -641,6 +640,7 @@ Color _colorForRole(UserRole? role) {
 /// 自分のピンは「自分」と表示して一目で分かるようにする。
 /// 他のプレイヤーは [RoomUser.displayName] を表示する。
 /// displayName が空(参加直後でまだ届いていない等)のときは「?」をフォールバックにする。
+@visibleForTesting
 String markerLabelFor({
   required String uid,
   required String? myUid,
