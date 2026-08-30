@@ -96,6 +96,51 @@ void main() {
         isFalse,
       );
     });
+
+    // issue #10: 鬼放出前は逃走者に鬼のGPS位置を見せないようにする
+    group('issue #10: 鬼放出前は逃走者→鬼の可視性をブロックする', () {
+      test('fugitiveInfoDelaySec=0でもbeforeRelease中は鬼が見えない', () {
+        // delay が 0 のとき従来実装では nowMillis >= releasedAt と等価になるが、
+        // phase ベースの明示ブロックにより beforeRelease 中は絶対に見えない。
+        expect(
+          isRoleVisible(
+            viewerRole: UserRole.fugitive,
+            targetRole: UserRole.demon,
+            releasedAt: releasedAt,
+            fugitiveInfoDelaySec: 0,
+            nowMillis: releasedAt - 1, // 放出1ms前
+          ),
+          isFalse,
+        );
+      });
+
+      test('fugitiveInfoDelaySec=0でreleasedAtちょうどなら鬼が見える', () {
+        expect(
+          isRoleVisible(
+            viewerRole: UserRole.fugitive,
+            targetRole: UserRole.demon,
+            releasedAt: releasedAt,
+            fugitiveInfoDelaySec: 0,
+            nowMillis: releasedAt, // 放出ちょうど
+          ),
+          isTrue,
+        );
+      });
+
+      test('beforeRelease中は鬼→鬼は見える(同役割)', () {
+        // 同じ役割同士はフェーズに関わらず常に見える。
+        expect(
+          isRoleVisible(
+            viewerRole: UserRole.demon,
+            targetRole: UserRole.demon,
+            releasedAt: releasedAt,
+            fugitiveInfoDelaySec: fugitiveInfoDelaySec,
+            nowMillis: releasedAt - 1,
+          ),
+          isTrue,
+        );
+      });
+    });
   });
 
   group('determineGamePhase', () {
@@ -211,7 +256,10 @@ void main() {
 
     test('逃走者でも鬼放出前は表示しない', () {
       expect(
-        canReportCaught(role: UserRole.fugitive, phase: GamePhase.beforeRelease),
+        canReportCaught(
+          role: UserRole.fugitive,
+          phase: GamePhase.beforeRelease,
+        ),
         isFalse,
       );
     });
@@ -228,6 +276,44 @@ void main() {
         canReportCaught(role: UserRole.demon, phase: GamePhase.beforeRelease),
         isFalse,
       );
+    });
+  });
+
+  group('uidsToNotifyOfDemonChange', () {
+    test('新たに鬼になった相手を通知対象にする', () {
+      final result = uidsToNotifyOfDemonChange(
+        previousDemonUids: {},
+        currentDemonUids: {'a'},
+        myUid: 'me',
+      );
+      expect(result, {'a'});
+    });
+
+    test('自分自身が鬼になった場合は通知対象から除く(全画面演出と二重表示防止)', () {
+      final result = uidsToNotifyOfDemonChange(
+        previousDemonUids: {},
+        currentDemonUids: {'me'},
+        myUid: 'me',
+      );
+      expect(result, isEmpty);
+    });
+
+    test('自分と他人が同時に鬼になった場合、他人だけ通知対象にする', () {
+      final result = uidsToNotifyOfDemonChange(
+        previousDemonUids: {},
+        currentDemonUids: {'me', 'a'},
+        myUid: 'me',
+      );
+      expect(result, {'a'});
+    });
+
+    test('既に鬼だった相手は変化なしなので通知しない', () {
+      final result = uidsToNotifyOfDemonChange(
+        previousDemonUids: {'a'},
+        currentDemonUids: {'a'},
+        myUid: 'me',
+      );
+      expect(result, isEmpty);
     });
   });
 }

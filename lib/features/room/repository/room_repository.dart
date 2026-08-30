@@ -90,14 +90,20 @@ class RoomRepository {
       final code = (1000 + _random.nextInt(9000)).toString();
       debugPrint('[_reserveRoomCode] roomCodes/$code へrunTransaction試行 ($i回目)');
       try {
-        final result = await _db.ref('roomCodes/$code').runTransaction((current) {
+        final result = await _db.ref('roomCodes/$code').runTransaction((
+          current,
+        ) {
           if (current != null) return Transaction.abort();
           return Transaction.success({'roomId': roomId});
         });
-        debugPrint('[_reserveRoomCode] roomCodes/$code committed=${result.committed}');
+        debugPrint(
+          '[_reserveRoomCode] roomCodes/$code committed=${result.committed}',
+        );
         if (result.committed) return code;
       } on FirebaseException catch (e) {
-        debugPrint('[_reserveRoomCode] roomCodes/$code 失敗: code=${e.code} message=${e.message}');
+        debugPrint(
+          '[_reserveRoomCode] roomCodes/$code 失敗: code=${e.code} message=${e.message}',
+        );
         rethrow;
       }
     }
@@ -116,7 +122,9 @@ class RoomRepository {
   Future<void> startGame(String roomId) async {
     await _db.ref('rooms/$roomId/meta/startedAt').set(ServerValue.timestamp);
 
-    final startedAtSnapshot = await _db.ref('rooms/$roomId/meta/startedAt').get();
+    final startedAtSnapshot = await _db
+        .ref('rooms/$roomId/meta/startedAt')
+        .get();
     final startedAt = startedAtSnapshot.value as int;
 
     final settingSnapshot = await _db.ref('rooms/$roomId/setting').get();
@@ -159,7 +167,9 @@ class RoomRepository {
   Future<void> reportCaught(String roomId) async {
     final uid = _uid;
     await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
-    await _db.ref('rooms/$roomId/users/$uid/becameDemonAt').set(ServerValue.timestamp);
+    await _db
+        .ref('rooms/$roomId/users/$uid/becameDemonAt')
+        .set(ServerValue.timestamp);
 
     final catchId = _db.ref('rooms/$roomId/catches').push().key!;
     await _db.ref('rooms/$roomId/catches/$catchId').set({
@@ -242,8 +252,22 @@ class RoomRepository {
     return controller.stream;
   }
 
-  /// ルームから退出する
+  /// ルームから退出する。RoomWaitingPage/GamePageの`PopScope`から、
+  /// 戻る操作(ハードウェア/AppBarの戻るボタン)で画面を離れたときに呼ばれる。
+  ///
+  /// users/{uid} を消すだけでは locations/{uid} が残り、他の参加者の
+  /// 地図に離脱後もピンが残り続けてしまうため、自分の位置情報も合わせて
+  /// 消す(docs/rtdb-schema.md上、locations/{uid} は本人のみ書き込み可)。
+  ///
+  /// **既知の制約**: 戻る操作による明示的な離脱しか検知できない。アプリの
+  /// 強制終了・クラッシュ・OSによるプロセスkillではこのメソッドが呼ばれず、
+  /// users/{uid}・locations/{uid}はRTDB上に残り続ける。厳密に検知するには
+  /// RTDBのonDisconnect()(presence機構)への移行が必要だが、Phase 1では
+  /// スコープ外としている。また、users削除の後にlocations削除を行う2段階の
+  /// 処理のため、ネットワーク瞬断等で後者だけ失敗すると、離脱通知(users基準)
+  /// は正しく出る一方で地図上の位置ピンだけ残る可能性がある。
   Future<void> leaveRoom(String roomId) async {
     await _db.ref('rooms/$roomId/users/$_uid').remove();
+    await _db.ref('rooms/$roomId/locations/$_uid').remove();
   }
 }
