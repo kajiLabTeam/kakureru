@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,6 +10,7 @@ import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/calibration_status.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/single_flight_action.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
@@ -24,6 +26,8 @@ class RoomWaitingPage extends HookConsumerWidget {
     final isStarting = useState(false);
     final startError = useState<Object?>(null);
     final hasNavigated = useState(false);
+    final isNominatingRandom = useState(false);
+    final randomNominationGuard = useMemoized(SingleFlightAction.new);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
 
     useEffect(() {
@@ -170,11 +174,30 @@ class RoomWaitingPage extends HookConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: OutlinedButton(
-                    onPressed: room.pendingDemonUid != null || demonCandidates.isEmpty
+                    onPressed:
+                        isNominatingRandom.value ||
+                            room.pendingDemonUid != null ||
+                            demonCandidates.isEmpty
                         ? null
                         : () {
-                            final target = demonCandidates[Random().nextInt(demonCandidates.length)];
-                            ref.read(roomRepositoryProvider).nominateDemon(roomId, target.id);
+                            // 連打対策: RTDBへの反映(room.pendingDemonUidの更新)には
+                            // ネットワーク往復の遅延があり、その間はボタンがまだ有効な
+                            // ままなので、SingleFlightActionで同一フレーム内の連打も
+                            // 含めて多重発火を防ぐ。
+                            unawaited(
+                              randomNominationGuard.run(() async {
+                                isNominatingRandom.value = true;
+                                try {
+                                  final target =
+                                      demonCandidates[Random().nextInt(demonCandidates.length)];
+                                  await ref
+                                      .read(roomRepositoryProvider)
+                                      .nominateDemon(roomId, target.id);
+                                } finally {
+                                  isNominatingRandom.value = false;
+                                }
+                              }),
+                            );
                           },
                     child: const Text('鬼をランダムで決める'),
                   ),
