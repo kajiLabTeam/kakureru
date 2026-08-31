@@ -541,11 +541,28 @@ class GamePage extends HookConsumerWidget {
                         ),
                       ),
                       if (opponentRoster.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            '検知なし',
-                            style: TextStyle(color: appMuted, fontSize: 13),
+                        // チップ一覧+詳細カードが出せる状態(下記else節)と
+                        // 高さの差が大きいと、対象が検知されるたびに地図の
+                        // 表示領域が急に縮んでガタつく。検知なし時も同程度の
+                        // 高さを確保しておく(issue #29フォローアップ、
+                        // 「下に広がることを考えたUI」の指摘対応)。
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                          child: Container(
+                            width: double.infinity,
+                            height: 200,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: appFaintBorder,
+                                width: 2,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              '検知なし',
+                              style: TextStyle(color: appMuted, fontSize: 13),
+                            ),
                           ),
                         )
                       else ...[
@@ -949,26 +966,31 @@ class _HiddenOpponentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
+      // チップ一覧+詳細カードが出せる状態と高さの差が大きいと、可視性が
+      // 解禁されるたびに地図の表示領域が急に縮んでガタつくため、同程度の
+      // 高さ(200)を確保しておく(issue #29フォローアップ)。
+      height: 200,
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
       decoration: BoxDecoration(
         border: Border.all(color: const Color(0xFFCCCCCC), width: 2),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Opacity(
             opacity: 0.35,
-            child: Text('👹', style: TextStyle(fontSize: 22)),
+            child: Text('👹', style: TextStyle(fontSize: 32)),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           const Text(
             '鬼の位置はまだ見えません',
-            style: TextStyle(fontSize: 12.5, color: appMuted),
+            style: TextStyle(fontSize: 13, color: appMuted),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
             reason,
-            style: const TextStyle(fontSize: 10, color: Color(0xFFAAAAAA)),
+            style: const TextStyle(fontSize: 11, color: Color(0xFFAAAAAA)),
           ),
         ],
       ),
