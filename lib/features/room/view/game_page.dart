@@ -6,6 +6,9 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/core/theme/app_theme.dart';
+import 'package:kakureru/core/utils/avatar_initial.dart';
+import 'package:kakureru/core/utils/duration_format.dart';
 import 'package:kakureru/core/utils/local_notifications.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
@@ -32,15 +35,6 @@ import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 import 'package:latlong2/latlong.dart' as latlong;
 import 'package:vibration/vibration.dart';
 
-/// Wi-Fi近接判定の表示方式。GamePage上でいつでも切り替えられる。
-enum _WifiDisplayMode {
-  /// 参加者ごとの3段階判定(近い/遠い/検知なし)。
-  levels,
-
-  /// 最も近い相手との上位3AP RSSI生データ比較。
-  rssiBars,
-}
-
 /// ゲーム中の画面。ゲーム内容自体はまだ無く、残り時間と参加者の位置表示のみ行う仮実装。
 class GamePage extends HookConsumerWidget {
   const GamePage({super.key, required this.roomId});
@@ -63,6 +57,21 @@ class GamePage extends HookConsumerWidget {
     final headerRole = _roleOf(room?.users ?? const [], myUid);
     final headerRoleTheme = headerRole != null ? roleThemeOf(headerRole) : null;
 
+    // タイマー表示はAppBar(ヘッダー)側でも使うため、body内(roomAsync.when)
+    // より前のここで計算しておく。UI改修モックはヘッダーの帯1本に役割文言と
+    // タイマーを同居させているため(2a-03/2a-04)、AppBarのtitleにこの値を渡す。
+    final now = serverNowMillis(offset);
+    final phase = determineGamePhase(
+      releasedAt: room?.releasedAt,
+      nowMillis: now,
+    );
+    final countdownSec = calculateCountdownSeconds(
+      phase: phase,
+      releasedAt: room?.releasedAt,
+      endsAt: room?.endsAt,
+      nowMillis: now,
+    );
+
     // 残り時間を1秒ごとに再計算するためのティッカー。
     // .info/serverTimeOffset 自体はズレが変化した時にしか流れてこないため、
     // 表示を毎秒更新するにはこのタイマーで再描画をトリガーする必要がある。
@@ -79,6 +88,11 @@ class GamePage extends HookConsumerWidget {
     // 成功したら全画面演出(CaughtTransitionOverlay)を出す。
     final isSubmittingCaught = useState(false);
     final showCaughtTransition = useState(false);
+
+    // 詳細カードで選択中の相手(UI改修モック2a-03「逃走者を選んで詳細を見る」)。
+    // nullの間は既定で最も近い相手を選ぶ(下のeffectiveSelectedUid参照)。
+    // ウィジェット内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
+    final selectedOpponentUid = useState<String?>(null);
 
     // ゲーム画面に入ったら位置送信・購読を開始し、離れたら止める。
     useEffect(() {
@@ -223,10 +237,6 @@ class GamePage extends HookConsumerWidget {
     });
 
     final pressureState = ref.watch(pressureViewModelProvider);
-    final nearestVerticalPosition = ref.watch(
-      nearestOpponentVerticalPositionProvider(roomId),
-    );
-    final wifiDisplayMode = useState(_WifiDisplayMode.levels);
     final bleDetections = ref.watch(bleViewModelProvider);
 
     // ゲーム画面からは戻れない(バックボタン・OSのスワイプ戻る等、
@@ -237,37 +247,44 @@ class GamePage extends HookConsumerWidget {
       child: Stack(
         children: [
           Scaffold(
+            // UI改修モック(2a-03/2a-04)はヘッダーの帯1本に役割文言と
+            // タイマーを左右に並べて同居させている。以前はAppBarのtitleに
+            // 役割文言だけを出し、タイマーは本文側の別行に分けていたが、
+            // 本文側は毎秒rebuildされるため、そのつどAppBarのtitleだけ
+            // 文言色が上書きされない不具合が起きていた経緯もあり、ここで
+            // 1つのRowにまとめて明示的に色を指定する。
             appBar: AppBar(
               automaticallyImplyLeading: false,
               backgroundColor: headerRoleTheme?.color,
               foregroundColor: headerRoleTheme != null ? Colors.white : null,
-              title: Text(headerRoleTheme?.label ?? 'ゲーム中'),
-              actions: headerRoleTheme != null
-                  ? [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 16),
-                        child: Icon(headerRoleTheme.icon),
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    headerRoleTheme?.label ?? 'ゲーム中',
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                  if (headerRoleTheme != null)
+                    Text(
+                      countdownSec == null
+                          ? '--:--'
+                          : formatCountdown(countdownSec),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 19,
                       ),
-                    ]
-                  : null,
+                    ),
+                ],
+              ),
             ),
             body: roomAsync.when(
               data: (room) {
-                final now = serverNowMillis(offset);
+                // now/phase/countdownSecはヘッダー(AppBar)側でも使うため
+                // build()の上のほうで計算済み。ここではroomがnon-nullに
+                // 確定した状態でそのまま使い回す。
                 final myRole = _roleOf(room.users, myUid);
-                final phase = determineGamePhase(
-                  releasedAt: room.releasedAt,
-                  nowMillis: now,
-                );
-                final countdownSec = calculateCountdownSeconds(
-                  phase: phase,
-                  releasedAt: room.releasedAt,
-                  endsAt: room.endsAt,
-                  nowMillis: now,
-                );
-                final countdownLabel = phase == GamePhase.beforeRelease
-                    ? '鬼放出まで'
-                    : '残り時間';
 
                 // 役割による表示制御(7/13のプレイテストで決まった非対称な可視性)。
                 // 自分は常に見える。相手は同role同士なら常に、異roleなら
@@ -290,11 +307,6 @@ class GamePage extends HookConsumerWidget {
                 final visibleLocations = locationState.locations
                     .where((location) => isVisibleToMe(location.uid))
                     .toList();
-                final visibleNearestVerticalPosition =
-                    nearestVerticalPosition != null &&
-                        isVisibleToMe(nearestVerticalPosition.uid)
-                    ? nearestVerticalPosition
-                    : null;
                 final visibleWifiEntries = ref
                     .watch(wifiProximityLevelsProvider(roomId))
                     .where((entry) => isVisibleToMe(entry.uid))
@@ -307,9 +319,33 @@ class GamePage extends HookConsumerWidget {
                         isVisibleToMe(rawNearestOpponentUid)
                     ? rawNearestOpponentUid
                     : null;
-                final visibleWifiComparisons = visibleNearestOpponentUid != null
-                    ? ref.watch(topWifiComparisonsProvider(roomId))
-                    : const <WifiApComparison>[];
+                final visibleVerticalPositions = ref
+                    .watch(relativeVerticalPositionsProvider(roomId))
+                    .where((position) => isVisibleToMe(position.uid))
+                    .toList();
+
+                // 逃走者から見て、可視性ディレイでまだ見えていない鬼がいるか
+                // (UI改修モック2a-04)。何も表示しないと不具合と区別が付かない
+                // ため、理由を明示するカードに切り替える。
+                final anyDemonHiddenFromMe =
+                    myRole == UserRole.fugitive &&
+                    room.users.any(
+                      (u) => u.role == UserRole.demon && !isVisibleToMe(u.id),
+                    );
+                final hiddenOpponentReason = anyDemonHiddenFromMe
+                    ? fugitiveHiddenDemonReason(
+                        phase: phase,
+                        releasedAt: room.releasedAt,
+                        fugitiveInfoDelaySec: room.setting.fugitiveInfoDelaySec,
+                        nowMillis: now,
+                      )
+                    : null;
+
+                // 「対象の役割」(自分と逆の役割)。BLEの至近距離検知と、
+                // 下の相手選択チップの両方で使う。
+                final opponentRole = myRole == UserRole.demon
+                    ? UserRole.fugitive
+                    : UserRole.demon;
 
                 // BLEで対象の役割の相手が至近距離(3m程度)にいるかどうか(issue #16)。
                 // 「捕まった」ボタン(常時表示・自己申告)とは別に、確実な捕捉を
@@ -317,15 +353,12 @@ class GamePage extends HookConsumerWidget {
                 // 絞るのは、他の近接表示(Wi-Fi・気圧)と同じく「鬼タイム」中は
                 // 逃走者から鬼の至近距離情報も見せない、という既存の非対称な
                 // 可視性ルール(role_visibility.dart)をBLEにも適用するため。
-                final opponentRoleForBle = myRole == UserRole.demon
-                    ? UserRole.fugitive
-                    : UserRole.demon;
                 final opponentShortUids = myRole == null
                     ? const <String>{}
                     : room.users
                           .where(
                             (u) =>
-                                u.role == opponentRoleForBle &&
+                                u.role == opponentRole &&
                                 u.id != myUid &&
                                 isVisibleToMe(u.id),
                           )
@@ -340,97 +373,136 @@ class GamePage extends HookConsumerWidget {
                   nowMillis: DateTime.now().millisecondsSinceEpoch,
                 );
 
+                // 相手選択チップの一覧(UI改修モック2a-03「逃走者を選んで詳細を
+                // 見る」)。Wi-Fiスキャン結果がまだ無い相手(visibleWifiEntries
+                // には現れない)も「検知なし」として一覧には出す必要があるため、
+                // room.usersを起点に絞り込む(visibleWifiEntriesを起点にすると
+                // スキャン未着の相手が一覧から消えてしまう)。
+                final opponentRoster = myRole == null
+                    ? const <RoomUser>[]
+                    : room.users
+                          .where(
+                            (u) =>
+                                u.role == opponentRole &&
+                                u.id != myUid &&
+                                isVisibleToMe(u.id),
+                          )
+                          .toList();
+                final rosterUids = opponentRoster.map((u) => u.id).toSet();
+                // 選択中のuidがまだ一覧に残っていればそれを使い、無ければ
+                // (未選択・退室・可視性が外れた等)既定で最も近い相手に戻す。
+                final effectiveSelectedUid =
+                    selectedOpponentUid.value != null &&
+                        rosterUids.contains(selectedOpponentUid.value)
+                    ? selectedOpponentUid.value
+                    : visibleNearestOpponentUid;
+                final selectedComparisons = effectiveSelectedUid != null
+                    ? ref.watch(
+                        wifiComparisonsForProvider((
+                          roomId,
+                          effectiveSelectedUid,
+                        )),
+                      )
+                    : const <WifiApComparison>[];
+
                 return Column(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        countdownSec == null
-                            ? '$countdownLabel: 計算中...'
-                            : '$countdownLabel: ${countdownSec < 0 ? 0 : countdownSec}秒',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                    ),
+                    // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
+                    // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
+                    // なので逃走者のみに出す。
+                    if (myRole == UserRole.fugitive &&
+                        phase == GamePhase.beforeRelease)
+                      _PreReleaseBanner(countdownSec: countdownSec),
                     if (locationState.permissionDenied)
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 16),
                         child: Text(
                           '位置情報の権限(常に許可)がないため、自分の位置を送信できません',
-                          style: TextStyle(color: Colors.red),
+                          style: TextStyle(color: Color(0xFFE5484D)),
                         ),
                       ),
                     // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた
                     // ときだけ出す「鬼になる」に一本化した。ローディング表示・
                     // エラー処理・確定演出(CaughtTransitionOverlay)は、旧
                     // 「捕まった」ボタンのものをそのまま踏襲している。
+                    // この「鬼になる」ボタン(BLE 3m接近検知時)はissue #29の
+                    // スコープ外(2a-05相当。既存のUIのまま一切変更しないと
+                    // ユーザー確認済み)。アプリ全体のテーマ変更の影響も受け
+                    // ないよう、Flutter標準のThemeDataで局所的に上書きする。
                     if (myRole != null &&
                         canReportCaught(role: myRole, phase: phase) &&
                         bleBecomeDemonDetected)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        child: FilledButton.icon(
-                          icon: isSubmittingCaught.value
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.priority_high),
-                          label: const Text('鬼になる'),
-                          onPressed: isSubmittingCaught.value
-                              ? null
-                              : () async {
-                                  final confirmed = await showDialog<bool>(
-                                    context: context,
-                                    builder: (dialogContext) => AlertDialog(
-                                      title: const Text('鬼が近くにいます'),
-                                      content: const Text(
-                                        'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
-                                        '鬼になりますか?この操作は取り消せません。',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.of(
-                                            dialogContext,
-                                          ).pop(false),
-                                          child: const Text('キャンセル'),
-                                        ),
-                                        FilledButton(
-                                          onPressed: () => Navigator.of(
-                                            dialogContext,
-                                          ).pop(true),
-                                          child: const Text('鬼になる'),
-                                        ),
-                                      ],
+                      Theme(
+                        data: ThemeData(useMaterial3: true),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          child: FilledButton.icon(
+                            icon: isSubmittingCaught.value
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
                                     ),
-                                  );
-                                  if (confirmed != true) return;
-
-                                  isSubmittingCaught.value = true;
-                                  try {
-                                    await ref
-                                        .read(roomRepositoryProvider)
-                                        .reportCaught(roomId);
-                                    showCaughtTransition.value = true;
-                                  } catch (e) {
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text('送信に失敗しました: $e'),
+                                  )
+                                : const Icon(Icons.priority_high),
+                            label: const Text('鬼になる'),
+                            onPressed: isSubmittingCaught.value
+                                ? null
+                                : () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dialogContext) => Theme(
+                                        data: ThemeData(useMaterial3: true),
+                                        child: AlertDialog(
+                                          title: const Text('鬼が近くにいます'),
+                                          content: const Text(
+                                            'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
+                                            '鬼になりますか?この操作は取り消せません。',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.of(
+                                                dialogContext,
+                                              ).pop(false),
+                                              child: const Text('キャンセル'),
+                                            ),
+                                            FilledButton(
+                                              onPressed: () => Navigator.of(
+                                                dialogContext,
+                                              ).pop(true),
+                                              child: const Text('鬼になる'),
+                                            ),
+                                          ],
                                         ),
-                                      );
+                                      ),
+                                    );
+                                    if (confirmed != true) return;
+
+                                    isSubmittingCaught.value = true;
+                                    try {
+                                      await ref
+                                          .read(roomRepositoryProvider)
+                                          .reportCaught(roomId);
+                                      showCaughtTransition.value = true;
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text('送信に失敗しました: $e'),
+                                          ),
+                                        );
+                                      }
+                                    } finally {
+                                      isSubmittingCaught.value = false;
                                     }
-                                  } finally {
-                                    isSubmittingCaught.value = false;
-                                  }
-                                },
+                                  },
+                          ),
                         ),
                       ),
                     Expanded(
@@ -442,61 +514,90 @@ class GamePage extends HookConsumerWidget {
                         gameArea: room.setting.gameArea,
                       ),
                     ),
-                    // マップの下に「鬼(または逃走者)との上下関係」と「Wi-Fi近接表示」を
-                    // 横並びで置く。ゲーム中にちらっと見てすぐ分かることを優先し、
-                    // どちらも常に同時に見える位置にしている。
-                    SizedBox(
-                      height: 200,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _NearestOpponentVerticalIndicator(
+                    // マップの下は、対象役割の相手をタップで選べるチップ一覧と、
+                    // 選んだ1人だけの詳細カード(UI改修モック2a-03「逃走者を
+                    // 選んで詳細を見る」)。人数が増えても見やすいよう、対象を
+                    // 常に1人だけに絞って詳細(上下判定+Wi-Fi距離感)を出す
+                    // (issue #29フォローアップ)。
+                    //
+                    // 逃走者から見て可視性ディレイでまだ鬼が見えていない間は、
+                    // チップ一覧・詳細カードの代わりに理由を明示するカードを
+                    // 出す(hiddenOpponentReason != null)。
+                    if (hiddenOpponentReason != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: _HiddenOpponentCard(
+                          reason: hiddenOpponentReason,
+                        ),
+                      )
+                    else ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: Text(
+                          opponentRole == UserRole.fugitive
+                              ? '逃走者を選んで詳細を見る'
+                              : '鬼を選んで詳細を見る',
+                          style: const TextStyle(color: appMuted, fontSize: 11),
+                        ),
+                      ),
+                      if (opponentRoster.isEmpty)
+                        // チップ一覧+詳細カードが出せる状態(下記else節)と
+                        // 高さの差が大きいと、対象が検知されるたびに地図の
+                        // 表示領域が急に縮んでガタつく。検知なし時も同程度の
+                        // 高さを確保しておく(issue #29フォローアップ、
+                        // 「下に広がることを考えたUI」の指摘対応)。
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                          child: Container(
+                            width: double.infinity,
+                            height: 200,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: appFaintBorder,
+                                width: 2,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              '検知なし',
+                              style: TextStyle(color: appMuted, fontSize: 13),
+                            ),
+                          ),
+                        )
+                      else ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _OpponentSelectorChips(
+                            roster: opponentRoster,
+                            entries: visibleWifiEntries,
+                            selectedUid: effectiveSelectedUid,
+                            onSelect: (uid) => selectedOpponentUid.value = uid,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _OpponentDetailCard(
+                            user: effectiveSelectedUid == null
+                                ? null
+                                : _findUser(room.users, effectiveSelectedUid),
                             pressureState: pressureState,
                             isCalibrated: _isCalibrated(room, myUid),
-                            position: visibleNearestVerticalPosition,
-                            opponentRole: _roleOf(
-                              room.users,
-                              visibleNearestVerticalPosition?.uid,
+                            verticalPosition: _verticalFor(
+                              visibleVerticalPositions,
+                              effectiveSelectedUid,
                             ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                SegmentedButton<_WifiDisplayMode>(
-                                  segments: const [
-                                    ButtonSegment(
-                                      value: _WifiDisplayMode.levels,
-                                      label: Text('3段階判定'),
-                                    ),
-                                    ButtonSegment(
-                                      value: _WifiDisplayMode.rssiBars,
-                                      label: Text('RSSI比較'),
-                                    ),
-                                  ],
-                                  selected: {wifiDisplayMode.value},
-                                  onSelectionChanged: (selection) =>
-                                      wifiDisplayMode.value = selection.first,
-                                ),
-                                Expanded(
-                                  child:
-                                      wifiDisplayMode.value ==
-                                          _WifiDisplayMode.levels
-                                      ? _WifiProximityLevelsView(
-                                          entries: visibleWifiEntries,
-                                          users: room.users,
-                                        )
-                                      : _WifiRssiCompareView(
-                                          comparisons: visibleWifiComparisons,
-                                          nearestUid: visibleNearestOpponentUid,
-                                          users: room.users,
-                                        ),
-                                ),
-                              ],
+                            wifiLevel: _levelFor(
+                              visibleWifiEntries,
+                              effectiveSelectedUid,
                             ),
+                            comparisons: selectedComparisons,
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
+                      ],
+                    ],
+                    const SizedBox(height: 8),
                   ],
                 );
               },
@@ -685,7 +786,7 @@ class _LocationMap extends HookWidget {
     return Polygon(
       points: areaPoints,
       borderStrokeWidth: 2,
-      borderColor: Colors.blue,
+      borderColor: _selfColor,
       pattern: StrokePattern.dashed(segments: const [8, 4]),
     );
   }
@@ -703,7 +804,7 @@ class _LocationMap extends HookWidget {
   Marker _buildMarker(UserLocation location) {
     final isSelf = location.uid == myUid;
     final user = _findUser(users, location.uid);
-    final color = isSelf ? Colors.blue : _colorForRole(user?.role);
+    final color = isSelf ? _selfColor : _colorForRole(user?.role);
     final label = markerLabelFor(uid: location.uid, myUid: myUid, user: user);
 
     return Marker(
@@ -752,9 +853,14 @@ class _LocationMap extends HookWidget {
   }
 }
 
+/// 自分自身を表す色(青)。docs/ui-mockup-2a.htmlの配色ルール
+/// (赤=鬼/青=自分/緑=逃走者)に合わせている。
+const _selfColor = Color(0xFF3B82F6);
+
 // 取得できた位置を単純に色分けして表示する。地図・上下バー共通で使う。
+// role_theme.dartと同じ配色(鬼=赤/逃走者=緑)に揃える。
 Color _colorForRole(UserRole? role) {
-  return role == UserRole.demon ? Colors.red : Colors.green;
+  return role == null ? Colors.grey : roleThemeOf(role).color;
 }
 
 /// GPSピンに表示するラベルテキストを返す(issue #13)。
@@ -785,6 +891,29 @@ UserRole? _roleOf(List<RoomUser> users, String? uid) {
   return _findUser(users, uid)?.role;
 }
 
+/// [entries]から指定uidの3段階判定を探す。uidがnull、または該当エントリが
+/// 無ければnull(検知なし扱い)。
+ProximityLevel? _levelFor(List<WifiProximityEntry> entries, String? uid) {
+  if (uid == null) return null;
+  for (final entry in entries) {
+    if (entry.uid == uid) return entry.level;
+  }
+  return null;
+}
+
+/// [positions]から指定uidの気圧上下判定を探す。uidがnull、または該当が
+/// 無ければnull(検知なし扱い)。
+RelativeVerticalPosition? _verticalFor(
+  List<RelativeVerticalPosition> positions,
+  String? uid,
+) {
+  if (uid == null) return null;
+  for (final position in positions) {
+    if (position.uid == uid) return position;
+  }
+  return null;
+}
+
 /// 自分がキャリブレーション済みかどうか。ホストは meta/basePressure、
 /// 参加者は自分の users/{uid}/pressureOffset の有無で判定する
 /// (待機画面の判定基準と同じ)。
@@ -794,107 +923,345 @@ bool _isCalibrated(Room room, String? myUid) {
   return _findUser(room.users, myUid)?.pressureOffset != null;
 }
 
-/// 気圧センサーによる「鬼(または逃走者)との上下関係」表示。
-///
-/// 以前は参加者全員を1本のバーに重ねていたが、誰が誰か分かりにくかった
-/// ため、Wi-Fiの近接判定と同じ「最も近い対象の役割の相手」1人だけに絞った
-/// (nearestOpponentVerticalPositionProvider参照)。表示対象を揃えることで
-/// 認知負荷を下げる狙い。
-///
-/// センサー非対応・未キャリブレーション・検知なしの3状態を、実際に上下を
-/// 表示できる状態と明確に区別して案内する。
-class _NearestOpponentVerticalIndicator extends StatelessWidget {
-  const _NearestOpponentVerticalIndicator({
-    required this.pressureState,
-    required this.isCalibrated,
-    required this.position,
-    required this.opponentRole,
-  });
+/// 鬼放出前、逃走者に「いまのうちに離れる」ことを促すバナー
+/// (UI改修モック2a-04)。
+class _PreReleaseBanner extends StatelessWidget {
+  const _PreReleaseBanner({required this.countdownSec});
 
-  final PressureState pressureState;
-  final bool isCalibrated;
-  final RelativeVerticalPosition? position;
-  final UserRole? opponentRole;
-
-  static const _rangeMeters = 5.0;
-  static const _dotSize = 22.0;
-  static const _boxWidth = 88.0;
+  final int? countdownSec;
 
   @override
   Widget build(BuildContext context) {
-    final message = _statusMessage();
-
-    return SizedBox(
-      width: 120,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('上', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Expanded(
-              child: Container(
-                width: _boxWidth,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: message != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Text(
-                            message,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      )
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          final height = constraints.maxHeight;
-                          return Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              // 自分の中心線。太線+色ではっきり区別する。
-                              Container(height: 4, color: Colors.blue),
-                              _buildDot(height),
-                            ],
-                          );
-                        },
-                      ),
-              ),
+    final sec = countdownSec;
+    final label = sec == null ? '計算中...' : formatCountdown(sec);
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFFFFAF0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          const Text('⏳', style: TextStyle(fontSize: 15)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '鬼の放出まで $label — いまのうちに離れる',
+              style: const TextStyle(fontSize: 11.5, color: Color(0xFF8A6A1E)),
             ),
-            const SizedBox(height: 4),
-            const Text('下', style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 可視性ディレイ中、逃走者に「なぜ鬼が見えないか」を明示するカード
+/// (UI改修モック2a-04)。何も表示しないと不具合と区別が付かないため、
+/// [fugitiveHiddenDemonReason]で計算した理由をそのまま出す。
+class _HiddenOpponentCard extends StatelessWidget {
+  const _HiddenOpponentCard({required this.reason});
+
+  final String reason;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      // チップ一覧+詳細カードが出せる状態と高さの差が大きいと、可視性が
+      // 解禁されるたびに地図の表示領域が急に縮んでガタつくため、同程度の
+      // 高さ(200)を確保しておく(issue #29フォローアップ)。
+      height: 200,
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFCCCCCC), width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Opacity(
+            opacity: 0.35,
+            child: Text('👹', style: TextStyle(fontSize: 32)),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '鬼の位置はまだ見えません',
+            style: TextStyle(fontSize: 13, color: appMuted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            reason,
+            style: const TextStyle(fontSize: 11, color: Color(0xFFAAAAAA)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 対象役割の相手を選ぶチップ一覧(UI改修モック2a-03
+/// 「逃走者を選んで詳細を見る」)。タップで[_OpponentDetailCard]に出す
+/// 相手を切り替えられる。選択中の相手は本人の役割色の枠+薄い背景で
+/// 強調し、Wi-Fi判定が「検知なし」の相手は薄く表示して目立たなくする。
+class _OpponentSelectorChips extends StatelessWidget {
+  const _OpponentSelectorChips({
+    required this.roster,
+    required this.entries,
+    required this.selectedUid,
+    required this.onSelect,
+  });
+
+  final List<RoomUser> roster;
+  final List<WifiProximityEntry> entries;
+  final String? selectedUid;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (var i = 0; i < roster.length; i++) ...[
+          Expanded(child: _buildChip(roster[i])),
+          if (i != roster.length - 1) const SizedBox(width: 6),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildChip(RoomUser user) {
+    final level = _levelFor(entries, user.id);
+    final color = _colorForRole(user.role);
+    final isSelected = user.id == selectedUid;
+    final isNotDetected = level == null || level == ProximityLevel.notDetected;
+
+    return Opacity(
+      opacity: isNotDetected ? 0.5 : 1.0,
+      child: GestureDetector(
+        onTap: () => onSelect(user.id),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: isSelected ? color : Colors.transparent,
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(10),
+            color: isSelected ? color.withValues(alpha: 0.07) : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: color,
+                child: Text(
+                  avatarInitial(user.displayName),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                user.displayName,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: isSelected ? appInk : appMuted,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _levelLabel(level),
+                style: TextStyle(fontSize: 10, color: _levelColor(level)),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
+  String _levelLabel(ProximityLevel? level) {
+    switch (level) {
+      case ProximityLevel.close:
+        return '近い';
+      case ProximityLevel.far:
+        return '遠い';
+      case ProximityLevel.notDetected:
+      case null:
+        return '検知なし';
+    }
+  }
+
+  /// 近接度に応じた文字色。「近い」だけ強調色(赤)にし、それ以外は
+  /// 目立たないグレーにする(UI改修モックの強弱付けに合わせる)。
+  Color _levelColor(ProximityLevel? level) {
+    return level == ProximityLevel.close
+        ? const Color(0xFFE5484D)
+        : const Color(0xFFAAAAAA);
+  }
+}
+
+/// 選択中の相手1人ぶんの詳細(上下判定+Wi-Fi距離感)をまとめて表示する
+/// カード(UI改修モック2a-03「◯◯ の詳細」)。
+///
+/// センサー非対応・未キャリブレーション・検知なしの状態は、実際に
+/// 表示できる状態と明確に区別して案内する。
+class _OpponentDetailCard extends StatelessWidget {
+  const _OpponentDetailCard({
+    required this.user,
+    required this.pressureState,
+    required this.isCalibrated,
+    required this.verticalPosition,
+    required this.wifiLevel,
+    required this.comparisons,
+  });
+
+  final RoomUser? user;
+  final PressureState pressureState;
+  final bool isCalibrated;
+  final RelativeVerticalPosition? verticalPosition;
+  final ProximityLevel? wifiLevel;
+  final List<WifiApComparison> comparisons;
+
+  static const _rangeMeters = 5.0;
+  static const _dotSize = 14.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = user;
+    if (target == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: appFaintBorder, width: 2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: Text(
+            '検知なし',
+            style: TextStyle(color: appMuted, fontSize: 13),
+          ),
+        ),
+      );
+    }
+
+    final color = _colorForRole(target.role);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: appInk, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${target.displayName} の詳細',
+            style: const TextStyle(
+              fontSize: 12,
+              color: appInk,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(width: 84, child: _verticalSection(color)),
+                const VerticalDivider(
+                  width: 20,
+                  color: appFaintBorder,
+                  thickness: 2,
+                ),
+                Expanded(child: _wifiSection(color)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _verticalSection(Color opponentColor) {
+    final message = _verticalStatusMessage();
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text('上下', style: TextStyle(fontSize: 10, color: appMuted)),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 80,
+          child: message != null
+              ? Center(
+                  child: Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 9, color: appMuted),
+                  ),
+                )
+              : Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFFDDDDDD)),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(height: 3, color: _selfColor),
+                          _buildDot(constraints.maxHeight, opponentColor),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+        ),
+        const SizedBox(height: 4),
+        Text(_verticalLabel(), style: const TextStyle(fontSize: 10)),
+      ],
+    );
+  }
+
   /// 実際に上下を表示できないなら理由を返す。表示できるならnull。
-  String? _statusMessage() {
+  String? _verticalStatusMessage() {
     if (pressureState.sensorAvailability ==
         PressureSensorAvailability.unavailable) {
-      return 'この端末は非対応';
+      return '非対応';
     }
     if (pressureState.sensorAvailability ==
         PressureSensorAvailability.checking) {
-      return '確認中...';
+      return '確認中';
     }
     if (!isCalibrated) {
-      return 'キャリブレーションが必要です';
+      return '未実施';
     }
-    if (position == null) {
+    if (verticalPosition == null) {
       return '検知なし';
     }
     return null;
   }
 
-  Widget _buildDot(double height) {
-    final clamped = position!.deltaMeters.clamp(-_rangeMeters, _rangeMeters);
+  String _verticalLabel() {
+    final position = verticalPosition;
+    if (position == null) return '';
+    final meters = position.deltaMeters.abs().toStringAsFixed(0);
+    return position.deltaMeters >= 0
+        ? '+$meters'
+              'm 上'
+        : '-$meters'
+              'm 下';
+  }
+
+  Widget _buildDot(double height, Color opponentColor) {
+    final clamped = verticalPosition!.deltaMeters.clamp(
+      -_rangeMeters,
+      _rangeMeters,
+    );
     // t: 0(下端)〜1(上端)。deltaMetersが正(相手が上)ほどtが大きくなる。
     final t = (clamped + _rangeMeters) / (2 * _rangeMeters);
     final top = (height * (1 - t) - _dotSize / 2).clamp(0.0, height - _dotSize);
@@ -905,150 +1272,94 @@ class _NearestOpponentVerticalIndicator extends StatelessWidget {
         width: _dotSize,
         height: _dotSize,
         decoration: BoxDecoration(
-          color: _colorForRole(opponentRole),
+          color: opponentColor,
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white, width: 2),
         ),
       ),
     );
   }
-}
 
-/// Wi-Fi近接判定 表示方式A: 参加者ごとの3段階判定。
-class _WifiProximityLevelsView extends StatelessWidget {
-  const _WifiProximityLevelsView({required this.entries, required this.users});
-
-  final List<WifiProximityEntry> entries;
-  final List<RoomUser> users;
-
-  @override
-  Widget build(BuildContext context) {
-    if (entries.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('Wi-Fiスキャン結果を待っています...'),
-      );
-    }
-
-    return ListView(
-      children: entries.map((entry) {
-        final user = _findUser(users, entry.uid);
-        return ListTile(
-          dense: true,
-          leading: Icon(
-            Icons.circle,
-            size: 12,
-            color: _colorForRole(user?.role),
+  Widget _wifiSection(Color opponentColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text(
+          'Wi-Fi距離感',
+          style: TextStyle(fontSize: 10, color: appMuted),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          _wifiLevelLabel(),
+          style: TextStyle(
+            fontSize: 16,
+            color: _wifiLevelColor(),
+            fontWeight: FontWeight.w600,
           ),
-          title: Text(user?.displayName ?? entry.uid),
-          trailing: Text(_labelFor(entry.level)),
-        );
-      }).toList(),
+        ),
+        if (comparisons.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 18,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final comparison in comparisons) ...[
+                  Expanded(child: _miniBar(comparison.selfRssi, _selfColor)),
+                  const SizedBox(width: 2),
+                  Expanded(
+                    child: _miniBar(comparison.targetRssi, opponentColor),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            '青=自分 / 色=相手 のRSSI',
+            style: TextStyle(fontSize: 9, color: Color(0xFFAAAAAA)),
+          ),
+        ],
+      ],
     );
   }
 
-  String _labelFor(ProximityLevel level) {
-    switch (level) {
+  String _wifiLevelLabel() {
+    switch (wifiLevel) {
       case ProximityLevel.close:
         return '近い';
       case ProximityLevel.far:
         return '遠い';
       case ProximityLevel.notDetected:
+      case null:
         return '検知なし';
     }
   }
-}
 
-/// Wi-Fi近接判定 表示方式B: 判定を経由しない生RSSIバー比較。
-///
-/// 比較対象は最も近い「対象の役割」の相手(nearestOpponentUidProvider)。
-/// 共通APのうち自分・相手のRSSI平均が強い上位3つを、それぞれ自分の
-/// バーと相手のバーを並べて表示する(数値そのものは出さず、長さで見せる)。
-class _WifiRssiCompareView extends StatelessWidget {
-  const _WifiRssiCompareView({
-    required this.comparisons,
-    required this.nearestUid,
-    required this.users,
-  });
-
-  final List<WifiApComparison> comparisons;
-  final String? nearestUid;
-  final List<RoomUser> users;
-
-  static const _minRssi = -90;
-  static const _maxRssi = -40;
-  static const _maxBarWidth = 100.0;
-  static const _circledNumbers = ['①', '②', '③'];
-
-  @override
-  Widget build(BuildContext context) {
-    final targetUid = nearestUid;
-    if (targetUid == null) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('比較対象が見つかりません(検知なし)'),
-      );
+  /// 「近い」だけ強調色(赤)にし、それ以外は落ち着いた色にする
+  /// (チップ一覧[_OpponentSelectorChips]と同じ強弱付け)。
+  Color _wifiLevelColor() {
+    switch (wifiLevel) {
+      case ProximityLevel.close:
+        return const Color(0xFFE5484D);
+      case ProximityLevel.far:
+        return appInk;
+      case ProximityLevel.notDetected:
+      case null:
+        return appMuted;
     }
-
-    final targetUser = _findUser(users, targetUid);
-    final targetColor = _colorForRole(targetUser?.role);
-    final targetLabel = targetUser?.role == UserRole.demon ? '鬼' : '逃走者';
-
-    if (comparisons.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text('${targetUser?.displayName ?? targetLabel} との共通APがまだありません'),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '比較対象: ${targetUser?.displayName ?? targetLabel}($targetLabel)',
-            style: TextStyle(color: targetColor, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          for (var i = 0; i < comparisons.length; i++)
-            _buildApRow(i, comparisons[i], targetLabel, targetColor),
-        ],
-      ),
-    );
   }
 
-  Widget _buildApRow(
-    int index,
-    WifiApComparison comparison,
-    String targetLabel,
-    Color targetColor,
-  ) {
-    final number = index < _circledNumbers.length
-        ? _circledNumbers[index]
-        : '${index + 1}';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 48,
-            child: Text('Wi-Fi$number', style: const TextStyle(fontSize: 12)),
-          ),
-          const Text('自分', style: TextStyle(fontSize: 12)),
-          const SizedBox(width: 4),
-          _bar(comparison.selfRssi, Colors.blue),
-          const SizedBox(width: 12),
-          Text(targetLabel, style: TextStyle(fontSize: 12, color: targetColor)),
-          const SizedBox(width: 4),
-          _bar(comparison.targetRssi, targetColor),
-        ],
-      ),
+  Widget _miniBar(int rssi, Color color) {
+    const minRssi = -90;
+    const maxRssi = -40;
+    final ratio = ((rssi - minRssi) / (maxRssi - minRssi)).clamp(0.05, 1.0);
+    return FractionallySizedBox(
+      heightFactor: ratio,
+      alignment: Alignment.bottomCenter,
+      child: Container(color: color),
     );
-  }
-
-  Widget _bar(int rssi, Color color) {
-    final ratio = ((rssi - _minRssi) / (_maxRssi - _minRssi)).clamp(0.0, 1.0);
-    return Container(width: _maxBarWidth * ratio + 4, height: 10, color: color);
   }
 }

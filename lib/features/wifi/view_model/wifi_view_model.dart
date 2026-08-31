@@ -127,8 +127,8 @@ final _rawNearestOpponentUidProvider = Provider.family<String?, String>((
 ///
 /// [_rawNearestOpponentUidProvider]と同じ理由(Wi-Fiスキャンのノイズ)で、
 /// 直近で見つかっていた相手は[proximityHysteresisGraceDuration]の間、
-/// 保持してからnullに切り替える。この値はRSSI比較表示(topWifiComparisonsProvider)
-/// と気圧の上下判定(nearestOpponentVerticalPositionProvider)の両方が
+/// 保持してからnullに切り替える。この値は詳細カードの既定選択対象と
+/// 気圧の上下判定(nearestOpponentVerticalPositionProvider)の両方が
 /// 経由するため、ここで平滑化すればどちらの表示も一緒に安定する。
 class NearestOpponentUidNotifier extends Notifier<String?> {
   NearestOpponentUidNotifier(this.roomId);
@@ -163,16 +163,22 @@ final nearestOpponentUidProvider =
       NearestOpponentUidNotifier.new,
     );
 
-/// 表示方式B用: 最も近い相手との上位3AP比較データ。
-final topWifiComparisonsProvider =
-    Provider.family<List<WifiApComparison>, String>((ref, roomId) {
-      final nearestUid = ref.watch(nearestOpponentUidProvider(roomId));
-      if (nearestUid == null) return const [];
-
+/// 指定した相手との上位3AP比較データ(表示方式B)。
+///
+/// ゲーム画面の詳細カードは「いま選んでいる相手」(既定は最も近い相手だが
+/// タップで任意の相手に切り替えられる。UI改修モック2a-03「逃走者を選んで
+/// 詳細を見る」)の比較データを必要とするため、最も近い相手専用だった
+/// 旧`topWifiComparisonsProvider`を任意uid対応に一般化した。
+final wifiComparisonsForProvider =
+    Provider.family<List<WifiApComparison>, (String roomId, String targetUid)>((
+      ref,
+      args,
+    ) {
+      final (roomId, targetUid) = args;
       final myUid = FirebaseAuth.instance.currentUser?.uid;
       final locations = ref.watch(locationViewModelProvider).locations;
       final selfScan = _scanFor(locations, myUid);
-      final targetScan = _scanFor(locations, nearestUid);
+      final targetScan = _scanFor(locations, targetUid);
       if (selfScan == null || targetScan == null) return const [];
 
       return selectTopCommonAccessPoints(

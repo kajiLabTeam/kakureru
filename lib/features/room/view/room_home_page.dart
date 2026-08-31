@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/features/room/player_name_validation.dart';
 import 'package:kakureru/features/room/view/room_waiting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
@@ -65,48 +66,87 @@ class RoomHomePage extends HookConsumerWidget {
                 errorText: _nameErrorMessage(showNameError),
               ),
             ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: state.isLoading
-                  ? null
-                  : () {
-                      if (nameError != null) {
-                        hasAttemptedSubmit.value = true;
-                        return;
-                      }
-                      ref
-                          .read(roomViewModelProvider.notifier)
-                          .createRoom(nameController.text);
-                    },
-              child: const Text('ルームを作る'),
-            ),
-            const Divider(height: 48),
-            TextField(
-              controller: codeController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'ルームコード(4桁)'),
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                border: Border.all(color: appFaintBorder, width: 2),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'ホストとして',
+                    style: TextStyle(fontSize: 12, color: appMuted),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: state.isLoading
+                        ? null
+                        : () {
+                            if (nameError != null) {
+                              hasAttemptedSubmit.value = true;
+                              return;
+                            }
+                            ref
+                                .read(roomViewModelProvider.notifier)
+                                .createRoom(nameController.text);
+                          },
+                    child: const Text('ルームを作る'),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: state.isLoading
-                  ? null
-                  : () {
-                      if (nameError != null) {
-                        hasAttemptedSubmit.value = true;
-                        return;
-                      }
-                      ref
-                          .read(roomViewModelProvider.notifier)
-                          .joinRoom(codeController.text, nameController.text);
-                    },
-              child: const Text('ルームに参加'),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                border: Border.all(color: appFaintBorder, width: 2),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'ルームコードで参加',
+                    style: TextStyle(fontSize: 12, color: appMuted),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: codeController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'ルームコード(4桁)'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: state.isLoading
+                        ? null
+                        : () {
+                            if (nameError != null) {
+                              hasAttemptedSubmit.value = true;
+                              return;
+                            }
+                            ref
+                                .read(roomViewModelProvider.notifier)
+                                .joinRoom(
+                                  codeController.text,
+                                  nameController.text,
+                                );
+                          },
+                    child: const Text('ルームに参加'),
+                  ),
+                ],
+              ),
             ),
             if (state.hasError)
               Padding(
                 padding: const EdgeInsets.only(top: 24),
                 child: Text(
                   '${state.error}',
-                  style: const TextStyle(color: Colors.red),
+                  style: const TextStyle(color: Color(0xFFE5484D)),
                 ),
               ),
           ],

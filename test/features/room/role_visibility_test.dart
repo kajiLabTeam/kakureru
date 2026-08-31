@@ -316,4 +316,46 @@ void main() {
       expect(result, isEmpty);
     });
   });
+
+  group('fugitiveHiddenDemonReason', () {
+    test('鬼放出前は、放出後の待ち時間を案内する', () {
+      final reason = fugitiveHiddenDemonReason(
+        phase: GamePhase.beforeRelease,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: 30,
+        nowMillis: 0,
+      );
+      expect(reason, '鬼の放出後、30秒経つと表示されます');
+    });
+
+    test('放出後・ディレイ経過前は、残り秒数を案内する', () {
+      final reason = fugitiveHiddenDemonReason(
+        phase: GamePhase.released,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: 30,
+        nowMillis: 110000, // releasedAtから10秒経過
+      );
+      expect(reason, 'あと20秒で表示されます');
+    });
+
+    test('ディレイ経過後はnull(もう見えているはず)', () {
+      final reason = fugitiveHiddenDemonReason(
+        phase: GamePhase.released,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: 30,
+        nowMillis: 200000,
+      );
+      expect(reason, isNull);
+    });
+
+    test('releasedAtが未確定ならnull', () {
+      final reason = fugitiveHiddenDemonReason(
+        phase: GamePhase.released,
+        releasedAt: null,
+        fugitiveInfoDelaySec: 30,
+        nowMillis: 0,
+      );
+      expect(reason, isNull);
+    });
+  });
 }
