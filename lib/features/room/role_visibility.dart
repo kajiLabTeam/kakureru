@@ -23,7 +23,10 @@ bool isRoleVisible({
   if (viewerRole == targetRole) return true;
   if (releasedAt == null) return false;
 
-  final phase = determineGamePhase(releasedAt: releasedAt, nowMillis: nowMillis);
+  final phase = determineGamePhase(
+    releasedAt: releasedAt,
+    nowMillis: nowMillis,
+  );
 
   switch (viewerRole) {
     case UserRole.demon:
@@ -96,6 +99,31 @@ Set<String> uidsToNotifyOfDemonChange({
       )
       .where((uid) => uid != myUid)
       .toSet();
+}
+
+/// 逃走者から見て、鬼の位置が可視性ディレイでまだ見えない理由の案内文。
+///
+/// [isRoleVisible]がfalseを返す状況(逃走者→鬼、鬼放出前 or
+/// fugitiveInfoDelaySec経過前)に対応するメッセージを返す。それ以外の
+/// 状況(もう見えているはず)ではnull。
+///
+/// UI改修モック(docs/ui-mockup-2a.html 2a-04)で、可視性ディレイ中に
+/// 何も表示されないと「壊れているのか仕様なのか分からない」という課題が
+/// 指摘されたための追加。
+String? fugitiveHiddenDemonReason({
+  required GamePhase phase,
+  required int? releasedAt,
+  required int fugitiveInfoDelaySec,
+  required int nowMillis,
+}) {
+  if (phase == GamePhase.beforeRelease) {
+    return '鬼の放出後、$fugitiveInfoDelaySec秒経つと表示されます';
+  }
+  if (releasedAt == null) return null;
+  final remainingMs = releasedAt + fugitiveInfoDelaySec * 1000 - nowMillis;
+  if (remainingMs <= 0) return null;
+  final remainingSec = (remainingMs / 1000).ceil();
+  return 'あと$remainingSec秒で表示されます';
 }
 
 /// 結果画面へ遷移すべきタイミングかどうかを判定する。
