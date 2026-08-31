@@ -234,6 +234,17 @@ class GamePage extends HookConsumerWidget {
               automaticallyImplyLeading: false,
               backgroundColor: headerRoleTheme?.color,
               foregroundColor: headerRoleTheme != null ? Colors.white : null,
+              // アプリ全体の共通テーマ(app_theme.dart)がAppBarTheme.titleTextStyleに
+              // 明示的な色(appInk)を設定しているため、上のforegroundColorだけでは
+              // タイトル文字色が上書きされない(titleTextStyleの色が優先される)。
+              // ここでタイトル自体にも明示的に白を指定して勝たせる。
+              titleTextStyle: headerRoleTheme != null
+                  ? const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w500,
+                    )
+                  : null,
               title: Text(headerRoleTheme?.label ?? 'ゲーム中'),
               actions: headerRoleTheme != null
                   ? [
@@ -1013,7 +1024,7 @@ class _NearestOpponentCard extends StatelessWidget {
     final color = _colorForRole(target.role);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         border: Border.all(color: appInk, width: 2),
         borderRadius: BorderRadius.circular(12),
@@ -1022,15 +1033,15 @@ class _NearestOpponentCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(width: 56, child: _identitySection(target, color)),
+            SizedBox(width: 60, child: _identitySection(target, color)),
             const VerticalDivider(
-              width: 16,
+              width: 20,
               color: appFaintBorder,
               thickness: 2,
             ),
-            SizedBox(width: 52, child: _verticalSection(color)),
+            SizedBox(width: 58, child: _verticalSection(color)),
             const VerticalDivider(
-              width: 16,
+              width: 20,
               color: appFaintBorder,
               thickness: 2,
             ),
@@ -1046,17 +1057,17 @@ class _NearestOpponentCard extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         CircleAvatar(
-          radius: 15,
+          radius: 18,
           backgroundColor: color,
           child: Text(
             avatarInitial(target.displayName),
-            style: const TextStyle(color: Colors.white, fontSize: 13),
+            style: const TextStyle(color: Colors.white, fontSize: 15),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           target.displayName,
-          style: const TextStyle(fontSize: 11),
+          style: const TextStyle(fontSize: 12),
           overflow: TextOverflow.ellipsis,
           maxLines: 1,
         ),
@@ -1070,9 +1081,9 @@ class _NearestOpponentCard extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         const Text('上下', style: TextStyle(fontSize: 9.5, color: appMuted)),
-        const SizedBox(height: 3),
+        const SizedBox(height: 4),
         SizedBox(
-          height: 44,
+          height: 72,
           child: message != null
               ? Center(
                   child: Text(
