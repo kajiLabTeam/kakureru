@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
+import 'package:kakureru/core/utils/duration_format.dart';
 import 'package:kakureru/core/utils/local_notifications.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
@@ -376,7 +377,7 @@ class GamePage extends HookConsumerWidget {
                           Text(
                             countdownSec == null
                                 ? '計算中...'
-                                : '${countdownSec < 0 ? 0 : countdownSec}秒',
+                                : formatCountdown(countdownSec),
                             style: const TextStyle(
                               fontFamily: 'monospace',
                               fontWeight: FontWeight.w600,
@@ -899,7 +900,7 @@ class _PreReleaseBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sec = countdownSec;
-    final label = sec == null ? '計算中...' : '${sec < 0 ? 0 : sec}秒';
+    final label = sec == null ? '計算中...' : formatCountdown(sec);
     return Container(
       width: double.infinity,
       color: const Color(0xFFFFFAF0),
