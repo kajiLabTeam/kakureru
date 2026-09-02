@@ -171,7 +171,10 @@ class RoomSettingPage extends HookConsumerWidget {
                     isDrawing: isDrawing.value,
                     dragStart: dragStart.value,
                     dragCurrent: dragCurrent.value,
+                    hasSizeError: areaSizeError.value != null,
                     onDragStart: (point) {
+                      // 新しいドラッグを始めたら前回のエラー状態はクリアする。
+                      areaSizeError.value = null;
                       dragStart.value = point;
                       dragCurrent.value = point;
                     },
@@ -179,33 +182,31 @@ class RoomSettingPage extends HookConsumerWidget {
                     onDragEnd: () {
                       final start = dragStart.value;
                       final current = dragCurrent.value;
-                      if (start != null && current != null) {
-                        // 矩形の対角線の長さでサイズを検証する。数px程度の
-                        // タップに近いドラッグ(退化した矩形)や、地図を
-                        // 世界スケールまで引いてから引いた極端に大きい矩形を
-                        // 弾く(理由はgame_map_options.dartのコメント参照)。
-                        final diagonalMeters = Geolocator.distanceBetween(
-                          start.latitude,
-                          start.longitude,
-                          current.latitude,
-                          current.longitude,
+                      if (start == null || current == null) return;
+
+                      // 矩形の対角線の長さでサイズを検証する。数px程度の
+                      // タップに近いドラッグ(退化した矩形)や、地図を
+                      // 世界スケールまで引いてから引いた極端に大きい矩形を
+                      // 弾く(理由はgame_map_options.dartのコメント参照)。
+                      final diagonalMeters = Geolocator.distanceBetween(
+                        start.latitude,
+                        start.longitude,
+                        current.latitude,
+                        current.longitude,
+                      );
+                      final error = describeGameAreaSizeError(diagonalMeters);
+                      areaSizeError.value = error;
+                      if (error == null) {
+                        gameArea.value = calculateRectangleCorners(
+                          LatLng(lat: start.latitude, lng: start.longitude),
+                          LatLng(lat: current.latitude, lng: current.longitude),
                         );
-                        final error = describeGameAreaSizeError(
-                          diagonalMeters,
-                        );
-                        areaSizeError.value = error;
-                        if (error == null) {
-                          gameArea.value = calculateRectangleCorners(
-                            LatLng(lat: start.latitude, lng: start.longitude),
-                            LatLng(
-                              lat: current.latitude,
-                              lng: current.longitude,
-                            ),
-                          );
-                        }
+                        dragStart.value = null;
+                        dragCurrent.value = null;
                       }
-                      dragStart.value = null;
-                      dragCurrent.value = null;
+                      // エラー時はリセットせず、仮矩形を赤枠のまま残して
+                      // エラーメッセージと視覚的に結びつける
+                      // (次のドラッグ開始 or 有効なドラッグで上書きされる)。
                     },
                   ),
                 ),
@@ -238,7 +239,14 @@ class RoomSettingPage extends HookConsumerWidget {
                           ),
                         ),
                       OutlinedButton(
-                        onPressed: () => isDrawing.value = !isDrawing.value,
+                        onPressed: () {
+                          isDrawing.value = !isDrawing.value;
+                          // モード切り替え時に仮矩形とエラー表示も持ち越さない
+                          // (描画をやめたのに赤枠だけ残るのを防ぐ)。
+                          dragStart.value = null;
+                          dragCurrent.value = null;
+                          areaSizeError.value = null;
+                        },
                         child: Text(
                           isDrawing.value ? '描画をやめる(地図の移動に戻す)' : 'エリアを描く',
                         ),
@@ -359,6 +367,7 @@ class _AreaMap extends HookWidget {
     required this.isDrawing,
     required this.dragStart,
     required this.dragCurrent,
+    required this.hasSizeError,
     required this.onDragStart,
     required this.onDragUpdate,
     required this.onDragEnd,
@@ -372,6 +381,11 @@ class _AreaMap extends HookWidget {
   final bool isDrawing;
   final latlong.LatLng? dragStart;
   final latlong.LatLng? dragCurrent;
+
+  /// 直近のドラッグ結果(dragStart/dragCurrent)がサイズ超過等で
+  /// 弾かれているかどうか。trueの間は仮矩形を赤枠で表示し、
+  /// 無効なままであることを視覚的に伝える。
+  final bool hasSizeError;
   final ValueChanged<latlong.LatLng> onDragStart;
   final ValueChanged<latlong.LatLng> onDragUpdate;
   final VoidCallback onDragEnd;
@@ -448,9 +462,10 @@ class _AreaMap extends HookWidget {
                       ),
                     ),
                   ),
-                  color: Colors.orange.withValues(alpha: 0.2),
+                  color: (hasSizeError ? Colors.red : Colors.orange)
+                      .withValues(alpha: 0.2),
                   borderStrokeWidth: 2,
-                  borderColor: Colors.orange,
+                  borderColor: hasSizeError ? Colors.red : Colors.orange,
                   pattern: StrokePattern.dashed(segments: const [8, 4]),
                 ),
             ],

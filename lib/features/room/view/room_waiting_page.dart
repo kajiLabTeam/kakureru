@@ -35,7 +35,32 @@ class RoomWaitingPage extends HookConsumerWidget {
     final hasNavigated = useState(false);
     final isNominatingRandom = useState(false);
     final randomNominationGuard = useMemoized(SingleFlightAction.new);
+    // 「鬼にする」「取り消す」の送信中フラグ。同時に1件までしか実行しない
+    // ため、実行中の対象uidだけを持てば足りる。SingleFlightActionは
+    // リビルドを待たずに同期で多重発火を防ぐためのガード
+    // (ランダム指名ボタンと同じ理由。上のコメント参照)。
+    final demonActionUid = useState<String?>(null);
+    final demonActionError = useState<Object?>(null);
+    final demonActionGuard = useMemoized(SingleFlightAction.new);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
+    final roomRepo = ref.read(roomRepositoryProvider);
+
+    Future<void> runDemonAction(
+      String uid,
+      Future<void> Function() action,
+    ) async {
+      await demonActionGuard.run(() async {
+        demonActionUid.value = uid;
+        demonActionError.value = null;
+        try {
+          await action();
+        } on Object catch (e) {
+          demonActionError.value = e;
+        } finally {
+          demonActionUid.value = null;
+        }
+      });
+    }
 
     useEffect(() {
       ref.read(pressureViewModelProvider.notifier).init(roomId);
@@ -212,6 +237,14 @@ class RoomWaitingPage extends HookConsumerWidget {
                   ],
                 ),
               ),
+              if (demonActionError.value != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    '${demonActionError.value}',
+                    style: const TextStyle(color: _demonColor),
+                  ),
+                ),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(
@@ -299,18 +332,50 @@ class RoomWaitingPage extends HookConsumerWidget {
                               padding: const EdgeInsets.only(left: 8),
                               child: room.pendingDemonUid == u.id
                                   ? ActionChip(
-                                      label: const Text('取り消す'),
-                                      onPressed: () => ref
-                                          .read(roomRepositoryProvider)
-                                          .cancelDemonNomination(roomId),
+                                      label: demonActionUid.value == u.id
+                                          ? const SizedBox(
+                                              width: 12,
+                                              height: 12,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Text('取り消す'),
+                                      onPressed: demonActionUid.value != null
+                                          ? null
+                                          : () => unawaited(
+                                              runDemonAction(
+                                                u.id,
+                                                () => roomRepo
+                                                    .cancelDemonNomination(
+                                                      roomId,
+                                                    ),
+                                              ),
+                                            ),
                                     )
                                   : ActionChip(
-                                      label: const Text('鬼にする'),
-                                      onPressed: room.pendingDemonUid != null
+                                      label: demonActionUid.value == u.id
+                                          ? const SizedBox(
+                                              width: 12,
+                                              height: 12,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Text('鬼にする'),
+                                      onPressed:
+                                          demonActionUid.value != null ||
+                                              room.pendingDemonUid != null
                                           ? null
-                                          : () => ref
-                                                .read(roomRepositoryProvider)
-                                                .nominateDemon(roomId, u.id),
+                                          : () => unawaited(
+                                              runDemonAction(
+                                                u.id,
+                                                () => roomRepo.nominateDemon(
+                                                  roomId,
+                                                  u.id,
+                                                ),
+                                              ),
+                                            ),
                                     ),
                             ),
                         ],
@@ -531,7 +596,16 @@ class _CalibrationSection extends ConsumerWidget {
     return Column(
       children: [
         FilledButton.icon(
-          icon: const Icon(Icons.touch_app),
+          icon: pressureState.isCalibrating
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.touch_app),
           onPressed: canCalibrate
               ? () {
                   final notifier = ref.read(pressureViewModelProvider.notifier);
@@ -542,7 +616,9 @@ class _CalibrationSection extends ConsumerWidget {
                   }
                 }
               : null,
-          label: const Text('キャリブレーションする(未実施)'),
+          label: Text(
+            pressureState.isCalibrating ? 'キャリブレーション中...' : 'キャリブレーションする(未実施)',
+          ),
         ),
         if (hint != null)
           Padding(
