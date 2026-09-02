@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
@@ -34,16 +35,22 @@ class WifiScanRepository {
   void startScanning(String roomId) {
     stopScanning();
 
-    _resultsSub = WiFiScan.instance.onScannedResultsAvailable.listen((results) {
+    _resultsSub = WiFiScan.instance.onScannedResultsAvailable.listen((
+      results,
+    ) async {
       final bssidRssi = <String, int>{};
       for (final ap in results) {
         bssidRssi[ap.bssid] = ap.level;
       }
       final topBssidRssi = selectTopAccessPoints(bssidRssi, count: _maxApCount);
-      _db.ref('rooms/$roomId/locations/$_uid/wifiScan').set({
-        'bssidRssi': topBssidRssi,
-        'scannedAt': ServerValue.timestamp,
-      });
+      try {
+        await _db.ref('rooms/$roomId/locations/$_uid/wifiScan').set({
+          'bssidRssi': topBssidRssi,
+          'scannedAt': ServerValue.timestamp,
+        });
+      } on Object catch (e) {
+        debugPrint('[WifiScanRepository] wifiScanの書き込みに失敗: $e');
+      }
     });
 
     _triggerScan();
