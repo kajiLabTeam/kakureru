@@ -13,6 +13,7 @@ import 'package:kakureru/features/room/calibration_status.dart';
 import 'package:kakureru/features/room/left_user_notifications.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/single_flight_action.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
@@ -108,6 +109,13 @@ class RoomWaitingPage extends HookConsumerWidget {
           final demonCandidates = room.users
               .where((u) => u.role != UserRole.demon)
               .toList();
+          final demonCount = room.users
+              .where((u) => u.role == UserRole.demon)
+              .length;
+          final canStartWithRoleComposition = hasStartableRoleComposition(
+            demonCount: demonCount,
+            totalUserCount: room.users.length,
+          );
 
           final calibrationStatuses = {
             for (final u in room.users)
@@ -361,6 +369,22 @@ class RoomWaitingPage extends HookConsumerWidget {
                 basePressure: room.basePressure,
                 pressureState: pressureState,
               ),
+              if (isHost && demonCount == 0)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    '鬼が1人も指名されていません。「鬼にする」または「鬼をランダムで決める」で指名してください',
+                    style: TextStyle(color: _pendingColor),
+                  ),
+                ),
+              if (isHost && demonCount > 0 && !canStartWithRoleComposition)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    '全員が鬼になっています。逃走者が1人以上必要です',
+                    style: TextStyle(color: _pendingColor),
+                  ),
+                ),
               if (isHost && room.setting.gameArea.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 24),
@@ -383,6 +407,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                   child: FilledButton(
                     onPressed:
                         isStarting.value ||
+                            !canStartWithRoleComposition ||
                             room.setting.gameArea.isEmpty ||
                             !allCalibrated
                         ? null
