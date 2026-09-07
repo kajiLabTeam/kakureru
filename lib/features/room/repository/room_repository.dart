@@ -7,14 +7,28 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 
+/// ルームの作成・参加・監視といったRTDB操作をまとめたリポジトリ。
 class RoomRepository {
-  final FirebaseDatabase _db;
-  final FirebaseAuth _auth;
-  final _random = Random();
-
+  /// 引数を省略すると実際のFirebase(`FirebaseDatabase.instance` /
+  /// `FirebaseAuth.instance`)を使う。テストからのみ差し替える。
   RoomRepository({FirebaseDatabase? db, FirebaseAuth? auth})
-    : _db = db ?? FirebaseDatabase.instance,
-      _auth = auth ?? FirebaseAuth.instance;
+    : _dbOverride = db,
+      _authOverride = auth;
+
+  final FirebaseDatabase? _dbOverride;
+  final FirebaseAuth? _authOverride;
+
+  // `.instance` の解決を初期化子リストではなくlateの遅延初期化にしている
+  // のは、メソッドを丸ごとoverrideするテスト用のサブクラスが、暗黙の
+  // `super()` を通るだけでFirebase未初期化の例外(`[core/no-app]`)を
+  // 踏まないようにするため(FirebaseDatabase/FirebaseAuthはコンストラクタ
+  // が非公開でテストダブルを渡せないので、サブクラスで差し替えるしかない)。
+  // 引数を渡さなければ`.instance`を使う、という外から見た振る舞いは
+  // 解決のタイミングが遅くなるだけで変わらない。
+  late final FirebaseDatabase _db = _dbOverride ?? FirebaseDatabase.instance;
+  late final FirebaseAuth _auth = _authOverride ?? FirebaseAuth.instance;
+
+  final _random = Random();
 
   String get _uid => _auth.currentUser!.uid;
 

@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
@@ -42,7 +42,7 @@ class RoomWaitingPage extends HookConsumerWidget {
     final demonActionUid = useState<String?>(null);
     final demonActionError = useState<Object?>(null);
     final demonActionGuard = useMemoized(SingleFlightAction.new);
-    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    final myUid = ref.watch(myUidProvider);
     final roomRepo = ref.read(roomRepositoryProvider);
 
     Future<void> runDemonAction(
@@ -91,7 +91,9 @@ class RoomWaitingPage extends HookConsumerWidget {
           Navigator.of(
             context,
           ).pushReplacement(
-            MaterialPageRoute(builder: (_) => GamePage(roomId: roomId)),
+            MaterialPageRoute<void>(
+              builder: (_) => GamePage(roomId: roomId),
+            ),
           );
         });
         return null;
@@ -205,7 +207,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                         Navigator.of(
                           context,
                         ).push(
-                          MaterialPageRoute(
+                          MaterialPageRoute<void>(
                             builder: (_) => RoomSettingPage(roomId: roomId),
                           ),
                         ),

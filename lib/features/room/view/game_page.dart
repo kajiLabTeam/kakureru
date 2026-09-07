@@ -185,7 +185,7 @@ class GamePage extends HookConsumerWidget {
           .map((u) => u.displayName)
           .toList();
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
+        MaterialPageRoute<void>(
           builder: (_) => GameResultPage(demonNames: demonNames),
         ),
       );
