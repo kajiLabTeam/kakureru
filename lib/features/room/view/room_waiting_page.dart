@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
@@ -36,7 +36,32 @@ class RoomWaitingPage extends HookConsumerWidget {
     final hasNavigated = useState(false);
     final isNominatingRandom = useState(false);
     final randomNominationGuard = useMemoized(SingleFlightAction.new);
-    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    // 「鬼にする」「取り消す」の送信中フラグ。同時に1件までしか実行しない
+    // ため、実行中の対象uidだけを持てば足りる。SingleFlightActionは
+    // リビルドを待たずに同期で多重発火を防ぐためのガード
+    // (ランダム指名ボタンと同じ理由。上のコメント参照)。
+    final demonActionUid = useState<String?>(null);
+    final demonActionError = useState<Object?>(null);
+    final demonActionGuard = useMemoized(SingleFlightAction.new);
+    final myUid = ref.watch(myUidProvider);
+    final roomRepo = ref.read(roomRepositoryProvider);
+
+    Future<void> runDemonAction(
+      String uid,
+      Future<void> Function() action,
+    ) async {
+      await demonActionGuard.run(() async {
+        demonActionUid.value = uid;
+        demonActionError.value = null;
+        try {
+          await action();
+        } on Object catch (e) {
+          demonActionError.value = e;
+        } finally {
+          demonActionUid.value = null;
+        }
+      });
+    }
 
     useEffect(() {
       ref.read(pressureViewModelProvider.notifier).init(roomId);
@@ -95,7 +120,10 @@ class RoomWaitingPage extends HookConsumerWidget {
     useEffect(() {
       return () {
         if (!hasNavigated.value) {
-          unawaited(ref.read(roomRepositoryProvider).leaveRoom(roomId));
+          // 破棄中(unmount中)はrefがもう使えず、ここでref.readすると
+          // StateErrorになってleaveRoomが呼ばれないままになる
+          // (widgetテストで発覚)。build時に取得しておいたroomRepoを使う。
+          unawaited(roomRepo.leaveRoom(roomId));
         }
       };
     }, const []);
@@ -220,6 +248,14 @@ class RoomWaitingPage extends HookConsumerWidget {
                   ],
                 ),
               ),
+              if (demonActionError.value != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    '${demonActionError.value}',
+                    style: const TextStyle(color: _demonColor),
+                  ),
+                ),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(
@@ -307,18 +343,50 @@ class RoomWaitingPage extends HookConsumerWidget {
                               padding: const EdgeInsets.only(left: 8),
                               child: room.pendingDemonUid == u.id
                                   ? ActionChip(
-                                      label: const Text('取り消す'),
-                                      onPressed: () => ref
-                                          .read(roomRepositoryProvider)
-                                          .cancelDemonNomination(roomId),
+                                      label: demonActionUid.value == u.id
+                                          ? const SizedBox(
+                                              width: 12,
+                                              height: 12,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Text('取り消す'),
+                                      onPressed: demonActionUid.value != null
+                                          ? null
+                                          : () => unawaited(
+                                              runDemonAction(
+                                                u.id,
+                                                () => roomRepo
+                                                    .cancelDemonNomination(
+                                                      roomId,
+                                                    ),
+                                              ),
+                                            ),
                                     )
                                   : ActionChip(
-                                      label: const Text('鬼にする'),
-                                      onPressed: room.pendingDemonUid != null
+                                      label: demonActionUid.value == u.id
+                                          ? const SizedBox(
+                                              width: 12,
+                                              height: 12,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Text('鬼にする'),
+                                      onPressed:
+                                          demonActionUid.value != null ||
+                                              room.pendingDemonUid != null
                                           ? null
-                                          : () => ref
-                                                .read(roomRepositoryProvider)
-                                                .nominateDemon(roomId, u.id),
+                                          : () => unawaited(
+                                              runDemonAction(
+                                                u.id,
+                                                () => roomRepo.nominateDemon(
+                                                  roomId,
+                                                  u.id,
+                                                ),
+                                              ),
+                                            ),
                                     ),
                             ),
                         ],
@@ -556,7 +624,16 @@ class _CalibrationSection extends ConsumerWidget {
     return Column(
       children: [
         FilledButton.icon(
-          icon: const Icon(Icons.touch_app),
+          icon: pressureState.isCalibrating
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.touch_app),
           onPressed: canCalibrate
               ? () {
                   final notifier = ref.read(pressureViewModelProvider.notifier);
@@ -567,7 +644,9 @@ class _CalibrationSection extends ConsumerWidget {
                   }
                 }
               : null,
-          label: const Text('キャリブレーションする(未実施)'),
+          label: Text(
+            pressureState.isCalibrating ? 'キャリブレーション中...' : 'キャリブレーションする(未実施)',
+          ),
         ),
         if (hint != null)
           Padding(

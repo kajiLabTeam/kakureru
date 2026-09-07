@@ -20,11 +20,19 @@ class RoomHomePage extends HookConsumerWidget {
     useListenable(nameController);
     final nameError = validatePlayerName(nameController.text);
 
-    // 最初から赤字を出すと圧が強いため、「作成/参加」を一度押すまでは
-    // エラー表示を出さない。押した時点で名前が無効なら、そこで初めて
-    // 表示する(以降は入力のたびに再評価されるので、直せば自動で消える)。
-    final hasAttemptedSubmit = useState(false);
-    final showNameError = hasAttemptedSubmit.value ? nameError : null;
+    // 名前が無効な間は「作成/参加」ボタン自体を無効化するため、押してから
+    // 気づかせる必要はない。ただし最初から赤字を出すと圧が強いので、
+    // 一度でも入力欄に触れた後だけエラー表示する(未入力の初期状態では
+    // 出さない)。
+    final hasTouchedName = useState(false);
+    final showNameError = hasTouchedName.value ? nameError : null;
+
+    // ルーム作成/参加は同じroomViewModelProviderを共有しているため、
+    // state.isLoadingだけでは押されたのがどちらのボタンか区別できない。
+    // ローディング表示(スピナー)を押した側だけに出すため、ローカルに
+    // どちらを押したかを持つ。
+    final isCreating = useState(false);
+    final isJoining = useState(false);
 
     // 前回保存済みの名前を、入力欄がまだ空のうちだけ初期値として復元する
     // (ユーザーが既に入力し始めていたら上書きしない)。
@@ -42,6 +50,10 @@ class RoomHomePage extends HookConsumerWidget {
     }, [savedDisplayName.asData?.value]);
 
     ref.listen(roomViewModelProvider, (prev, next) {
+      if (!next.isLoading) {
+        isCreating.value = false;
+        isJoining.value = false;
+      }
       final roomId = next.value;
       if (roomId != null) {
         Navigator.of(context).push(
@@ -61,6 +73,7 @@ class RoomHomePage extends HookConsumerWidget {
             TextField(
               controller: nameController,
               maxLength: playerNameMaxLength,
+              onChanged: (_) => hasTouchedName.value = true,
               decoration: InputDecoration(
                 labelText: '名前',
                 errorText: _nameErrorMessage(showNameError),
@@ -83,18 +96,24 @@ class RoomHomePage extends HookConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   FilledButton(
-                    onPressed: state.isLoading
+                    onPressed: state.isLoading || nameError != null
                         ? null
                         : () {
-                            if (nameError != null) {
-                              hasAttemptedSubmit.value = true;
-                              return;
-                            }
+                            isCreating.value = true;
                             ref
                                 .read(roomViewModelProvider.notifier)
                                 .createRoom(nameController.text);
                           },
-                    child: const Text('ルームを作る'),
+                    child: isCreating.value
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('ルームを作る'),
                   ),
                 ],
               ),
@@ -122,13 +141,10 @@ class RoomHomePage extends HookConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton(
-                    onPressed: state.isLoading
+                    onPressed: state.isLoading || nameError != null
                         ? null
                         : () {
-                            if (nameError != null) {
-                              hasAttemptedSubmit.value = true;
-                              return;
-                            }
+                            isJoining.value = true;
                             ref
                                 .read(roomViewModelProvider.notifier)
                                 .joinRoom(
@@ -136,7 +152,13 @@ class RoomHomePage extends HookConsumerWidget {
                                   nameController.text,
                                 );
                           },
-                    child: const Text('ルームに参加'),
+                    child: isJoining.value
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('ルームに参加'),
                   ),
                 ],
               ),
