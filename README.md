@@ -63,6 +63,7 @@ Android 9 以降、`WifiManager.startScan()` は **2分間に4回**（実質30�
 - [docs/glossary.md](docs/glossary.md) — 用語集（ユビキタス言語）。コード上の型名・enum値はここに揃える
 - [docs/scenarios.md](docs/scenarios.md) — 集合からゲーム終了までのシナリオ（SVOC分解）
 - [docs/rtdb-schema.md](docs/rtdb-schema.md) — Realtime Database のデータ構造
+- `history/` — 作業ごとの知見の記録（日報形式）。仕様の正本ではないので、実装の根拠には使わない
 
 ## Getting Started
 
