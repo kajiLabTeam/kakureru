@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:kakureru/core/utils/rtdb_write.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
@@ -43,14 +43,14 @@ class WifiScanRepository {
         bssidRssi[ap.bssid] = ap.level;
       }
       final topBssidRssi = selectTopAccessPoints(bssidRssi, count: _maxApCount);
-      try {
-        await _db.ref('rooms/$roomId/locations/$_uid/wifiScan').set({
+      await writeOrLogFailure(
+        () => _db.ref('rooms/$roomId/locations/$_uid/wifiScan').set({
           'bssidRssi': topBssidRssi,
           'scannedAt': ServerValue.timestamp,
-        });
-      } on Object catch (e) {
-        debugPrint('[WifiScanRepository] wifiScanの書き込みに失敗: $e');
-      }
+        }),
+        tag: 'WifiScanRepository',
+        field: 'wifiScan',
+      );
     });
 
     _triggerScan();

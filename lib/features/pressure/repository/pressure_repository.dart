@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:kakureru/core/utils/rtdb_write.dart';
 import 'package:kakureru/features/pressure/pressure_math.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
@@ -64,11 +64,11 @@ class PressureRepository {
     _writeTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
       final value = _latestSmoothed;
       if (value == null) return;
-      try {
-        await _db.ref('rooms/$roomId/locations/$_uid/pressure').set(value);
-      } on Object catch (e) {
-        debugPrint('[PressureRepository] pressureの書き込みに失敗: $e');
-      }
+      await writeOrLogFailure(
+        () => _db.ref('rooms/$roomId/locations/$_uid/pressure').set(value),
+        tag: 'PressureRepository',
+        field: 'pressure',
+      );
     });
   }
 
