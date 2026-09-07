@@ -244,6 +244,69 @@ void main() {
         isFalse,
       );
     });
+
+    test('PLAYING中に逃走者が0人になったら、endsAt前でも終了とみなす', () {
+      expect(
+        isGameOver(
+          status: RoomStatus.playing,
+          endsAt: 60000,
+          nowMillis: 0,
+          hasFugitives: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('PLAYING中に逃走者が残っていれば終了とはみなさない', () {
+      // hasFugitivesの既定値はtrue(逃走者がいる)。既定のままなら
+      // 逃走者0人による終了判定は働かず、endsAt前は終了にならない。
+      expect(
+        isGameOver(status: RoomStatus.playing, endsAt: 60000, nowMillis: 0),
+        isFalse,
+      );
+    });
+
+    test('WAITING中に逃走者が0人でも(まだゲーム開始前)終了とはみなさない', () {
+      expect(
+        isGameOver(
+          status: RoomStatus.waiting,
+          endsAt: null,
+          nowMillis: 0,
+          hasFugitives: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('hasStartableRoleComposition', () {
+    test('鬼が0人なら開始できない', () {
+      expect(
+        hasStartableRoleComposition(demonCount: 0, totalUserCount: 3),
+        isFalse,
+      );
+    });
+
+    test('全員鬼(逃走者が0人)なら開始できない', () {
+      expect(
+        hasStartableRoleComposition(demonCount: 3, totalUserCount: 3),
+        isFalse,
+      );
+    });
+
+    test('鬼と逃走者が両方1人以上いれば開始できる', () {
+      expect(
+        hasStartableRoleComposition(demonCount: 1, totalUserCount: 3),
+        isTrue,
+      );
+    });
+
+    test('参加者が0人なら開始できない', () {
+      expect(
+        hasStartableRoleComposition(demonCount: 0, totalUserCount: 0),
+        isFalse,
+      );
+    });
   });
 
   group('canReportCaught', () {

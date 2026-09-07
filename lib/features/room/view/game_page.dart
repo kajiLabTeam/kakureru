@@ -177,6 +177,7 @@ class GamePage extends HookConsumerWidget {
         status: room.status,
         endsAt: room.endsAt,
         nowMillis: serverNowMillis(offset),
+        hasFugitives: room.users.any((u) => u.role == UserRole.fugitive),
       );
       if (!gameOver) return null;
       hasNavigatedToResult.value = true;

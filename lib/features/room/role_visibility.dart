@@ -128,13 +128,31 @@ String? fugitiveHiddenDemonReason({
 
 /// 結果画面へ遷移すべきタイミングかどうかを判定する。
 ///
-/// meta/status が FINISHED になった場合、または endsAt を過ぎた場合に真。
+/// meta/status が FINISHED になった場合、endsAt を過ぎた場合、または
+/// ゲーム進行中(PLAYING)に逃走者が0人(全員鬼)になった場合に真。
+/// 逃走者0人での終了は「ゲームが始まった後」だけ意味を持つため、
+/// PLAYING時のみ判定する(WAITING中はまだ誰も逃走者を割り当てていない
+/// だけなので、それを終了扱いにしない)。
 /// 端末ごとの時計のズレを避けるため、比較には絶対時刻(serverNowMillis)を使う。
 bool isGameOver({
   required RoomStatus status,
   required int? endsAt,
   required int nowMillis,
+  bool hasFugitives = true,
 }) {
   if (status == RoomStatus.finished) return true;
+  if (status == RoomStatus.playing && !hasFugitives) return true;
   return endsAt != null && nowMillis >= endsAt;
+}
+
+/// ホストが「ゲーム開始」を押せる役割構成かどうかを判定する。
+///
+/// 鬼が1人もいない、または全員鬼(逃走者が1人もいない)のいずれかだと
+/// 開始した瞬間に[isGameOver]が真になってしまい成立しないため、
+/// どちらの役割も1人以上いることを開始条件にする(issue #33)。
+bool hasStartableRoleComposition({
+  required int demonCount,
+  required int totalUserCount,
+}) {
+  return demonCount > 0 && demonCount < totalUserCount;
 }
