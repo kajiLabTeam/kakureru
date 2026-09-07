@@ -257,14 +257,11 @@ void main() {
       );
     });
 
-    test('PLAYING中でも逃走者が残っていればhasFugitivesは終了に影響しない', () {
+    test('PLAYING中に逃走者が残っていれば終了とはみなさない', () {
+      // hasFugitivesの既定値はtrue(逃走者がいる)。既定のままなら
+      // 逃走者0人による終了判定は働かず、endsAt前は終了にならない。
       expect(
-        isGameOver(
-          status: RoomStatus.playing,
-          endsAt: 60000,
-          nowMillis: 0,
-          hasFugitives: true,
-        ),
+        isGameOver(status: RoomStatus.playing, endsAt: 60000, nowMillis: 0),
         isFalse,
       );
     });
