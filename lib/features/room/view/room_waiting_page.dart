@@ -91,9 +91,7 @@ class RoomWaitingPage extends HookConsumerWidget {
           Navigator.of(
             context,
           ).pushReplacement(
-            MaterialPageRoute<void>(
-              builder: (_) => GamePage(roomId: roomId),
-            ),
+            MaterialPageRoute(builder: (_) => GamePage(roomId: roomId)),
           );
         });
         return null;
@@ -210,7 +208,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                         Navigator.of(
                           context,
                         ).push(
-                          MaterialPageRoute<void>(
+                          MaterialPageRoute(
                             builder: (_) => RoomSettingPage(roomId: roomId),
                           ),
                         ),

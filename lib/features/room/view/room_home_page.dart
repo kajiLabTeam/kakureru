@@ -57,7 +57,7 @@ class RoomHomePage extends HookConsumerWidget {
       final roomId = next.value;
       if (roomId != null) {
         Navigator.of(context).push(
-          MaterialPageRoute<void>(
+          MaterialPageRoute(
             builder: (_) => RoomWaitingPage(roomId: roomId),
           ),
         );
