@@ -233,8 +233,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(tester.widget<ActionChip>(find.byType(ActionChip)).onPressed,
-          isNull);
+      expect(
+        tester.widget<ActionChip>(find.byType(ActionChip)).onPressed,
+        isNull,
+      );
     });
   });
 

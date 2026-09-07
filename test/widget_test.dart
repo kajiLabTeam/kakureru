@@ -13,8 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _ControllableRoomViewModel extends RoomViewModel {
   Completer<String?>? createCompleter;
   Completer<String?>? joinCompleter;
-  var createCallCount = 0;
-  var joinCallCount = 0;
+  int createCallCount = 0;
+  int joinCallCount = 0;
 
   @override
   Future<void> createRoom(String displayName) async {

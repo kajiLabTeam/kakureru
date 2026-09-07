@@ -462,8 +462,9 @@ class _AreaMap extends HookWidget {
                       ),
                     ),
                   ),
-                  color: (hasSizeError ? Colors.red : Colors.orange)
-                      .withValues(alpha: 0.2),
+                  color: (hasSizeError ? Colors.red : Colors.orange).withValues(
+                    alpha: 0.2,
+                  ),
                   borderStrokeWidth: 2,
                   borderColor: hasSizeError ? Colors.red : Colors.orange,
                   pattern: StrokePattern.dashed(segments: const [8, 4]),
