@@ -121,7 +121,10 @@ class RoomWaitingPage extends HookConsumerWidget {
     useEffect(() {
       return () {
         if (!hasNavigated.value) {
-          unawaited(ref.read(roomRepositoryProvider).leaveRoom(roomId));
+          // 破棄中(unmount中)はrefがもう使えず、ここでref.readすると
+          // StateErrorになってleaveRoomが呼ばれないままになる
+          // (widgetテストで発覚)。build時に取得しておいたroomRepoを使う。
+          unawaited(roomRepo.leaveRoom(roomId));
         }
       };
     }, const []);
