@@ -17,6 +17,7 @@ import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
+import 'package:kakureru/features/pressure/pressure_math.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/model/room.dart';
@@ -1125,7 +1126,6 @@ class _OpponentDetailCard extends StatelessWidget {
   final ProximityLevel? wifiLevel;
   final List<WifiApComparison> comparisons;
 
-  static const _rangeMeters = 5.0;
   static const _dotSize = 14.0;
 
   @override
@@ -1222,8 +1222,6 @@ class _OpponentDetailCard extends StatelessWidget {
                   ),
                 ),
         ),
-        const SizedBox(height: 4),
-        Text(_verticalLabel(), style: const TextStyle(fontSize: 10)),
       ],
     );
   }
@@ -1247,24 +1245,8 @@ class _OpponentDetailCard extends StatelessWidget {
     return null;
   }
 
-  String _verticalLabel() {
-    final position = verticalPosition;
-    if (position == null) return '';
-    final meters = position.deltaMeters.abs().toStringAsFixed(0);
-    return position.deltaMeters >= 0
-        ? '+$meters'
-              'm 上'
-        : '-$meters'
-              'm 下';
-  }
-
   Widget _buildDot(double height, Color opponentColor) {
-    final clamped = verticalPosition!.deltaMeters.clamp(
-      -_rangeMeters,
-      _rangeMeters,
-    );
-    // t: 0(下端)〜1(上端)。deltaMetersが正(相手が上)ほどtが大きくなる。
-    final t = (clamped + _rangeMeters) / (2 * _rangeMeters);
+    final t = verticalDotFraction(verticalPosition!.deltaMeters);
     final top = (height * (1 - t) - _dotSize / 2).clamp(0.0, height - _dotSize);
 
     return Positioned(
