@@ -83,6 +83,20 @@ bool canReportCaught({required UserRole role, required GamePhase phase}) {
   return role == UserRole.fugitive && phase == GamePhase.released;
 }
 
+/// 「鬼になる」ボタン(BecomeDemonButton)自体を表示すべきかどうかを判定する。
+///
+/// [canReportCaught]と同じ条件(逃走者かつ鬼放出後)で、BLEでの検知状況は
+/// 一切見ない(issue #43)。BLEの検知状況(bleBecomeDemonDetected)は、この
+/// 関数がtrueを返して表示されたボタンをdisabledにするかどうかにしか使わ
+/// ない(GamePage.build参照)。役割がまだ確定していない(roleがnull)間は
+/// 表示しない。
+bool shouldShowBecomeDemonButton({
+  required UserRole? role,
+  required GamePhase phase,
+}) {
+  return role != null && canReportCaught(role: role, phase: phase);
+}
+
 /// 新たに鬼になった参加者のうち、SnackBarで通知すべきuidの集合を返す。
 ///
 /// 自分自身(myUid)は除く。「捕まった」ボタンで自分が鬼になった場合は
