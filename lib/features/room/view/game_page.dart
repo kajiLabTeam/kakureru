@@ -942,6 +942,13 @@ class BecomeDemonButton extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: Column(
+          // GamePage内では親Columnが非flexの子にmaxHeight:infinityを渡すため
+          // 指定が無くてもshrink-wrapする(本番の見た目は変わらない)。ただし
+          // Scaffoldのbodyへ直接置くなど有限のmaxHeightがルーズに渡る場面
+          // (widgetテスト)では画面いっぱいまで伸びてしまい、「検知の有無で
+          // 高さが変わらない」ことを高さで検証できなくなる(テストが空振り
+          // する)。制約に依存せずshrink-wrapさせるために明示する。
+          mainAxisSize: MainAxisSize.min,
           children: [
             FilledButton.icon(
               icon: isSubmitting

@@ -130,33 +130,91 @@ void main() {
     },
   );
 
-  testWidgets('WAITINGのまま変化がなければ何もしない(通常の待機中の別更新と誤検知しない)', (
-    tester,
-  ) async {
+  testWidgets(
+    '最初に観測したスナップショットが既にWAITINGでも、鬼だった自分の役割をリセットして待機画面へ遷移する'
+    '(巻き戻しより後に画面がマウントされた/ストリームが再購読された場合の取りこぼし防止)',
+    (tester) async {
+      final roomRepo = _FakeRoomRepository();
+      await _pumpHarness(
+        tester,
+        roomRepo: roomRepo,
+        myUid: _memberUid,
+        initialRoom: _room(
+          status: RoomStatus.waiting,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+            RoomUser(
+              id: _memberUid,
+              displayName: 'メンバー',
+              role: UserRole.demon,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(roomRepo.resetOwnRoleCalls, [_roomId]);
+      expect(find.text('待機中'), findsOneWidget);
+    },
+  );
+
+  testWidgets('自分が鬼でなければroleのリセットは呼ばず、待機画面へ戻すだけ', (tester) async {
     final roomRepo = _FakeRoomRepository();
-    final controller = await _pumpHarness(
+    await _pumpHarness(
       tester,
       roomRepo: roomRepo,
-      myUid: _hostUid,
+      myUid: _memberUid,
       initialRoom: _room(
         status: RoomStatus.waiting,
         users: const [
           RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          RoomUser(id: _memberUid, displayName: 'メンバー'),
         ],
       ),
     );
-
-    controller.add(
-      _room(
-        status: RoomStatus.waiting,
-        users: const [
-          RoomUser(id: _hostUid, displayName: 'ホスト2', isHost: true),
-        ],
-      ),
-    );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(roomRepo.resetOwnRoleCalls, isEmpty);
-    expect(find.text('harness'), findsOneWidget);
+    expect(find.text('待機中'), findsOneWidget);
+  });
+
+  testWidgets('巻き戻しの検知は一度だけで、その後のWAITING更新で二重に発火しない', (tester) async {
+    final roomRepo = _FakeRoomRepository();
+    final controller = await _pumpHarness(
+      tester,
+      roomRepo: roomRepo,
+      myUid: _memberUid,
+      initialRoom: _room(
+        status: RoomStatus.playing,
+        users: const [
+          RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          RoomUser(
+            id: _memberUid,
+            displayName: 'メンバー',
+            role: UserRole.demon,
+          ),
+        ],
+      ),
+    );
+
+    for (var i = 0; i < 3; i++) {
+      controller.add(
+        _room(
+          status: RoomStatus.waiting,
+          users: [
+            const RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+            RoomUser(
+              id: _memberUid,
+              displayName: 'メンバー$i',
+              role: UserRole.demon,
+            ),
+          ],
+        ),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(roomRepo.resetOwnRoleCalls, [_roomId]);
   });
 }
