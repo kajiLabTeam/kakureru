@@ -67,6 +67,7 @@ class LocationTaskHandler extends TaskHandler {
         'lat': position.latitude,
         'lng': position.longitude,
         'altitude': position.altitude,
+        'accuracy': position.accuracy,
       });
     } on Object catch (e) {
       _consecutiveFailures++;

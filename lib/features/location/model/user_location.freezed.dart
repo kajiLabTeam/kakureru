@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$UserLocation {
 
- String get uid;@JsonKey(name: 'lat') double get latitude;@JsonKey(name: 'lng') double get longitude; double? get altitude; double? get pressure; WifiScanResult? get wifiScan; int get updatedAt;
+ String get uid;@JsonKey(name: 'lat') double get latitude;@JsonKey(name: 'lng') double get longitude; double? get altitude; double? get accuracy; double? get pressure; WifiScanResult? get wifiScan; int get updatedAt;
 /// Create a copy of UserLocation
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $UserLocationCopyWith<UserLocation> get copyWith => _$UserLocationCopyWithImpl<U
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is UserLocation&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.pressure, pressure) || other.pressure == pressure)&&(identical(other.wifiScan, wifiScan) || other.wifiScan == wifiScan)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UserLocation&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.accuracy, accuracy) || other.accuracy == accuracy)&&(identical(other.pressure, pressure) || other.pressure == pressure)&&(identical(other.wifiScan, wifiScan) || other.wifiScan == wifiScan)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,uid,latitude,longitude,altitude,pressure,wifiScan,updatedAt);
+int get hashCode => Object.hash(runtimeType,uid,latitude,longitude,altitude,accuracy,pressure,wifiScan,updatedAt);
 
 @override
 String toString() {
-  return 'UserLocation(uid: $uid, latitude: $latitude, longitude: $longitude, altitude: $altitude, pressure: $pressure, wifiScan: $wifiScan, updatedAt: $updatedAt)';
+  return 'UserLocation(uid: $uid, latitude: $latitude, longitude: $longitude, altitude: $altitude, accuracy: $accuracy, pressure: $pressure, wifiScan: $wifiScan, updatedAt: $updatedAt)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $UserLocationCopyWith<$Res>  {
   factory $UserLocationCopyWith(UserLocation value, $Res Function(UserLocation) _then) = _$UserLocationCopyWithImpl;
 @useResult
 $Res call({
- String uid,@JsonKey(name: 'lat') double latitude,@JsonKey(name: 'lng') double longitude, double? altitude, double? pressure, WifiScanResult? wifiScan, int updatedAt
+ String uid,@JsonKey(name: 'lat') double latitude,@JsonKey(name: 'lng') double longitude, double? altitude, double? accuracy, double? pressure, WifiScanResult? wifiScan, int updatedAt
 });
 
 
@@ -65,12 +65,13 @@ class _$UserLocationCopyWithImpl<$Res>
 
 /// Create a copy of UserLocation
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? uid = null,Object? latitude = null,Object? longitude = null,Object? altitude = freezed,Object? pressure = freezed,Object? wifiScan = freezed,Object? updatedAt = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? uid = null,Object? latitude = null,Object? longitude = null,Object? altitude = freezed,Object? accuracy = freezed,Object? pressure = freezed,Object? wifiScan = freezed,Object? updatedAt = null,}) {
   return _then(_self.copyWith(
 uid: null == uid ? _self.uid : uid // ignore: cast_nullable_to_non_nullable
 as String,latitude: null == latitude ? _self.latitude : latitude // ignore: cast_nullable_to_non_nullable
 as double,longitude: null == longitude ? _self.longitude : longitude // ignore: cast_nullable_to_non_nullable
 as double,altitude: freezed == altitude ? _self.altitude : altitude // ignore: cast_nullable_to_non_nullable
+as double?,accuracy: freezed == accuracy ? _self.accuracy : accuracy // ignore: cast_nullable_to_non_nullable
 as double?,pressure: freezed == pressure ? _self.pressure : pressure // ignore: cast_nullable_to_non_nullable
 as double?,wifiScan: freezed == wifiScan ? _self.wifiScan : wifiScan // ignore: cast_nullable_to_non_nullable
 as WifiScanResult?,updatedAt: null == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
@@ -171,10 +172,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String uid, @JsonKey(name: 'lat')  double latitude, @JsonKey(name: 'lng')  double longitude,  double? altitude,  double? pressure,  WifiScanResult? wifiScan,  int updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String uid, @JsonKey(name: 'lat')  double latitude, @JsonKey(name: 'lng')  double longitude,  double? altitude,  double? accuracy,  double? pressure,  WifiScanResult? wifiScan,  int updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _UserLocation() when $default != null:
-return $default(_that.uid,_that.latitude,_that.longitude,_that.altitude,_that.pressure,_that.wifiScan,_that.updatedAt);case _:
+return $default(_that.uid,_that.latitude,_that.longitude,_that.altitude,_that.accuracy,_that.pressure,_that.wifiScan,_that.updatedAt);case _:
   return orElse();
 
 }
@@ -192,10 +193,10 @@ return $default(_that.uid,_that.latitude,_that.longitude,_that.altitude,_that.pr
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String uid, @JsonKey(name: 'lat')  double latitude, @JsonKey(name: 'lng')  double longitude,  double? altitude,  double? pressure,  WifiScanResult? wifiScan,  int updatedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String uid, @JsonKey(name: 'lat')  double latitude, @JsonKey(name: 'lng')  double longitude,  double? altitude,  double? accuracy,  double? pressure,  WifiScanResult? wifiScan,  int updatedAt)  $default,) {final _that = this;
 switch (_that) {
 case _UserLocation():
-return $default(_that.uid,_that.latitude,_that.longitude,_that.altitude,_that.pressure,_that.wifiScan,_that.updatedAt);case _:
+return $default(_that.uid,_that.latitude,_that.longitude,_that.altitude,_that.accuracy,_that.pressure,_that.wifiScan,_that.updatedAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -212,10 +213,10 @@ return $default(_that.uid,_that.latitude,_that.longitude,_that.altitude,_that.pr
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String uid, @JsonKey(name: 'lat')  double latitude, @JsonKey(name: 'lng')  double longitude,  double? altitude,  double? pressure,  WifiScanResult? wifiScan,  int updatedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String uid, @JsonKey(name: 'lat')  double latitude, @JsonKey(name: 'lng')  double longitude,  double? altitude,  double? accuracy,  double? pressure,  WifiScanResult? wifiScan,  int updatedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _UserLocation() when $default != null:
-return $default(_that.uid,_that.latitude,_that.longitude,_that.altitude,_that.pressure,_that.wifiScan,_that.updatedAt);case _:
+return $default(_that.uid,_that.latitude,_that.longitude,_that.altitude,_that.accuracy,_that.pressure,_that.wifiScan,_that.updatedAt);case _:
   return null;
 
 }
@@ -227,13 +228,14 @@ return $default(_that.uid,_that.latitude,_that.longitude,_that.altitude,_that.pr
 @JsonSerializable()
 
 class _UserLocation extends UserLocation {
-  const _UserLocation({required this.uid, @JsonKey(name: 'lat') required this.latitude, @JsonKey(name: 'lng') required this.longitude, this.altitude, this.pressure, this.wifiScan, this.updatedAt = 0}): super._();
+  const _UserLocation({required this.uid, @JsonKey(name: 'lat') required this.latitude, @JsonKey(name: 'lng') required this.longitude, this.altitude, this.accuracy, this.pressure, this.wifiScan, this.updatedAt = 0}): super._();
   factory _UserLocation.fromJson(Map<String, dynamic> json) => _$UserLocationFromJson(json);
 
 @override final  String uid;
 @override@JsonKey(name: 'lat') final  double latitude;
 @override@JsonKey(name: 'lng') final  double longitude;
 @override final  double? altitude;
+@override final  double? accuracy;
 @override final  double? pressure;
 @override final  WifiScanResult? wifiScan;
 @override@JsonKey() final  int updatedAt;
@@ -251,16 +253,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _UserLocation&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.pressure, pressure) || other.pressure == pressure)&&(identical(other.wifiScan, wifiScan) || other.wifiScan == wifiScan)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _UserLocation&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.accuracy, accuracy) || other.accuracy == accuracy)&&(identical(other.pressure, pressure) || other.pressure == pressure)&&(identical(other.wifiScan, wifiScan) || other.wifiScan == wifiScan)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,uid,latitude,longitude,altitude,pressure,wifiScan,updatedAt);
+int get hashCode => Object.hash(runtimeType,uid,latitude,longitude,altitude,accuracy,pressure,wifiScan,updatedAt);
 
 @override
 String toString() {
-  return 'UserLocation(uid: $uid, latitude: $latitude, longitude: $longitude, altitude: $altitude, pressure: $pressure, wifiScan: $wifiScan, updatedAt: $updatedAt)';
+  return 'UserLocation(uid: $uid, latitude: $latitude, longitude: $longitude, altitude: $altitude, accuracy: $accuracy, pressure: $pressure, wifiScan: $wifiScan, updatedAt: $updatedAt)';
 }
 
 
@@ -271,7 +273,7 @@ abstract mixin class _$UserLocationCopyWith<$Res> implements $UserLocationCopyWi
   factory _$UserLocationCopyWith(_UserLocation value, $Res Function(_UserLocation) _then) = __$UserLocationCopyWithImpl;
 @override @useResult
 $Res call({
- String uid,@JsonKey(name: 'lat') double latitude,@JsonKey(name: 'lng') double longitude, double? altitude, double? pressure, WifiScanResult? wifiScan, int updatedAt
+ String uid,@JsonKey(name: 'lat') double latitude,@JsonKey(name: 'lng') double longitude, double? altitude, double? accuracy, double? pressure, WifiScanResult? wifiScan, int updatedAt
 });
 
 
@@ -288,12 +290,13 @@ class __$UserLocationCopyWithImpl<$Res>
 
 /// Create a copy of UserLocation
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? uid = null,Object? latitude = null,Object? longitude = null,Object? altitude = freezed,Object? pressure = freezed,Object? wifiScan = freezed,Object? updatedAt = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? uid = null,Object? latitude = null,Object? longitude = null,Object? altitude = freezed,Object? accuracy = freezed,Object? pressure = freezed,Object? wifiScan = freezed,Object? updatedAt = null,}) {
   return _then(_UserLocation(
 uid: null == uid ? _self.uid : uid // ignore: cast_nullable_to_non_nullable
 as String,latitude: null == latitude ? _self.latitude : latitude // ignore: cast_nullable_to_non_nullable
 as double,longitude: null == longitude ? _self.longitude : longitude // ignore: cast_nullable_to_non_nullable
 as double,altitude: freezed == altitude ? _self.altitude : altitude // ignore: cast_nullable_to_non_nullable
+as double?,accuracy: freezed == accuracy ? _self.accuracy : accuracy // ignore: cast_nullable_to_non_nullable
 as double?,pressure: freezed == pressure ? _self.pressure : pressure // ignore: cast_nullable_to_non_nullable
 as double?,wifiScan: freezed == wifiScan ? _self.wifiScan : wifiScan // ignore: cast_nullable_to_non_nullable
 as WifiScanResult?,updatedAt: null == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable

@@ -42,6 +42,7 @@ rooms/
         lat
         lng
         altitude
+        accuracy           GPSの測位精度(m)。悪い測位の足切り(issue #46)に使う
         pressure
         updatedAt
     visible/
