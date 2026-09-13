@@ -518,9 +518,13 @@ def run_task_with_retry(task, state):
         # update_state_doneを経由しないため、ここで先に記録しておかないと
         # コストが握り潰される(issue #47)。returncodeが0以外でもstdoutに
         # envelopeが残っていることがあるため、成否を問わず一度パースを試みる。
+        # TypeErrorも拾うのは、stdoutがstr以外だった場合(communicate(text=True)
+        # を使っている限り起きないはずだが)にコスト記録という任意処理のために
+        # night_runner.py全体を落とさないため。JSONDecodeErrorはValueErrorの
+        # サブクラスなので、この指定で従来のケースも引き続き含む。
         try:
             envelope = json.loads(stdout)
-        except json.JSONDecodeError:
+        except (TypeError, ValueError):
             envelope = None
         _record_cost_and_usage(task, envelope)
 

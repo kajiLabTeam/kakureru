@@ -30,7 +30,7 @@
 
 ### 3.1 ファイアウォールと `flutter test` の失敗
 
-**結論: 「許可リストにドメインが無い」が原因ではない。README.md:113 が指摘する「起動時一度きりのIP解決」という既知の制約が実際の原因である可能性が高い。**
+**結論: 「許可リストにドメインが無い」が原因ではない。`night-run/README.md` のトラブルシュート節「タスク中に`flutter pub get`が失敗する」項が指摘する「起動時一度きりのIP解決」という既知の制約が実際の原因である可能性が高い。**
 
 - `night-run/docker/init-firewall.sh` の `FIXED_DOMAINS`(29-36行)には `pub.dev` / `storage.googleapis.com` / `dl.google.com` の3ドメインとも既に含まれている。9/3実行時点のスクリプトも同一内容だったと考えられ(このissueのスコープ外だがgit historyで大きな変更は見られない)、「許可リストへの追加漏れ」という単純な説明は成立しない。
 - `add_domain_ips()` は `dig +short "$domain" A` を**コンテナ起動時に一度だけ**実行し、その時点で得られたIPアドレスだけを `ipset` に登録する。以降はコンテナのライフサイクル中ずっとこの固定IP集合に対してのみ通信が許可される。
@@ -66,4 +66,6 @@
 2. **`usage` の内訳(input/output/cacheトークン比率)**。input側が支配的なら、プロンプトの再送量(会話履歴の長さ、`build_prompt` が埋め込む再開ノート等)を疑う材料になる。今回のスコープ外だが、次に着手すべき削減ポイントの当たりをつけられる。
 3. **`review_round` と `total_cost_usd` の相関**。レビューラウンドが伸びるほどコストが線形以上に増えるなら、3.3節の上限引き下げの優先度が上がる。
 4. **CIDR単位許可への切り替え後の `flutter test`/`flutter analyze` 到達率**。3.1節の対策を別issueで実施した後、実行できずに終わるタスクの割合が実際に下がったかどうかを、`remaining_summary` のテキストベースで棚卸しして確認する。
-5. **予算超過(hard_limit到達やclaude CLI側の予算打ち切り)で失敗したタスクの `total_cost_usd`**。これが記録されて初めて「打ち切り時点でどれだけ無駄になったか」を金額ベースで議論できる。
+5. **claude CLI側の `--max-budget-usd` 打ち切りで失敗したタスクの `total_cost_usd`**。この経路は `claude -p` 自身が終了してenvelopeを返すため、打ち切り時点までの消費額が記録される。これが集まって初めて「打ち切り時点でどれだけ無駄になったか」を金額ベースで議論でき、3.2節の予算再設定の材料になる。
+
+   **一方、hard_limit 到達と TIMEOUT による強制killの2経路は、原理的にコストを測れない**。`run_claude_with_timeout` は `hard_limit` までの残り時間をタイムアウトとして `claude -p` を起動し、超過すると `os.killpg(..., SIGKILL)` でプロセスグループごと強制終了して `stdout=""` を返す(`stderr="TIMEOUT"` → `handle_hard_limit_exceeded`)。envelope が一切返らないため `total_cost_usd` を記録する術がない。また `run_task_with_retry` のループ先頭で `now >= hard_limit` と判定されて打ち切られる経路は、そもそも `claude -p` を起動しない。**これらのタスクで `total_cost_usd` が欠けているのはバグではなく仕様である**ことに注意する(kill された時点までに実際は課金が発生しているため、night-run全体の実コストはstateの合計より大きくなりうる)。この分を測りたい場合は、state ではなくAPIコンソール側の請求データと突き合わせる必要がある。
