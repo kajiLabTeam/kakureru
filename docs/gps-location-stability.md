@@ -33,9 +33,9 @@
 | **カルマンフィルタ** | 理論上は速度モデルを持てるため、平均より追従性と平滑性を両立できる。ノイズ特性が既知なら最適 | プロセスノイズ・観測ノイズの分散をチューニングする必要があり、実機での試行錯誤が前提。実装・検証コストが高く、**このサンドボックスには実機が無くパラメータの妥当性を確認できない**。歩行速度中心の単純な移動にはオーバースペックになりがち | 低(今回は見送り) |
 | **一定距離以下の変化を無視する(デッドバンド)** | 実装が単純で状態も「直前に採用した1点」だけで済む。静止中の微小なブレを確実に抑えられる。純粋関数として書きやすく、テストしやすい | 閾値未満のゆっくりした実移動が無視される(閾値を超えるまで反映されない)。閾値のチューニングが要実機 | 高 |
 | **geolocatorの`distanceFilter`を使う** | プラグイン側で完結し実装コストが低い(本来は) | **単発取得(`getCurrentPosition`)には効かない**。効かせるには `getPositionStream()` へアーキテクチャを変更する必要があり、取得間隔(4秒)の仕組み自体を作り変えることになる。このissueのスコープ外(「位置取得の間隔を変えること自体を目的にした変更はしない」)であり、対策として直接採用するのは見送り | 低(今回は見送り) |
-| **`Position.accuracy`が悪い測位結果を捨てる** | 実装が単純。屋内などで精度が大きく落ちた「そもそも信頼できない」測位を根本から除外できる。純粋関数として書きやすい | 精度が慢性的に悪い環境(屋内奥など)では更新が止まりがちになる。閾値のチューニングが要実機 | 高 |
+| **`Position.accuracy`が悪い測位結果を捨てる** | 実装が単純。屋内などで精度が大きく落ちた「そもそも信頼できない」測位を根本から除外できる。純粋関数として書きやすい | 精度が慢性的に悪い環境(屋内奥など)では更新が完全に止まりうる(**単体で使ってはいけない。下の「必須の安全装置: 棄却が続いたときの強制更新」参照**)。閾値のチューニングが要実機 | 高 |
 
-### 採用: デッドバンド + accuracyによる足切りの組み合わせ
+### 採用: デッドバンド + accuracyによる足切り + 強制更新のフォールバック
 
 理由:
 
@@ -45,11 +45,26 @@
 - `distanceFilter` は現行のアーキテクチャ(4秒ごとの単発取得)には効果が無いため、対策として採用しなかった
 - 移動平均は追従の遅延というトレードオフがあり、鬼ごっこでは「今の位置」がゲーム性に直結するため見送った。デッドバンド+accuracy足切りの組み合わせで体感上の症状(静止中の飛び回り)は十分に抑えられると判断した
 
+### 必須の安全装置: 棄却が続いたときの強制更新(フォールバック)
+
+デッドバンドとaccuracy足切りは「捨てる」方向にしか働かないため、**そのままでは捨て続けて一度も書き込まないという最悪ケースがある**。このアプリは屋内前提(気圧で階を判定する)であり、屋内でaccuracyが恒常的に `maxAcceptableAccuracyM` を超える端末では現実に起こりうる。そのとき起きることは「その人のピンが出ない」だけでは済まない:
+
+1. `rooms/{roomId}/locations/{uid}` に `lat`/`lng` が一度も書かれない
+2. `PressureRepository`・`WifiScanRepository` は**同じ `locations/{uid}` ノードの子**に書く。`UserLocation` の `latitude`/`longitude` は必須(`required double`)なので、lat/lngを欠いたノードは `UserLocation.fromMap` が例外を投げ、`watchLocations` がそのエントリを丸ごとスキップする
+3. 結果として、**GPSが悪い人の気圧・Wi-Fi情報まで全員から見えなくなる**。「GPSが弱い屋内をWi-Fiと気圧で補う」というこのプロジェクトの根幹と正反対の挙動になる
+
+そのため、**「最後に採用してから一定回数の連続棄却、または一定時間が経過したら、accuracyとデッドバンドの判定にかかわらず1件採用する」強制更新を必ずセットで入れる**。ノイズ抑制と「更新が完全に止まらないこと」の折り合いを、1つの仕組みで両方つける形にしている。
+
+この強制更新は同時に、デッドバンド由来の副作用(閾値未満のゆっくりした移動が反映されず、`updatedAt` も更新されないため他の参加者からは「生きているのか止まっているのか分からない」状態になる)も解消する。
+
 ## 3. 実装内容
 
-- `lib/features/location/repository/location_smoothing.dart`(新規): 純粋関数 `shouldAcceptLocationUpdate` を切り出した。新しい測位結果を採用するかどうかを、(1) accuracyが閾値を超えていないか、(2) 直前に採用した位置からの移動距離がデッドバンド以上か、の2条件で判定する。テスト: `test/features/location/repository/location_smoothing_test.dart`
+- `lib/features/location/repository/location_smoothing.dart`(新規): 純粋関数 `evaluateLocationUpdate` を切り出した。新しい測位結果を採用するかどうかを、(1) accuracyが閾値を超えていないか、(2) 直前に採用した位置からの移動距離がデッドバンド以上か、で判定し、(3) 棄却する場合でも連続棄却回数・最終採用からの経過時間が上限に達していれば強制的に採用する。テスト: `test/features/location/repository/location_smoothing_test.dart`
+  - 戻り値は `bool` ではなく `LocationUpdateDecision`(`accepted` / `acceptedByFallback` / `rejectedLowAccuracy` / `rejectedDeadband`)。**棄却理由を値として返し、ログ出力(副作用)は呼び出し側に任せる**ことで、判定ロジックは純粋関数のままテストできる
+  - `accuracy` の扱いについての注意: geolocatorの `Position.accuracy` は非nullの `double` で、**端末が精度を報告できない場合は 0.0** が入る(`geolocator_platform_interface` の `Position`)。つまり「精度不明」は 0.0(=最良)として足切りを素通りする。関数の `accuracy` が nullable なのは、accuracyキー自体を欠いたデータが渡ってきた場合の保険であり、geolocatorからの正常系では到達しない
 - `lib/features/location/repository/location_task_handler.dart`: `sendCurrentPosition` が `Position.accuracy` もメインisolateへ送るように変更(`'accuracy': position.accuracy`)
-- `lib/features/location/repository/location_repository.dart`: `_taskDataCallback` で `shouldAcceptLocationUpdate` を呼び、不採用ならRTDBへの書き込み自体をスキップする。採用した場合のみ直前位置(`_lastAcceptedLat`/`_lastAcceptedLng`)を更新し、`accuracy` もRTDBへ書き込む。`startSendingLocation` のたびに直前位置をリセットする(ゲームをまたいで古い基準が残らないように)
+- `lib/features/location/repository/location_repository.dart`: `_taskDataCallback` で `evaluateLocationUpdate` を呼び、棄却ならRTDBへの書き込み自体をスキップする。採用した場合のみ直前位置(`_lastAcceptedLat`/`_lastAcceptedLng`)を更新し、`accuracy` もRTDBへ書き込む。あわせて強制更新の判定材料として連続棄却回数(`_consecutiveRejections`)と最終採用時刻(`_lastAcceptedAt`)を持ち、採用時にリセットする。`startSendingLocation` のたびにこれらをリセットする(ゲームをまたいで古い基準が残らないように)。まだ一度も採用していない間は送信開始時刻を経過時間の起点にするため、「初回からずっとaccuracyが悪い」ケースでも時間による強制更新が効く
+  - **棄却時は `debugPrint` でログを出す**(理由・accuracy・緯度経度・連続棄却回数・最終採用からの経過秒数)。黙って捨てると現地で「なぜ自分だけ地図に出ないのか」を追えないため。強制採用したときも、それと分かるログを出す
 - `lib/features/location/model/user_location.dart`: `accuracy`(double?)フィールドを追加(Freezed。`dart run build_runner build --delete-conflicting-outputs` で再生成済み)
 - `docs/rtdb-schema.md`: `locations/{uid}` に `accuracy` ノードを追記
 
@@ -59,8 +74,19 @@
 
 | パラメータ | 場所 | 初期値(提案) | 実機で調整すべき理由 |
 |---|---|---|---|
-| `maxAcceptableAccuracyM`(accuracy足切りの閾値) | `LocationFilterThresholds.maxAcceptableAccuracyM` | 30.0 m | 実際に遊ぶ環境(屋外広場/建物近く等)でのAndroid端末のaccuracy分布を見て、「捨てすぎて位置がRTDBに一切書き込まれず地図上から消えたままになる」と「悪い測位を通しすぎる」のバランスを取る必要がある |
+| `maxAcceptableAccuracyM`(accuracy足切りの閾値) | `LocationFilterThresholds.maxAcceptableAccuracyM` | 30.0 m | 実際に遊ぶ環境(屋外広場/建物近く等)でのAndroid端末のaccuracy分布を見て、「捨てすぎて位置の更新が強制更新頼みになる」と「悪い測位を通しすぎる」のバランスを取る必要がある。下の「閾値の見積もりとの矛盾」も参照 |
 | `deadbandDistanceM`(デッドバンドの閾値) | `LocationFilterThresholds.deadbandDistanceM` | 8.0 m | 小さすぎるとノイズを抑えきれず、大きすぎるとゆっくりした実移動(忍び足で近づく等)が反映されなくなる。鬼ごっこでの実際の移動速度・センスするべき距離感(`senseDistanceRadiusM`)とのバランスで実機調整が必要 |
+| `forceAcceptAfterRejections`(強制更新までの連続棄却回数) | `LocationFilterThresholds.forceAcceptAfterRejections` | 5 回(取得間隔4秒なので ≒ 20秒) | 小さすぎるとノイズや信頼できない測位をそのまま通してしまい(足切り・デッドバンドの意味が薄れる)、大きすぎると位置が更新されない空白時間が長くなる。屋内での実際のaccuracy分布と、ゲームとして許容できる「相手の位置が古いままでいられる時間」を見て決める |
+| `forceAcceptAfterElapsed`(強制更新までの経過時間) | `LocationFilterThresholds.forceAcceptAfterElapsed` | 30 秒 | 回数による強制更新の保険。測位の取得自体が間引かれる・取得間隔を変える等で「回数が貯まらないまま時間だけ経つ」ケースを押さえる。実質的な「位置と `updatedAt` が更新されない最長時間」の上限になるので、ゲームの体感に合わせて調整する |
+
+### 閾値の見積もりとの矛盾(実機で必ず確認すること)
+
+本ドキュメントの「1. 現状の設定と問題点の整理」では **屋内やビルの谷間では誤差が数十m〜100m超になることが珍しくない** と見積もっている。一方 `maxAcceptableAccuracyM` は 30.0 m であり、**自分の見積もりが自分の閾値を上回っている**。この見積もりが正しければ、屋内では通常判定での採用がほとんど起きず、更新のほとんどが強制更新に頼る状態になりうる(=実質「30秒に1回、悪い測位でも書く」に縮退する)。
+
+強制更新があるので「地図から完全に消える」致命的な事故にはならないが、閾値としては妥当でない可能性が高い。実機では以下を確認し、必要なら `maxAcceptableAccuracyM` を屋内の実測分布に合わせて引き上げる(またはこの見積もり自体を実測で訂正する)こと:
+
+- 実際に遊ぶ屋内での `accuracy` の分布(棄却ログに値が出るので、それを集める)
+- 強制採用のログ(`棄却が続いたため強制採用`)がどの程度の頻度で出ているか。常時出ているなら閾値が実態に対して厳しすぎる
 
 ## スコープ外(意図的に扱っていない)
 

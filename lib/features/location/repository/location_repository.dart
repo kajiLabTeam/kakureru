@@ -16,6 +16,13 @@ class LocationRepository {
   double? _lastAcceptedLat;
   double? _lastAcceptedLng;
 
+  /// 直近で連続して棄却した回数と、最後に採用した時刻(強制更新の判定用)。
+  /// [startSendingLocation]のたびにリセットする。まだ一度も採用していない
+  /// 間は送信開始時刻を起点にすることで、「初回からずっとaccuracyが悪くて
+  /// 一度も書き込まれない」ケースでも時間による強制更新が効く。
+  int _consecutiveRejections = 0;
+  DateTime _lastAcceptedAt = DateTime.now();
+
   LocationRepository({FirebaseDatabase? db, FirebaseAuth? auth})
     : _db = db ?? FirebaseDatabase.instance,
       _auth = auth ?? FirebaseAuth.instance;
@@ -34,6 +41,8 @@ class LocationRepository {
     await stopSendingLocation();
     _lastAcceptedLat = null;
     _lastAcceptedLng = null;
+    _consecutiveRejections = 0;
+    _lastAcceptedAt = DateTime.now();
 
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -63,16 +72,44 @@ class LocationRepository {
       // accuracyが悪い測位・デッドバンド未満の移動はRTDBへ書き込まない
       // (issue #46)。判定ロジック自体はlocation_smoothing.dartにテスト
       // 可能な純粋関数として切り出してある。
-      final accepted = shouldAcceptLocationUpdate(
+      // ただし棄却が続いたまま何も書かないと、屋内で精度が慢性的に悪い人の
+      // lat/lngがRTDBに一度も現れず、その人の気圧・Wi-Fi情報まで他の参加者
+      // から見えなくなる(lat/lngを欠いたノードはUserLocation.fromMapで例外に
+      // なり、watchLocationsがエントリごとスキップするため)。一定回数/一定
+      // 時間で強制的に1件採用するフォールバックを入れてこれを防いでいる。
+      final accuracyM = (accuracy as num?)?.toDouble();
+      final now = DateTime.now();
+      final decision = evaluateLocationUpdate(
         latitude: lat.toDouble(),
         longitude: lng.toDouble(),
-        accuracy: (accuracy as num?)?.toDouble(),
+        accuracy: accuracyM,
         previousLatitude: _lastAcceptedLat,
         previousLongitude: _lastAcceptedLng,
+        consecutiveRejectionCount: _consecutiveRejections,
+        elapsedSinceLastAccepted: now.difference(_lastAcceptedAt),
       );
-      if (!accepted) return;
+      if (!decision.isAccepted) {
+        _consecutiveRejections++;
+        // 黙って捨てると現地で原因を追えないため、理由と値を残す。
+        debugPrint(
+          '[LocationRepository] 測位を棄却(${decision.name}): '
+          'accuracy=$accuracyM lat=$lat lng=$lng '
+          '連続棄却=$_consecutiveRejections回 '
+          '最終採用からの経過=${now.difference(_lastAcceptedAt).inSeconds}秒',
+        );
+        return;
+      }
+      if (decision == LocationUpdateDecision.acceptedByFallback) {
+        debugPrint(
+          '[LocationRepository] 棄却が続いたため強制採用: '
+          'accuracy=$accuracyM 連続棄却=$_consecutiveRejections回 '
+          '最終採用からの経過=${now.difference(_lastAcceptedAt).inSeconds}秒',
+        );
+      }
       _lastAcceptedLat = lat.toDouble();
       _lastAcceptedLng = lng.toDouble();
+      _consecutiveRejections = 0;
+      _lastAcceptedAt = now;
 
       // set()だとlocations/{uid}ノード全体を置き換えてしまい、同じノードの
       // 子であるpressure(PressureRepository)・wifiScan(WifiScanRepository)を
