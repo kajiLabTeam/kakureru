@@ -3,12 +3,18 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/location/repository/location_smoothing.dart';
 import 'package:kakureru/features/location/repository/location_task_handler.dart';
 
 class LocationRepository {
   final FirebaseDatabase _db;
   final FirebaseAuth _auth;
   DataCallback? _taskDataCallback;
+
+  /// 直近でRTDBへ採用・書き込んだ位置(デッドバンド判定の基準)。
+  /// [startSendingLocation]のたびにリセットする。
+  double? _lastAcceptedLat;
+  double? _lastAcceptedLng;
 
   LocationRepository({FirebaseDatabase? db, FirebaseAuth? auth})
     : _db = db ?? FirebaseDatabase.instance,
@@ -26,6 +32,8 @@ class LocationRepository {
   /// 1秒間隔だと転送量が跳ねるため、更新間隔(onRepeatEvent)は4秒にしている。
   Future<void> startSendingLocation(String roomId) async {
     await stopSendingLocation();
+    _lastAcceptedLat = null;
+    _lastAcceptedLng = null;
 
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -45,9 +53,27 @@ class LocationRepository {
       if (data is! Map) return;
       final lat = data['lat'];
       final lng = data['lng'];
+      final accuracy = data['accuracy'];
       // lat/lngが欠けたデータをRTDBへ書くと、他の参加者のwatchLocationsが
       // UserLocation.fromMapの型キャストで例外を出し続けるため、ここで弾く。
       if (lat is! num || lng is! num) return;
+      if (accuracy != null && accuracy is! num) return;
+
+      // GPSノイズで実際には静止しているのにピンが飛び回るのを防ぐため、
+      // accuracyが悪い測位・デッドバンド未満の移動はRTDBへ書き込まない
+      // (issue #46)。判定ロジック自体はlocation_smoothing.dartにテスト
+      // 可能な純粋関数として切り出してある。
+      final accepted = shouldAcceptLocationUpdate(
+        latitude: lat.toDouble(),
+        longitude: lng.toDouble(),
+        accuracy: (accuracy as num?)?.toDouble(),
+        previousLatitude: _lastAcceptedLat,
+        previousLongitude: _lastAcceptedLng,
+      );
+      if (!accepted) return;
+      _lastAcceptedLat = lat.toDouble();
+      _lastAcceptedLng = lng.toDouble();
+
       // set()だとlocations/{uid}ノード全体を置き換えてしまい、同じノードの
       // 子であるpressure(PressureRepository)・wifiScan(WifiScanRepository)を
       // 4秒ごとに消してしまう(issue #8)。update()にして自分が持つキーだけを
@@ -56,6 +82,7 @@ class LocationRepository {
         'lat': lat,
         'lng': lng,
         'altitude': data['altitude'],
+        'accuracy': accuracy,
         'updatedAt': ServerValue.timestamp,
       });
     };
