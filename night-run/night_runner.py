@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -321,6 +322,17 @@ def log_unexpected_error(task, state, detail_text):
     notify_human(message)  # docker logsだけでなくalerts.logにも残す
 
 
+def _log_full_exception(task, context, exc):
+    """例外の文字列表現(str(e))だけでは、種類によって空文字になり得る
+    (例: subprocess.CalledProcessErrorはreturncodeのみでstderrが空だと
+    str(e)がほぼ情報無しになる)。type(e).__name__とtraceback全文を
+    alerts.logへ残し、どの行で・何が原因で落ちたかを追えるようにする。"""
+    notify_human(
+        f"タスク「{task['title']}」: {context}で例外が発生"
+        f"({type(exc).__name__}: {exc})\n{traceback.format_exc()}"
+    )
+
+
 def handle_hard_limit_exceeded(task, state):
     branch = save_diagnostic_branch(task)
     mark_task_failed(task, state, reason="hard_limit_exceeded", diagnostic_branch=branch)
@@ -449,11 +461,29 @@ def run_task_with_retry(task, state):
             return
 
         remaining_seconds = (hard_limit - now).total_seconds()
-        started_at = time.monotonic()
-        returncode, stdout, stderr = run_claude_with_timeout(
-            build_prompt(task, state), timeout_seconds=remaining_seconds
-        )
-        elapsed_seconds = time.monotonic() - started_at
+        try:
+            notify_human(f"タスク「{task['title']}」: プロンプト組み立て開始")
+            prompt = build_prompt(task, state)
+            notify_human(
+                f"タスク「{task['title']}」: プロンプト組み立て完了(文字数={len(prompt)})。claude -p 実行開始"
+            )
+            started_at = time.monotonic()
+            returncode, stdout, stderr = run_claude_with_timeout(prompt, timeout_seconds=remaining_seconds)
+            elapsed_seconds = time.monotonic() - started_at
+            notify_human(
+                f"タスク「{task['title']}」: claude -p 実行終了(returncode={returncode}, "
+                f"実行時間={elapsed_seconds:.1f}秒)"
+            )
+        except Exception as e:  # noqa: BLE001 — ここで拾わないとnight_runner.py全体が落ちる(過去に実際発生済み)
+            # issueの取得・作業ブランチの作成はclaude -p側のエージェントが自分の
+            # セッション内で行う(update_step.pyでtask["step"]に記録される)ため、
+            # night_runner.py自身が制御できる区間はここ(プロンプト組み立て〜
+            # claude -p呼び出し)だけ。ここで想定外の例外が起きても、握り潰さず
+            # 記録した上でこのタスクをfailedにし、次のタスクへ進む。
+            _log_full_exception(task, "claude -p 実行前後の処理", e)
+            branch = save_diagnostic_branch(task)
+            mark_task_failed(task, state, f"{type(e).__name__}: {e}", diagnostic_branch=branch)
+            return
 
         # update_step.py はタスク実行中に別プロセスとしてstateファイルへ書き込む。
         # ここで再読み込みしないと、以降で参照するtask/stateが古いままになる。

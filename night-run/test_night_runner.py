@@ -231,11 +231,11 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
 
         with mock.patch.object(night_runner, "run_claude_with_timeout", side_effect=responses), \
              mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
-             mock.patch.object(night_runner, "time") as mock_time, \
+             mock.patch.object(night_runner.time, "sleep") as mock_sleep, \
              mock.patch.object(night_runner, "verify_pr", return_value=True):
             night_runner.run_task_with_retry(self.task, self.state)
 
-        mock_time.sleep.assert_called_once()  # backoffで一度待ってからリトライしたこと
+        mock_sleep.assert_called_once()  # backoffで一度待ってからリトライしたこと
         final_state = night_runner.load_state()
         final_task = final_state["tasks"][0]
         self.assertEqual(final_task["status"], "done")  # 一度目でfailed確定していないこと
@@ -249,7 +249,7 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
 
         with mock.patch.object(night_runner, "run_claude_with_timeout", side_effect=responses), \
              mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
-             mock.patch.object(night_runner, "time"), \
+             mock.patch.object(night_runner.time, "sleep"), \
              mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"):
             night_runner.run_task_with_retry(self.task, self.state)
 
