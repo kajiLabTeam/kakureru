@@ -619,6 +619,30 @@ class GamePage extends HookConsumerWidget {
   }
 }
 
+/// [_LocationMap] をwidgetテストから直接組み立てるための入口。
+///
+/// 地図ウィジェット自体はGamePageの内部実装なので非公開のままにしたいが、
+/// 「グリッド切替UIを鬼にだけ出す」「resolveMarkerPositionへ
+/// viewerRole/targetRoleを正しい順で渡す」といった配線は純粋関数の
+/// テストでは一切押さえられない(取り違えても純粋関数のテストは全て通る)。
+/// GamePage全体を立ち上げるにはFirebase・センサー系のproviderを丸ごと
+/// 差し替える必要があり割に合わないため、この関数だけを公開する。
+@visibleForTesting
+Widget buildLocationMapForTest({
+  required List<UserLocation> locations,
+  required List<RoomUser> users,
+  required String? myUid,
+  List<LatLng> gameArea = const [],
+}) {
+  return _LocationMap(
+    locations: locations,
+    users: users,
+    myUid: myUid,
+    cachedPosition: null,
+    gameArea: gameArea,
+  );
+}
+
 class _LocationMap extends HookWidget {
   const _LocationMap({
     required this.locations,
@@ -756,7 +780,11 @@ class _LocationMap extends HookWidget {
         // RTDBには書き込まない。
         if (myRole == UserRole.demon)
           Positioned(
-            top: 12,
+            // 「現在地を取得中...」バナー(top: 12、左右いっぱいのCenter)と
+            // 同じ高さに置くと、360dp幅の端末では横方向に重なり、後から
+            // 描かれるバナーに切替チップが隠れる。バナーの下に来る高さまで
+            // 下げて、両方が同時に出ても読めるようにする。
+            top: 56,
             right: 12,
             child: _GridSizeSelector(
               value: gridSizeMeters.value,
@@ -893,14 +921,16 @@ class _LocationMap extends HookWidget {
     final marker = Marker(
       point: point,
       // ラベル表示のため横幅を拡張(名前が長い場合は省略表示)。
-      // 縦はアイコン(白フチ込みで概ね40) + ラベル(~18) で余裕を持たせる。
-      width: 72,
-      height: 56,
+      // 縦はアイコン(白フチ込みで40) + ラベル(~15) で余裕を持たせる。
+      width: _markerWidth,
+      height: _markerHeight,
       // 役割アイコン(local_fire_department/directions_run)はlocation_pinと
-      // 異なり下端に尖った先端が無い対称な形なので、アイコン中心が実座標に
-      // 来るAlignment.centerを使う。location_pinへのフォールバック時は
-      // 旧実装同様、先端を座標に合わせるためtopCenterのままにする。
-      alignment: usesRoleIcon ? Alignment.center : Alignment.topCenter,
+      // 異なり下端に尖った先端が無い対称な形なので、アイコンの中心を実座標に
+      // 合わせる。location_pinへのフォールバック時は旧実装同様、先端を座標に
+      // 合わせるためtopCenterのままにする。
+      alignment: usesRoleIcon
+          ? _markerIconCenterAlignment
+          : Alignment.topCenter,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -956,6 +986,29 @@ class _LocationMap extends HookWidget {
 /// 自分自身を表す色(青)。docs/ui-mockup-2a.htmlの配色ルール
 /// (赤=鬼/青=自分/緑=逃走者)に合わせている。
 const _selfColor = Color(0xFF3B82F6);
+
+/// GPSマーカーの寸法。横はラベル(名前)が入る幅、縦はアイコン+ラベル分。
+const _markerWidth = 72.0;
+const _markerHeight = 56.0;
+
+/// マーカーのアイコン(白フチ込み)の一辺。[_MarkerIcon] のSizedBoxと合わせる。
+const _markerIconSize = 40.0;
+
+/// アイコンの中心を実座標に合わせるためのalignment。
+///
+/// flutter_mapのMarker.alignmentは「マーカーwidget全体」の中のどの点を
+/// 実座標に合わせるかの指定で、`Alignment.center` はwidget全体
+/// ([_markerWidth]×[_markerHeight])の中心、つまりアイコンとラベルを
+/// 合わせた中心を座標に置く。マーカーの子はColumn[アイコン, ラベル]で
+/// 上詰めに並ぶため、アイコンの中心はwidget上端から
+/// [_markerIconSize]/2 の位置にあり、`Alignment.center`のままだと
+/// アイコンは実座標より約8論理px北へずれる。
+/// alignment.y は widget中心を0・下端を1とする比なので、
+/// (アイコン中心 - widget中心) / (widget高さ/2) を指定して一致させる。
+const _markerIconCenterAlignment = Alignment(
+  0,
+  (_markerIconSize / 2 - _markerHeight / 2) / (_markerHeight / 2),
+);
 
 // 取得できた位置を単純に色分けして表示する。地図・上下バー共通で使う。
 // role_theme.dartと同じ配色(鬼=赤/逃走者=緑)に揃える。
@@ -1042,12 +1095,12 @@ class _MarkerIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 40,
-      height: 40,
+      width: _markerIconSize,
+      height: _markerIconSize,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Icon(icon, size: 40, color: Colors.white),
+          Icon(icon, size: _markerIconSize, color: Colors.white),
           Icon(icon, size: 34, color: color),
         ],
       ),
