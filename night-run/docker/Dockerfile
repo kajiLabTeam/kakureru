@@ -32,9 +32,22 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 #  実機/エミュレータが要る `flutter run` や `flutter build apk` は対象外のため)
 RUN git clone --branch "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git /opt/flutter
 ENV PATH="/opt/flutter/bin:${PATH}"
+# claude -pは実際には非rootの'runner'ユーザーで動く(entrypoint.sh参照)。
+# CIでの非対話実行を前提にする(analyticsやウェルカムメッセージ等の
+# 初回プロンプトを抑止する。$HOMEが違う任意のユーザーで動かす前提とも噛み合う)。
+ENV CI=true
 RUN flutter config --no-analytics && flutter precache
 
 RUN useradd -m -s /bin/bash runner
+# /opt/flutterはこの時点までrunnerユーザー作成前のrootが所有したまま。
+# 2026-09-13の実運用で以下の2つの不具合を確認済み:
+#   1. runnerがbin/cache配下に書き込めない(Permission denied)
+#   2. flutterが内部で使うgitが、実行ユーザー(runner)と所有者(root)の
+#      不一致を「dubious ownership」として拒否し、flutter --versionすら
+#      失敗する(タスク実行中のエージェントが混乱し、$HOME配下に別の
+#      flutterを再インストールしようとして時間を浪費する原因になった)。
+# 所有者をrunnerに揃えることで両方解消する。
+RUN chown -R runner:runner /opt/flutter
 
 # サンドボックスマーカー(0.2節)。イメージに焼き込まれるためホスト側で偽装できない。
 ENV NIGHT_RUNNER_SANDBOX=1

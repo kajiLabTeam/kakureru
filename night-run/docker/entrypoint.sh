@@ -33,6 +33,10 @@ echo "[entrypoint] configuring GitHub credential helper..."
 # システム全体(/etc/gitconfig)に設定することで、あとで降格するrunnerユーザーからも使える。
 git config --system credential.helper '!gh auth git-credential'
 git config --system --add safe.directory "$REPO_DIR"
+# /opt/flutterはDockerfileでrunner所有に揃えているので通常は不要だが、
+# 何らかの事情で所有者がズレた場合にflutterコマンド自体が「dubious
+# ownership」で全滅する事故を防ぐ保険として明示しておく。
+git config --system --add safe.directory /opt/flutter
 
 echo "[entrypoint] configuring git author identity..."
 # runnerユーザーにはgit user.name/emailが無く、素のgit commitがすべて
