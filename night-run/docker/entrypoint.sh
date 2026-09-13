@@ -8,6 +8,17 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; the
     echo "FATAL: ANTHROPIC_API_KEY か CLAUDE_CODE_OAUTH_TOKEN のどちらかが必要(claude -pの認証に必須)" >&2
     exit 1
 fi
+if [ -n "${ANTHROPIC_API_KEY:-}" ] && [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    # 両方渡すとclaude CLIがANTHROPIC_API_KEYを優先してしまい、CLAUDE_CODE_OAUTH_TOKENが
+    # 有効でも無視される(2026-09-13の実運用で確認済み: 古いANTHROPIC_API_KEYが
+    # ホスト側に残っていたせいで「401 Invalid API key」になり、原因調査に時間を要した)。
+    # どちらが使われるか黙って決めるのではなく、ここで気づかせて片方を明示的に
+    # unsetしてもらう。
+    echo "FATAL: ANTHROPIC_API_KEY と CLAUDE_CODE_OAUTH_TOKEN が両方設定されている。" >&2
+    echo "  claude CLIはANTHROPIC_API_KEYを優先するため、CLAUDE_CODE_OAUTH_TOKENを使いたい場合は" >&2
+    echo "  意図せず無視されてしまう。どちらか一方をunsetしてから起動すること。" >&2
+    exit 1
+fi
 
 echo "[entrypoint] applying network egress allowlist..."
 /usr/local/bin/init-firewall.sh
@@ -85,5 +96,18 @@ runner_env=(
 # (空文字を渡すと「設定されているが空」という別の状態になり、未設定より紛らわしいため)。
 [ -n "${ANTHROPIC_API_KEY:-}" ] && runner_env+=("ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
 [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && runner_env+=("CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
+
+# 値そのものは出さず、runnerユーザーに渡る直前の状態(設定有無)だけ記録する。
+# 「どちらが実際に使われているか」がここで一目で分かるようにする。
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    echo "[entrypoint] ANTHROPIC_API_KEY: 設定あり(使用する認証方式)"
+else
+    echo "[entrypoint] ANTHROPIC_API_KEY: 未設定"
+fi
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    echo "[entrypoint] CLAUDE_CODE_OAUTH_TOKEN: 設定あり(使用する認証方式)"
+else
+    echo "[entrypoint] CLAUDE_CODE_OAUTH_TOKEN: 未設定"
+fi
 
 exec runuser -u runner -- env "${runner_env[@]}" python3 "$REPO_DIR/night-run/night_runner.py"
