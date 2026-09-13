@@ -93,6 +93,55 @@ void main() {
       expect(first.east, second.east);
     });
 
+    // gridSizeMeters が実際に効いているかを押さえるテスト。これが無いと
+    // gridCellFor が引数を無視して定数(例: 50)を使うようになっても、
+    // 他の全テストが通ってしまう(鬼が20m/100mを押しても手触りが変わらない
+    // まま出荷される)。issue #39の核心はグリッドサイズをプレイテストで
+    // 詰められることなので、ここは値ごと固定しておく。
+    test('セルの南北幅は指定したgridSizeMetersの実距離になる', () {
+      const metersPerDegreeLat = 111320.0;
+      for (final gridSizeMeters in [20, 50, 100]) {
+        final bounds = gridCellFor(
+          latitude: 35.681236,
+          longitude: 139.767125,
+          gridSizeMeters: gridSizeMeters,
+        );
+
+        expect(
+          (bounds.north - bounds.south) * metersPerDegreeLat,
+          closeTo(gridSizeMeters, 0.001),
+          reason: '${gridSizeMeters}mを指定したのにセルの南北幅が一致しない',
+        );
+      }
+    });
+
+    test('同じ座標でも20mと100mではセルの大きさが5倍違う', () {
+      const latitude = 35.681236;
+      const longitude = 139.767125;
+      final small = gridCellFor(
+        latitude: latitude,
+        longitude: longitude,
+        gridSizeMeters: 20,
+      );
+      final large = gridCellFor(
+        latitude: latitude,
+        longitude: longitude,
+        gridSizeMeters: 100,
+      );
+
+      expect(
+        (large.north - large.south) / (small.north - small.south),
+        closeTo(5, 1e-9),
+      );
+      // 経度方向は、cos補正の基準がそれぞれのセルの南端緯度(20mセルと
+      // 100mセルでは最大100m弱ずれる)なので厳密には5倍にならない。
+      // 倍率が変わったことさえ分かればよいので緩い許容で見る。
+      expect(
+        (large.east - large.west) / (small.east - small.west),
+        closeTo(5, 0.001),
+      );
+    });
+
     test('centerLat/centerLngはセルの中心を返す', () {
       final bounds = gridCellFor(
         latitude: 35,
