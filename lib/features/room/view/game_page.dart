@@ -23,6 +23,7 @@ import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
+import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
@@ -188,6 +189,13 @@ class GamePage extends HookConsumerWidget {
       );
       return null;
     }, [room?.status, room?.endsAt, tick.value, showCaughtTransition.value]);
+
+    // 「同じメンバーでもう一回」による巻き戻しの検知。ホストが結果画面
+    // (GameResultPage)で巻き戻しを実行した瞬間、この端末がまだisGameOver
+    // を検知できておらずこのGamePageに留まっている場合がある(バック
+    // グラウンド化・ネットワーク遅延等)。その場合でも待機画面に戻れる
+    // よう、GameResultPageと同じフックをここでも使う(issue #44)。
+    useRestartRecovery(ref, context, roomId: roomId);
 
     // 誰かがDEMONになったら(ホストの指名受諾・自己申告どちらでも)全員に
     // 知らせる。表示制御(役割による可視性)とは別軸の情報のため、
