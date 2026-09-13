@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:kakureru/features/location/repository/location_smoothing.dart';
 
 void main() {
@@ -68,6 +69,29 @@ void main() {
         previousLongitude: 139.7671,
       );
       expect(result, isFalse);
+    });
+
+    test('移動距離がちょうどデッドバンドなら採用する(境界値)', () {
+      const previousLat = 35.6812;
+      const previousLng = 139.7671;
+      const currentLat = 35.68125;
+      const currentLng = 139.7671;
+      final movedM = Geolocator.distanceBetween(
+        previousLat,
+        previousLng,
+        currentLat,
+        currentLng,
+      );
+
+      final result = shouldAcceptLocationUpdate(
+        latitude: currentLat,
+        longitude: currentLng,
+        accuracy: 5,
+        previousLatitude: previousLat,
+        previousLongitude: previousLng,
+        deadbandDistanceM: movedM,
+      );
+      expect(result, isTrue);
     });
 
     test('移動距離がデッドバンド以上なら採用する(実際に移動したとみなす)', () {

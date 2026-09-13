@@ -59,7 +59,7 @@
 
 | パラメータ | 場所 | 初期値(提案) | 実機で調整すべき理由 |
 |---|---|---|---|
-| `maxAcceptableAccuracyM`(accuracy足切りの閾値) | `LocationFilterThresholds.maxAcceptableAccuracyM` | 30.0 m | 実際に遊ぶ環境(屋外広場/建物近く等)でのAndroid端末のaccuracy分布を見て、「捨てすぎて更新が止まる」と「悪い測位を通しすぎる」のバランスを取る必要がある |
+| `maxAcceptableAccuracyM`(accuracy足切りの閾値) | `LocationFilterThresholds.maxAcceptableAccuracyM` | 30.0 m | 実際に遊ぶ環境(屋外広場/建物近く等)でのAndroid端末のaccuracy分布を見て、「捨てすぎて位置がRTDBに一切書き込まれず地図上から消えたままになる」と「悪い測位を通しすぎる」のバランスを取る必要がある |
 | `deadbandDistanceM`(デッドバンドの閾値) | `LocationFilterThresholds.deadbandDistanceM` | 8.0 m | 小さすぎるとノイズを抑えきれず、大きすぎるとゆっくりした実移動(忍び足で近づく等)が反映されなくなる。鬼ごっこでの実際の移動速度・センスするべき距離感(`senseDistanceRadiusM`)とのバランスで実機調整が必要 |
 
 ## スコープ外(意図的に扱っていない)
