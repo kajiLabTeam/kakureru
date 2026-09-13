@@ -170,6 +170,69 @@ class UpdateStateDoneTest(unittest.TestCase):
         self.assertEqual(self.task["status"], "done")
         self.assertEqual(self.task["pr_url"], "https://github.com/x/y/pull/1")
 
+    def test_success_records_cost_and_usage(self):
+        stdout = json.dumps({
+            "is_error": False,
+            "total_cost_usd": 1.23,
+            "usage": {"input_tokens": 100, "output_tokens": 50},
+            "structured_output": {
+                "status": "success", "pr_url": "https://github.com/x/y/pull/1",
+                "branch": "night-run/task-a", "review_round": 2,
+                "completed_summary": "done", "remaining_summary": "なし",
+            },
+        })
+        with mock.patch.object(night_runner, "verify_pr", return_value=True):
+            night_runner.update_state_done(self.task, self.state, stdout)
+        self.assertEqual(self.task["status"], "done")
+        self.assertEqual(self.task["total_cost_usd"], 1.23)
+        self.assertEqual(self.task["usage"], {"input_tokens": 100, "output_tokens": 50})
+
+    def test_failure_still_records_cost_and_usage(self):
+        # 無駄トークンの実態こそ知りたいのが目的(issue #47)なので、失敗経路でも
+        # envelopeが取れている限りコストを残す。
+        stdout = json.dumps({
+            "is_error": False,
+            "total_cost_usd": 4.56,
+            "usage": {"input_tokens": 999, "output_tokens": 111},
+            "result": "plain text, no schema",
+        })
+        night_runner.update_state_done(self.task, self.state, stdout)
+        self.assertEqual(self.task["status"], "failed")
+        self.assertEqual(self.task["total_cost_usd"], 4.56)
+        self.assertEqual(self.task["usage"], {"input_tokens": 999, "output_tokens": 111})
+
+    def test_missing_cost_fields_does_not_raise(self):
+        stdout = json.dumps({"is_error": False, "result": "plain text, no schema"})
+        night_runner.update_state_done(self.task, self.state, stdout)
+        self.assertEqual(self.task["status"], "failed")
+        self.assertNotIn("total_cost_usd", self.task)
+        self.assertNotIn("usage", self.task)
+
+    def test_invalid_json_does_not_raise_and_records_no_cost(self):
+        night_runner.update_state_done(self.task, self.state, "not-json")
+        self.assertEqual(self.task["status"], "failed")
+        self.assertNotIn("total_cost_usd", self.task)
+
+
+class RecordCostAndUsageTest(unittest.TestCase):
+    def test_non_dict_envelope_does_not_raise(self):
+        task = {}
+        night_runner._record_cost_and_usage(task, None)
+        night_runner._record_cost_and_usage(task, "not-a-dict")
+        self.assertEqual(task, {})
+
+    def test_extracts_present_fields_only(self):
+        task = {}
+        night_runner._record_cost_and_usage(task, {"total_cost_usd": 0.5})
+        self.assertEqual(task, {"total_cost_usd": 0.5})
+
+    def test_wrong_type_values_are_skipped_not_recorded(self):
+        task = {}
+        night_runner._record_cost_and_usage(
+            task, {"total_cost_usd": "N/A", "usage": "not-a-dict"}
+        )
+        self.assertEqual(task, {})
+
 
 class RateLimitEnvelopeTest(unittest.TestCase):
     def test_is_error_with_rate_limit_text_is_detected(self):
@@ -256,6 +319,47 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
         final_state = night_runner.load_state()
         final_task = final_state["tasks"][0]
         self.assertEqual(final_task["status"], "failed")
+
+    def test_rate_limited_give_up_still_records_cost_and_usage(self):
+        # give-up経路(_retry_after_rate_limit_or_give_up内でmark_task_failedを
+        # 直接呼ぶ)はupdate_state_doneを経由しないため、記録漏れが起きやすい
+        # (コードレビュー指摘の再現ケース)。
+        rate_limited_stdout = json.dumps({
+            "is_error": True, "subtype": "error_during_execution", "result": "429 rate limit",
+            "total_cost_usd": 2.5, "usage": {"input_tokens": 10, "output_tokens": 5},
+        })
+        responses = [(0, rate_limited_stdout, "")] * 3
+
+        with mock.patch.object(night_runner, "run_claude_with_timeout", side_effect=responses), \
+             mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
+             mock.patch.object(night_runner.time, "sleep"), \
+             mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"):
+            night_runner.run_task_with_retry(self.task, self.state)
+
+        final_state = night_runner.load_state()
+        final_task = final_state["tasks"][0]
+        self.assertEqual(final_task["status"], "failed")
+        self.assertEqual(final_task["total_cost_usd"], 2.5)
+        self.assertEqual(final_task["usage"], {"input_tokens": 10, "output_tokens": 5})
+
+    def test_stderr_rate_limit_give_up_records_cost_if_stdout_has_envelope(self):
+        # returncode!=0 でstderrの正規表現マッチによりgive-upする経路
+        # (night_runner.py 539-543行目)でも、stdoutにenvelopeが残っている
+        # 場合はコストを記録する。
+        stdout_with_cost = json.dumps({"total_cost_usd": 3.7, "usage": {"input_tokens": 20}})
+        responses = [(1, stdout_with_cost, "429 rate limit")] * 3
+
+        with mock.patch.object(night_runner, "run_claude_with_timeout", side_effect=responses), \
+             mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
+             mock.patch.object(night_runner.time, "sleep"), \
+             mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"):
+            night_runner.run_task_with_retry(self.task, self.state)
+
+        final_state = night_runner.load_state()
+        final_task = final_state["tasks"][0]
+        self.assertEqual(final_task["status"], "failed")
+        self.assertEqual(final_task["total_cost_usd"], 3.7)
+        self.assertEqual(final_task["usage"], {"input_tokens": 20})
 
 
 class GitCleanupRetryTest(unittest.TestCase):

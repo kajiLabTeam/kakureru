@@ -234,6 +234,20 @@ def verify_pr(pr_url, expected_branch):
 
 
 # --- タスク状態の更新 ---
+def _record_cost_and_usage(task, envelope):
+    """total_cost_usd/usageはトークン消費のチューニング判断材料として残すだけの
+    任意項目(issue #47)。envelopeが無い・キーが無い・値の型が不正な場合も
+    例外を出さず、単に記録をスキップする。"""
+    if not isinstance(envelope, dict):
+        return
+    cost = envelope.get("total_cost_usd")
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        task["total_cost_usd"] = cost
+    usage = envelope.get("usage")
+    if isinstance(usage, dict):
+        task["usage"] = usage
+
+
 def update_state_done(task, state, claude_stdout):
     def fail(reason):
         branch = save_diagnostic_branch(task)
@@ -244,6 +258,11 @@ def update_state_done(task, state, claude_stdout):
     except json.JSONDecodeError as e:
         fail(f"claude -p の出力がJSONとして解釈できない: {e}")
         return
+
+    # fail()より前に記録する: 以降のどの失敗経路(is_error/structured_output欠落/
+    # 自己申告failed/PR実在確認失敗)を通っても、envelopeが取れている限り
+    # コストを残す(issue #47。無駄トークンの実態こそ知りたいのが目的)。
+    _record_cost_and_usage(task, envelope)
 
     if envelope.get("is_error"):
         fail(f"claude -p がエラー終了(subtype={envelope.get('subtype')}): {str(envelope.get('result'))[:500]}")
@@ -494,15 +513,25 @@ def run_task_with_retry(task, state):
             handle_hard_limit_exceeded(task, state)
             return
 
+        # レートリミットのgive-up経路(_retry_after_rate_limit_or_give_up内で
+        # mark_task_failedを直接呼ぶ)や、下のレートリミット以外の異常終了経路は
+        # update_state_doneを経由しないため、ここで先に記録しておかないと
+        # コストが握り潰される(issue #47)。returncodeが0以外でもstdoutに
+        # envelopeが残っていることがあるため、成否を問わず一度パースを試みる。
+        # TypeErrorも拾うのは、stdoutがstr以外だった場合(communicate(text=True)
+        # を使っている限り起きないはずだが)にコスト記録という任意処理のために
+        # night_runner.py全体を落とさないため。JSONDecodeErrorはValueErrorの
+        # サブクラスなので、この指定で従来のケースも引き続き含む。
+        try:
+            envelope = json.loads(stdout)
+        except (TypeError, ValueError):
+            envelope = None
+        _record_cost_and_usage(task, envelope)
+
         if returncode == 0:
             # claude -pはAPIレベルのレートリミットをexit 0 + JSON封筒内のエラーとして
             # 返すことがある。stderrの文字列マッチだけでなく、こちらも見ておかないと
             # 一度で"failed"確定してしまいbackoffリトライへ入れない。
-            try:
-                envelope = json.loads(stdout)
-            except json.JSONDecodeError:
-                envelope = None
-
             if _envelope_is_rate_limited(envelope):
                 attempt += 1
                 if _retry_after_rate_limit_or_give_up(task, state, attempt, stdout):
