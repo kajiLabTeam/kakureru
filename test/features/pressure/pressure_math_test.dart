@@ -95,6 +95,13 @@ void main() {
       expect(verticalDotFraction(5), closeTo(0.625, 1e-9));
     });
 
+    test('returns 0.375 at -5 within the default ±20 range', () {
+      // 飽和しない負側の中間点。+5の0.625と中心0.5をはさんで対称になることで、
+      // オフセット・符号の取り違え（(clamped + range) を (range - clamped) と
+      // 書くような誤り）を検出する。
+      expect(verticalDotFraction(-5), closeTo(0.375, 1e-9));
+    });
+
     test('clamps values beyond +20 to 1', () {
       expect(verticalDotFraction(100), closeTo(1, 1e-9));
     });
