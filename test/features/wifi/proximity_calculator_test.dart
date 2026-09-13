@@ -160,26 +160,35 @@ void main() {
   });
 
   group('送信前の上位N件絞り込みがproximity判定に与える影響(issue #45)', () {
-    // 自分・相手が実際には同じ30個のAPを見えている(=本来ならJaccard係数1.0で
-    // 「近い」はず)状況を再現する。ただし2人のRSSI順位が20位前後で入れ替わって
-    // いるため、送信前に各自が独立にRSSI上位N件へ絞り込むと、絞り込み後に
-    // 残るBSSID集合が2人でズレてしまう。
+    // 自分・相手が実際には同じ60個のAPを見えている(=本来ならJaccard係数1.0で
+    // 「近い」はず)状況を再現する。可視APを60件にしてあるのは、上位40件への
+    // 絞り込みでも実際に20件が切り捨てられる(=切り捨てが起きないトートロジー
+    // にならない)ようにするため。RSSIは-21〜-80dBmに収まっており、
+    // filterWeakSignalsの-80dBm足切りでは1件も落ちない。
+    //
+    // 注意: targetはap10..19とap20..29のブロックまるごと10dBm入れ替えて
+    // あり、これは「境界付近のAPが端末ごとに別々に切り捨てられる」機構を
+    // 最小の例で見せるための**極端に単純化した**構成であって、実測された
+    // RSSI揺らぎそのものではない。実測(モンテカルロ)では、σ=3dB程度の
+    // 独立な揺らぎだけなら上位20件の入れ替わりはk≒5件にとどまり、
+    // 判定はfarには落ちてもnotDetectedまでは落ちない。notDetectedまで
+    // 悪化するのは、ここで再現しているような大きな順位逆転が起きる場合か、
+    // 後段の「対称top-Mクランプ」グループで扱う集合サイズの非対称が
+    // ある場合である。
     final self = {
-      for (var i = 0; i < 10; i++) 'ap$i': -30 - i, // ap0..9: -30〜-39
-      for (var i = 10; i < 20; i++) 'ap$i': -30 - i, // ap10..19: -40〜-49
-      for (var i = 20; i < 30; i++) 'ap$i': -30 - i, // ap20..29: -50〜-59
+      for (var i = 0; i < 60; i++) 'ap$i': -21 - i, // ap0: -21 〜 ap59: -80
     };
     final target = {
-      for (var i = 0; i < 10; i++) 'ap$i': -30 - i, // ap0..9: selfと同じ
-      // ap10..19とap20..29の強さが自分側とまるごと入れ替わっている
-      // (RSSI揺らぎで境界付近の順位が逆転する状況を単純化して再現)
-      for (var i = 10; i < 20; i++) 'ap$i': -30 - (i + 10),
-      for (var i = 20; i < 30; i++) 'ap$i': -30 - (i - 10),
+      for (var i = 0; i < 10; i++) 'ap$i': -21 - i, // ap0..9: selfと同じ
+      // ap10..19とap20..29の強さがまるごと入れ替わっている(差は10dBm)
+      for (var i = 10; i < 20; i++) 'ap$i': -21 - (i + 10),
+      for (var i = 20; i < 30; i++) 'ap$i': -21 - (i - 10),
+      for (var i = 30; i < 60; i++) 'ap$i': -21 - i, // ap30..59: selfと同じ
     };
 
-    test('絞り込み前ならcommonApCount=30・Jaccard=1.0で「近い」と判定できる', () {
-      final result = calculateProximity(self, target);
-      expect(result, ProximityLevel.close);
+    test('絞り込み前ならcommonApCount=60・Jaccard=1.0で「近い」と判定できる', () {
+      expect(calculateJaccardIndex(self, target), closeTo(1, 1e-9));
+      expect(calculateProximity(self, target), ProximityLevel.close);
     });
 
     test('上位20件に絞り込むと、本来同じはずのAPの一部が非対称に落ち、'
@@ -187,8 +196,8 @@ void main() {
       final selfTop20 = selectTopAccessPoints(self, count: 20);
       final targetTop20 = selectTopAccessPoints(target, count: 20);
 
-      // ap0..9のみが両者の上位20件に共通して残り、ap10..29は
-      // どちらか片方でしか上位20件に入らない
+      // self側はap0..19、target側はap0..9 + ap20..29が残るため、
+      // 共通して残るのはap0..9の10件だけ(和集合は30件 → Jaccard 0.33)
       expect(
         selfTop20.keys.toSet().intersection(targetTop20.keys.toSet()).length,
         10,
@@ -199,12 +208,97 @@ void main() {
     });
 
     test('上位40件(現在の_maxApCount相当、かつデフォルト値)に増やせば'
-        '絞り込みの影響を受けず「近い」と判定できる', () {
+        '入れ替わったAPが両者とも上位40件に収まり「近い」と判定できる', () {
       final selfTop40 = selectTopAccessPoints(self);
       final targetTop40 = selectTopAccessPoints(target);
 
+      // 60件中20件が実際に切り捨てられている(切り捨てが起きないデータでの
+      // トートロジーにならないことの確認)
+      expect(self.length, 60);
+      expect(selfTop40.length, 40);
+      expect(targetTop40.length, 40);
+      expect(selfTop40.length, lessThan(self.length));
+
+      // 入れ替わったap10..29は両者とも上位40件の内側に収まるので、
+      // 絞り込み後のBSSID集合は完全に一致する
+      expect(selfTop40.keys.toSet(), targetTop40.keys.toSet());
+
       final result = calculateProximity(selfTop40, targetTop40);
       expect(result, ProximityLevel.close);
+    });
+  });
+
+  group('判定時の対称top-Mクランプ(issue #45 / |A| != |B|)', () {
+    // 同じ場所にいるがアンテナ利得やポケット/手持ちの差でB側が一律に弱く
+    // 見えており、-80dBmの絶対足切りの後にA=40件・B=14件と集合サイズが
+    // 非対称になっている状況。Bの14件はすべてAにも含まれている(=本来は
+    // 「近い」と判定されるべき)。
+    final a = {
+      for (var i = 0; i < 40; i++) 'ap$i': -30 - i, // ap0: -30 〜 ap39: -69
+    };
+    final b = {
+      for (var i = 0; i < 14; i++) 'ap$i': -31 - i, // ap0: -31 〜 ap13: -44
+    };
+
+    test('クランプ無しだと和集合だけが膨らみ Jaccard=0.35 で「近い」にならない', () {
+      // 共通14件 / 和集合40件 = 0.35。notDetected閾値(0.35)は下回らないが
+      // close閾値(0.50)には届かないのでfar止まりになる。
+      expect(calculateJaccardIndex(a, b), closeTo(0.35, 1e-9));
+      expect(
+        classifyProximity(
+          commonApCount: 14,
+          jaccardIndex: calculateJaccardIndex(a, b),
+          averageRssiDiffDbm: calculateAverageRssiDiff(a, b),
+        ),
+        ProximityLevel.far,
+      );
+    });
+
+    test('クランプ有りなら M=14 に揃って Jaccard=1.0 となり「近い」と判定できる', () {
+      final aClamped = clampToSymmetricTop(a, otherLength: b.length);
+      final bClamped = clampToSymmetricTop(b, otherLength: a.length);
+
+      expect(aClamped.length, 14);
+      expect(bClamped.length, 14);
+      expect(aClamped.keys.toSet(), bClamped.keys.toSet());
+      expect(calculateJaccardIndex(aClamped, bClamped), closeTo(1, 1e-9));
+
+      // calculateProximityにも組み込まれているので、素のマップを渡すだけで
+      // 「近い」になる(この期待値はクランプを外すとfarになって落ちる)
+      expect(calculateProximity(a, b), ProximityLevel.close);
+    });
+
+    test('件数が同じならクランプは何もしない(no-op)', () {
+      final other = {for (var i = 0; i < 40; i++) 'ap$i': -32 - i};
+
+      expect(clampToSymmetricTop(a, otherLength: other.length), a);
+      expect(clampToSymmetricTop(other, otherLength: a.length), other);
+    });
+
+    test('端末ごとの一律な利得オフセットに対して不変', () {
+      // b全体をさらに6dBm弱くしても、順位が変わらないので選ばれるBSSIDは
+      // 同じ(足切りで落ちない範囲での話)
+      final weakerB = {for (final e in b.entries) e.key: e.value - 6};
+
+      expect(
+        clampToSymmetricTop(weakerB, otherLength: a.length).keys.toSet(),
+        clampToSymmetricTop(b, otherLength: a.length).keys.toSet(),
+      );
+      expect(calculateProximity(a, weakerB), ProximityLevel.close);
+    });
+
+    test('離れている場合は対称クランプを入れても「近い」にはならない', () {
+      // 共通APが1件しかない(=実際に離れている)ケース。Mを揃えても
+      // 共通AP数が[minCommonApCount]に届かず検知なしのまま。
+      final far = {
+        'ap0': -60,
+        'other1': -55,
+        'other2': -58,
+        'other3': -61,
+        'other4': -64,
+      };
+
+      expect(calculateProximity(a, far), ProximityLevel.notDetected);
     });
   });
 

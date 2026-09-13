@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 
@@ -68,6 +70,31 @@ Map<String, int> selectTopAccessPoints(
   return Map.fromEntries(sorted.take(count));
 }
 
+/// 判定直前に適用する「対称top-Mクランプ」。[bssidRssi]を、相手の件数
+/// [otherLength]と自分の件数のうち小さい方(M)だけRSSIの強い順に残して返す。
+/// 自分・相手それぞれについて呼ぶことで、両者のAP集合が同じ件数Mに揃う。
+///
+/// なぜ必要か: [filterWeakSignals]の足切りは-80dBmという**絶対値**で行うため、
+/// アンテナ利得の差・ポケットか手持ちか、といった端末差で一律に数dB弱く
+/// 見える側だけが大きく削られ、足切り後の集合サイズが非対称になる。
+/// サイズが非対称なままJaccard係数を取ると、共通APは増えないのに和集合だけが
+/// 膨らむため係数が不当に下がる(例: |A|=40・|B|=14でBがAに完全に含まれる
+/// ときJ=14/40=0.35。実際には同じ場所にいるのにfar/検知なしになる)。
+///
+/// 件数を揃えてから比較すれば、上の例ではM=14となりJ=1.0まで回復する。
+/// RSSIの強い順の上位M件という選び方は、端末ごとの**一律な**利得オフセットに
+/// 対して不変(オフセットを足しても順位は変わらない)なので、利得差の正規化と
+/// して機能する。判定側だけの変更であり、送信するデータ形は変えない。
+Map<String, int> clampToSymmetricTop(
+  Map<String, int> bssidRssi, {
+  required int otherLength,
+}) {
+  return selectTopAccessPoints(
+    bssidRssi,
+    count: math.min(bssidRssi.length, otherLength),
+  );
+}
+
 /// 既に計算済みの指標から近接度を判定する。[calculateProximity]の中身を
 /// 切り出したもの(実測値をそのままテストしやすくするため)。
 ///
@@ -97,6 +124,11 @@ ProximityLevel classifyProximity({
 }
 
 /// 2人分のWi-Fiスキャン結果(BSSID→RSSI)から近接度を判定する。
+///
+/// 手順は 足切り([filterWeakSignals]) → 対称top-Mクランプ
+/// ([clampToSymmetricTop]) → 各指標の計算 → [classifyProximity]。
+/// クランプを足切りの**後**に置くのが重要で、逆順(top-N絞り込みの後に
+/// 絶対値の足切り)にすると足切り後のサイズが端末間で非対称になる。
 ProximityLevel calculateProximity(
   Map<String, int> selfBssidRssi,
   Map<String, int> targetBssidRssi,
@@ -104,12 +136,21 @@ ProximityLevel calculateProximity(
   final selfFiltered = filterWeakSignals(selfBssidRssi);
   final targetFiltered = filterWeakSignals(targetBssidRssi);
 
-  final commonCount = selfFiltered.keys
+  final selfClamped = clampToSymmetricTop(
+    selfFiltered,
+    otherLength: targetFiltered.length,
+  );
+  final targetClamped = clampToSymmetricTop(
+    targetFiltered,
+    otherLength: selfFiltered.length,
+  );
+
+  final commonCount = selfClamped.keys
       .toSet()
-      .intersection(targetFiltered.keys.toSet())
+      .intersection(targetClamped.keys.toSet())
       .length;
-  final jaccard = calculateJaccardIndex(selfFiltered, targetFiltered);
-  final avgRssiDiff = calculateAverageRssiDiff(selfFiltered, targetFiltered);
+  final jaccard = calculateJaccardIndex(selfClamped, targetClamped);
+  final avgRssiDiff = calculateAverageRssiDiff(selfClamped, targetClamped);
 
   return classifyProximity(
     commonApCount: commonCount,
@@ -204,6 +245,11 @@ String? applyNearestUidHysteresis({
 /// 「最も近い」= 共通APのRSSI差平均が最小。共通APが
 /// [ProximityThresholds.minCommonApCount]未満の候補は除外する。
 /// 該当者がいなければnull。
+///
+/// [calculateProximity]と違い[clampToSymmetricTop]は適用しない。ここで使う
+/// 指標は共通AP(積集合)のRSSI差だけで和集合を使わないため、集合サイズの
+/// 非対称でJaccard係数が下がる問題([clampToSymmetricTop]参照)が起きず、
+/// むしろクランプすると比較に使える共通APを減らしてしまうため。
 String? findNearestUid(
   Map<String, int> selfBssidRssi,
   Map<String, Map<String, int>> candidateBssidRssiByUid,
