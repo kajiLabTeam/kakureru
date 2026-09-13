@@ -847,7 +847,11 @@ class _LocationMap extends HookWidget {
     // ことにはならない。
     final displayRole = isSelf ? myRole : targetRole;
     final color = isSelf ? _selfColor : _colorForRole(targetRole);
-    final icon = displayRole != null
+    // 役割が分かっていればroleThemeのアイコン(対称な形)を使う。役割が
+    // 未知(user がroom.usersにまだ見つからない等)の間だけ、従来どおりの
+    // location_pin(下端に尖った先端がある非対称な形)にフォールバックする。
+    final usesRoleIcon = displayRole != null;
+    final icon = usesRoleIcon
         ? roleThemeOf(displayRole).icon
         : Icons.location_pin;
     final label = markerLabelFor(
@@ -858,26 +862,18 @@ class _LocationMap extends HookWidget {
     );
 
     // 鬼視点で逃走者の位置だけ、正確な点ではなくグリッドセルに丸める
-    // (issue #39)。円だと中心が推測できてしまうため矩形のセルにする。
-    // 同ロール間・逃走者視点で見る鬼は従来どおり正確な点のまま。
-    final isGridObfuscated =
-        !isSelf &&
-        myRole == UserRole.demon &&
-        targetRole == UserRole.fugitive;
-    GridCellBounds? cellBounds;
-    final latlong.LatLng point;
-    if (isGridObfuscated) {
-      cellBounds = gridCellFor(
-        latitude: location.latitude,
-        longitude: location.longitude,
-        gridSizeMeters: gridSizeMeters,
-      );
-      // マーカーもセルの中心に置く。実座標のままだとセル(矩形)を描いても
-      // ピンの位置で真の座標が分かってしまい曖昧化にならない。
-      point = latlong.LatLng(cellBounds.centerLat, cellBounds.centerLng);
-    } else {
-      point = latlong.LatLng(location.latitude, location.longitude);
-    }
+    // (issue #39)。丸め判定と描画点の計算自体はテスト可能な純粋関数
+    // (resolveMarkerPosition)に切り出している。
+    final resolved = resolveMarkerPosition(
+      latitude: location.latitude,
+      longitude: location.longitude,
+      isSelf: isSelf,
+      viewerRole: myRole,
+      targetRole: targetRole,
+      gridSizeMeters: gridSizeMeters,
+    );
+    final point = resolved.point;
+    final cellBounds = resolved.cellBounds;
 
     final marker = Marker(
       point: point,
@@ -887,8 +883,9 @@ class _LocationMap extends HookWidget {
       height: 56,
       // 役割アイコン(local_fire_department/directions_run)はlocation_pinと
       // 異なり下端に尖った先端が無い対称な形なので、アイコン中心が実座標に
-      // 来るAlignment.centerを使う。
-      alignment: Alignment.center,
+      // 来るAlignment.centerを使う。location_pinへのフォールバック時は
+      // 旧実装同様、先端を座標に合わせるためtopCenterのままにする。
+      alignment: usesRoleIcon ? Alignment.center : Alignment.topCenter,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -949,6 +946,46 @@ const _selfColor = Color(0xFF3B82F6);
 // role_theme.dartと同じ配色(鬼=赤/逃走者=緑)に揃える。
 Color _colorForRole(UserRole? role) {
   return role == null ? Colors.grey : roleThemeOf(role).color;
+}
+
+/// GPSピンの描画位置を決める純粋関数(issue #39)。
+///
+/// 鬼視点で逃走者の位置を見るとき(isSelfがfalseかつviewerRoleが鬼、
+/// targetRoleが逃走者のとき)だけ、正確な座標ではなくグリッドセル
+/// (gridCellFor)の中心を返す(このときcellBoundsも併せて返すので、
+/// 呼び出し側はそのままセルの矩形描画に使える)。それ以外(自分・同ロール・
+/// 逃走者視点で見る鬼)は常に正確な座標をそのまま返し、cellBoundsはnull。
+///
+/// 円だと中心が推測できてしまうため矩形のグリッドセルへ丸める方式にしている
+/// (issue #39の背景)。マーカーの描画点自体をセル中心に置き換えるのは、
+/// 実座標のままセルの矩形だけ追加しても、ピンの位置で真の座標が
+/// 分かってしまい曖昧化にならないため。
+@visibleForTesting
+({latlong.LatLng point, GridCellBounds? cellBounds}) resolveMarkerPosition({
+  required double latitude,
+  required double longitude,
+  required bool isSelf,
+  required UserRole? viewerRole,
+  required UserRole? targetRole,
+  required int gridSizeMeters,
+}) {
+  final isGridObfuscated =
+      !isSelf &&
+      viewerRole == UserRole.demon &&
+      targetRole == UserRole.fugitive;
+  if (!isGridObfuscated) {
+    return (point: latlong.LatLng(latitude, longitude), cellBounds: null);
+  }
+
+  final cellBounds = gridCellFor(
+    latitude: latitude,
+    longitude: longitude,
+    gridSizeMeters: gridSizeMeters,
+  );
+  return (
+    point: latlong.LatLng(cellBounds.centerLat, cellBounds.centerLng),
+    cellBounds: cellBounds,
+  );
 }
 
 /// GPSピンに表示するラベルテキストを返す(issue #13、役割表記はissue #42)。

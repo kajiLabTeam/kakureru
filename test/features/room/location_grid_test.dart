@@ -103,5 +103,46 @@ void main() {
       expect(bounds.centerLat, (bounds.south + bounds.north) / 2);
       expect(bounds.centerLng, (bounds.west + bounds.east) / 2);
     });
+
+    test('南半球・西経の座標でも同じマス内なら同じセルに丸められる', () {
+      const gridSizeMeters = 50;
+      final a = gridCellFor(
+        latitude: -34.00001,
+        longitude: -58.00001,
+        gridSizeMeters: gridSizeMeters,
+      );
+      final b = gridCellFor(
+        latitude: -34.00005,
+        longitude: -58.00008,
+        gridSizeMeters: gridSizeMeters,
+      );
+
+      expect(a.south, b.south);
+      expect(a.north, b.north);
+      expect(a.west, b.west);
+      expect(a.east, b.east);
+    });
+
+    test('南半球・西経の座標でも隣接するマスは別のセルになる', () {
+      const gridSizeMeters = 50;
+      final base = gridCellFor(
+        latitude: -34,
+        longitude: -58,
+        gridSizeMeters: gridSizeMeters,
+      );
+      final south = gridCellFor(
+        latitude: base.south - 0.00001,
+        longitude: -58,
+        gridSizeMeters: gridSizeMeters,
+      );
+      final west = gridCellFor(
+        latitude: -34,
+        longitude: base.west - 0.00001,
+        gridSizeMeters: gridSizeMeters,
+      );
+
+      expect(south.south, isNot(base.south));
+      expect(west.west, isNot(base.west));
+    });
   });
 }
