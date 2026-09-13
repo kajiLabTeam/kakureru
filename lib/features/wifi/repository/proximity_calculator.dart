@@ -61,7 +61,7 @@ double? calculateAverageRssiDiff(Map<String, int> a, Map<String, int> b) {
 /// RSSIが強い順に上位[count]件を選ぶ(RTDBへの送信データを絞るため)。
 Map<String, int> selectTopAccessPoints(
   Map<String, int> bssidRssi, {
-  int count = 20,
+  int count = 40,
 }) {
   final sorted = bssidRssi.entries.toList()
     ..sort((a, b) => b.value.compareTo(a.value)); // RSSIが強い順
@@ -151,16 +151,21 @@ List<WifiApComparison> selectTopCommonAccessPoints(
 
 /// ヒステリシスの猶予時間。この時間内に一度でも近接検知(close/far)できて
 /// いれば、直後の1回が閾値割れでnotDetectedになっても直前の判定を保持する。
-/// Wi-Fiスキャンは端末ごとに非同期・約25秒間隔で行われRSSIも揺らぐため、
+/// Wi-Fiスキャンは端末ごとに非同期・約10秒間隔(`WifiScanRepository._scanInterval`。
+/// issue #8対応でそれまでの約25秒間隔から短縮済み)で行われRSSIも揺らぐため、
 /// 1回分のノイズを吸収できるよう間隔よりやや長めに取っている(issue #8)。
+/// Androidのスキャンスロットリングで実際の更新間隔がさらに開くケースが
+/// あっても、猶予はスロットリングの発生を隠す目的では設計していない点に注意
+/// (issue #45調査。スロットリングでの取りこぼしはログで検知する方針)。
 const proximityHysteresisGraceDuration = Duration(seconds: 45);
 
 /// 今回の生の判定がnotDetectedだった場合に、実際に表示する判定を決める。
 ///
-/// Wi-Fiスキャンは端末間で非同期・約25秒間隔のため、RSSIの揺らぎで境界付近の
-/// APが出入りするだけで一瞬notDetectedへ振れることがある(issue #8 追加調査:
-/// 「近いのに検知なしになる」)。直近[graceDuration]以内に近接検知できていた
-/// 場合は、今回notDetectedでも直前の判定をそのまま返す。
+/// Wi-Fiスキャンは端末間で非同期・約10秒間隔(issue #45調査で「約25秒間隔」との
+/// 記述の古さを確認し修正)のため、RSSIの揺らぎで境界付近のAPが出入りするだけで
+/// 一瞬notDetectedへ振れることがある(issue #8 追加調査:「近いのに検知なしに
+/// なる」)。直近[graceDuration]以内に近接検知できていた場合は、今回notDetected
+/// でも直前の判定をそのまま返す。
 ///
 /// 呼び出し側は「生の判定がnotDetectedのときだけ」この関数を呼ぶ想定
 /// (生の判定がclose/farならそのまま使い、[lastGoodAt]をその時刻で更新する)。

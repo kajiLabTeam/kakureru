@@ -145,17 +145,66 @@ void main() {
       expect(top, bssidRssi);
     });
 
-    test('デフォルトは上位20件', () {
+    test('デフォルトは上位40件', () {
       final bssidRssi = {
-        for (var i = 0; i < 25; i++) 'ap$i': -30 - i, // ap0が最強
+        for (var i = 0; i < 45; i++) 'ap$i': -30 - i, // ap0が最強
       };
 
       final top = selectTopAccessPoints(bssidRssi);
 
-      expect(top.length, 20);
+      expect(top.length, 40);
       expect(top.containsKey('ap0'), isTrue);
-      expect(top.containsKey('ap19'), isTrue);
-      expect(top.containsKey('ap20'), isFalse);
+      expect(top.containsKey('ap39'), isTrue);
+      expect(top.containsKey('ap40'), isFalse);
+    });
+  });
+
+  group('送信前の上位N件絞り込みがproximity判定に与える影響(issue #45)', () {
+    // 自分・相手が実際には同じ30個のAPを見えている(=本来ならJaccard係数1.0で
+    // 「近い」はず)状況を再現する。ただし2人のRSSI順位が20位前後で入れ替わって
+    // いるため、送信前に各自が独立にRSSI上位N件へ絞り込むと、絞り込み後に
+    // 残るBSSID集合が2人でズレてしまう。
+    final self = {
+      for (var i = 0; i < 10; i++) 'ap$i': -30 - i, // ap0..9: -30〜-39
+      for (var i = 10; i < 20; i++) 'ap$i': -30 - i, // ap10..19: -40〜-49
+      for (var i = 20; i < 30; i++) 'ap$i': -30 - i, // ap20..29: -50〜-59
+    };
+    final target = {
+      for (var i = 0; i < 10; i++) 'ap$i': -30 - i, // ap0..9: selfと同じ
+      // ap10..19とap20..29の強さが自分側とまるごと入れ替わっている
+      // (RSSI揺らぎで境界付近の順位が逆転する状況を単純化して再現)
+      for (var i = 10; i < 20; i++) 'ap$i': -30 - (i + 10),
+      for (var i = 20; i < 30; i++) 'ap$i': -30 - (i - 10),
+    };
+
+    test('絞り込み前ならcommonApCount=30・Jaccard=1.0で「近い」と判定できる', () {
+      final result = calculateProximity(self, target);
+      expect(result, ProximityLevel.close);
+    });
+
+    test('上位20件に絞り込むと、本来同じはずのAPの一部が非対称に落ち、'
+        ' 「近い」はずが検知なし相当まで悪化する(修正前の挙動の再現)', () {
+      final selfTop20 = selectTopAccessPoints(self, count: 20);
+      final targetTop20 = selectTopAccessPoints(target, count: 20);
+
+      // ap0..9のみが両者の上位20件に共通して残り、ap10..29は
+      // どちらか片方でしか上位20件に入らない
+      expect(
+        selfTop20.keys.toSet().intersection(targetTop20.keys.toSet()).length,
+        10,
+      );
+
+      final result = calculateProximity(selfTop20, targetTop20);
+      expect(result, ProximityLevel.notDetected);
+    });
+
+    test('上位40件(現在の_maxApCount相当、かつデフォルト値)に増やせば'
+        '絞り込みの影響を受けず「近い」と判定できる', () {
+      final selfTop40 = selectTopAccessPoints(self);
+      final targetTop40 = selectTopAccessPoints(target);
+
+      final result = calculateProximity(selfTop40, targetTop40);
+      expect(result, ProximityLevel.close);
     });
   });
 
