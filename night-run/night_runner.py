@@ -234,6 +234,17 @@ def verify_pr(pr_url, expected_branch):
 
 
 # --- タスク状態の更新 ---
+def _record_cost_and_usage(task, envelope):
+    """total_cost_usd/usageはトークン消費のチューニング判断材料として残すだけの
+    任意項目(issue #47)。envelopeに無くても、キー自体が無い型でも例外を出さない。"""
+    if not isinstance(envelope, dict):
+        return
+    if "total_cost_usd" in envelope:
+        task["total_cost_usd"] = envelope.get("total_cost_usd")
+    if "usage" in envelope:
+        task["usage"] = envelope.get("usage")
+
+
 def update_state_done(task, state, claude_stdout):
     def fail(reason):
         branch = save_diagnostic_branch(task)
@@ -244,6 +255,11 @@ def update_state_done(task, state, claude_stdout):
     except json.JSONDecodeError as e:
         fail(f"claude -p の出力がJSONとして解釈できない: {e}")
         return
+
+    # fail()より前に記録する: 以降のどの失敗経路(is_error/structured_output欠落/
+    # 自己申告failed/PR実在確認失敗)を通っても、envelopeが取れている限り
+    # コストを残す(issue #47。無駄トークンの実態こそ知りたいのが目的)。
+    _record_cost_and_usage(task, envelope)
 
     if envelope.get("is_error"):
         fail(f"claude -p がエラー終了(subtype={envelope.get('subtype')}): {str(envelope.get('result'))[:500]}")

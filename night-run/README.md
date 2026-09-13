@@ -102,6 +102,23 @@ tail -f night-run/state/alerts.log                          # 異常があれば
 
 止めたいときは `night-run/run.sh stop`。**進行中のタスクは中断され、`done`にならない**（次に`run.sh start`し直すとstateの`pending`/`in_progress`から再開を試みるが、`in_progress`のまま止まったタスクは`main()`が拾わないので、手動で`status`を`pending`に戻すか診断ブランチの内容を確認してから判断すること — 常駐化・自動復旧は今回のスコープ外）。
 
+## state ファイルのタスクエントリ
+
+`night-run-state.json` の `tasks[]` 各要素は、実行が進むにつれてフィールドが増えていく。主なもの:
+
+| フィールド | 内容 |
+|---|---|
+| `title` / `issue_url` | タスク名・起点issue |
+| `status` | `pending` / `in_progress` / `done` / `failed` |
+| `branch` / `step` / `review_round` | 作業ブランチと進捗段階(`update_step.py`が書く) |
+| `pr_status` / `pr_url` | `done`時の最終ステータス(`success`=ready / `draft`)とPR URL |
+| `completed_summary` / `remaining_summary` | タスク側の自己申告サマリ |
+| `failure_reason` / `diagnostic_branch` | `failed`時の理由と退避ブランチ |
+| `total_cost_usd` | その回の`claude -p`実行にかかった実コスト(USD)。envelopeの同名フィールドをそのまま転記する |
+| `usage` | 同、トークン使用量(input/output/cacheの内訳を含む生の`usage`オブジェクト) |
+
+`total_cost_usd`/`usage`は成功(`done`)・失敗(`failed`)どちらの経路でも、`claude -p`の出力(envelope)がJSONとしてパースできた場合は記録される(`update_state_done`)。**JSON自体が壊れていてenvelopeが取れなかった場合はこの2項目は記録されない**(パース前なのでコストの実額が分からないため)。値が見当たらない・型が合わない場合も例外にはせず、単に記録がないだけで処理は継続する。
+
 ## スコープ外（今回は実装していない）
 
 - esa用MCPサーバー（設計書7章、任意扱い）

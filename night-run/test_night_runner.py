@@ -170,6 +170,62 @@ class UpdateStateDoneTest(unittest.TestCase):
         self.assertEqual(self.task["status"], "done")
         self.assertEqual(self.task["pr_url"], "https://github.com/x/y/pull/1")
 
+    def test_success_records_cost_and_usage(self):
+        stdout = json.dumps({
+            "is_error": False,
+            "total_cost_usd": 1.23,
+            "usage": {"input_tokens": 100, "output_tokens": 50},
+            "structured_output": {
+                "status": "success", "pr_url": "https://github.com/x/y/pull/1",
+                "branch": "night-run/task-a", "review_round": 2,
+                "completed_summary": "done", "remaining_summary": "なし",
+            },
+        })
+        with mock.patch.object(night_runner, "verify_pr", return_value=True):
+            night_runner.update_state_done(self.task, self.state, stdout)
+        self.assertEqual(self.task["status"], "done")
+        self.assertEqual(self.task["total_cost_usd"], 1.23)
+        self.assertEqual(self.task["usage"], {"input_tokens": 100, "output_tokens": 50})
+
+    def test_failure_still_records_cost_and_usage(self):
+        # 無駄トークンの実態こそ知りたいのが目的(issue #47)なので、失敗経路でも
+        # envelopeが取れている限りコストを残す。
+        stdout = json.dumps({
+            "is_error": False,
+            "total_cost_usd": 4.56,
+            "usage": {"input_tokens": 999, "output_tokens": 111},
+            "result": "plain text, no schema",
+        })
+        night_runner.update_state_done(self.task, self.state, stdout)
+        self.assertEqual(self.task["status"], "failed")
+        self.assertEqual(self.task["total_cost_usd"], 4.56)
+        self.assertEqual(self.task["usage"], {"input_tokens": 999, "output_tokens": 111})
+
+    def test_missing_cost_fields_does_not_raise(self):
+        stdout = json.dumps({"is_error": False, "result": "plain text, no schema"})
+        night_runner.update_state_done(self.task, self.state, stdout)
+        self.assertEqual(self.task["status"], "failed")
+        self.assertNotIn("total_cost_usd", self.task)
+        self.assertNotIn("usage", self.task)
+
+    def test_invalid_json_does_not_raise_and_records_no_cost(self):
+        night_runner.update_state_done(self.task, self.state, "not-json")
+        self.assertEqual(self.task["status"], "failed")
+        self.assertNotIn("total_cost_usd", self.task)
+
+
+class RecordCostAndUsageTest(unittest.TestCase):
+    def test_non_dict_envelope_does_not_raise(self):
+        task = {}
+        night_runner._record_cost_and_usage(task, None)
+        night_runner._record_cost_and_usage(task, "not-a-dict")
+        self.assertEqual(task, {})
+
+    def test_extracts_present_fields_only(self):
+        task = {}
+        night_runner._record_cost_and_usage(task, {"total_cost_usd": 0.5})
+        self.assertEqual(task, {"total_cost_usd": 0.5})
+
 
 class RateLimitEnvelopeTest(unittest.TestCase):
     def test_is_error_with_rate_limit_text_is_detected(self):
