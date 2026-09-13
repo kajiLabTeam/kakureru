@@ -119,9 +119,22 @@ class GameResultPage extends HookConsumerWidget {
                                           .read(roomRepositoryProvider)
                                           .restartRoom(roomId);
                                     } on Object catch (e) {
-                                      restartError.value = e;
+                                      // awaitの後はこのページが既に破棄されて
+                                      // いる可能性がある。巻き戻しを検知した
+                                      // useRestartRecoveryがRoomWaitingPageへ
+                                      // pushReplacementすると、旧ルートは遷移
+                                      // アニメーション完了(約300ms)後に破棄
+                                      // されるため、RTDBのack がそれより遅い
+                                      // とdispose済みのHookElementへの
+                                      // setStateになり、unawaited経由の未処理
+                                      // 非同期エラーとして表に出てしまう。
+                                      if (context.mounted) {
+                                        restartError.value = e;
+                                      }
                                     } finally {
-                                      isRestarting.value = false;
+                                      if (context.mounted) {
+                                        isRestarting.value = false;
+                                      }
                                     }
                                   }),
                                 ),

@@ -10,8 +10,8 @@ import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/room_waiting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
-/// 「同じメンバーでもう一回」による巻き戻し(`meta/status` が `PLAYING` から
-/// `WAITING` へ変化)を検知し、自分の役割が鬼だった場合は自分でFUGITIVEへ
+/// 「同じメンバーでもう一回」による巻き戻し(`meta/status` が `WAITING` に
+/// 戻っている状態)を検知し、自分の役割が鬼だった場合は自分でFUGITIVEへ
 /// リセットしてから待機画面(`RoomWaitingPage`)へ遷移するフック(issue #44)。
 ///
 /// GameResultPageだけでなくGamePageからも呼ぶ。ホストが結果画面で
@@ -32,13 +32,28 @@ void useRestartRecovery(
   required String roomId,
 }) {
   final hasHandled = useRef(false);
-  ref.listen(roomStreamProvider(roomId), (previous, next) {
-    if (hasHandled.value) return;
-    final wasPlaying = previous?.value?.status == RoomStatus.playing;
-    final room = next.value;
-    if (!wasPlaying || room == null || room.status != RoomStatus.waiting) {
-      return;
-    }
+  final roomAsync = ref.watch(roomStreamProvider(roomId));
+
+  // 「PLAYING→WAITINGへの変化」という遷移ベース(ref.listen + previous参照)
+  // ではなく、「今WAITINGである」という状態ベース(useEffect)で判定する。
+  // ref.listenはfireImmediatelyを付けない限り登録後の「変化」にしか反応
+  // しないため、最初に観測したスナップショットが既にWAITINGだと二度と
+  // 発火せず、結果画面から動けなくなる(roleもDEMONのまま残る)。
+  // 具体的には、endsAt到達でGameResultPageへpushReplacementした直後に
+  // ホストが「同じメンバーでもう一回」を押すと、新しくマウントされた
+  // GameResultPageが最初に受け取るroomは既にWAITINGになっている。
+  // 一時的な切断によるroomStreamProvider(autoDispose)の再購読や、
+  // バックグラウンドからの復帰でも同じ穴が開く。
+  // 同じ罠はRoomWaitingPage側でも一度踏んでおり(room_waiting_page.dart
+  // のuseEffectのコメント参照)、そちらの書き方に揃えている。
+  //
+  // GamePage/GameResultPageはいずれも「開始済みのゲーム」からしか到達
+  // しないため、そこでWAITINGを観測するのは巻き戻し以外にあり得ず、
+  // 状態ベースにしても誤検知しない(再入はhasHandledで防ぐ)。
+  useEffect(() {
+    if (hasHandled.value) return null;
+    final room = roomAsync.value;
+    if (room == null || room.status != RoomStatus.waiting) return null;
     hasHandled.value = true;
 
     final myUid = ref.read(myUidProvider);
@@ -53,13 +68,16 @@ void useRestartRecovery(
       );
     }
 
+    // useEffectはビルド直後に同期実行されるため、ここで即座にNavigatorを
+    // 操作すると「ビルド中にNavigator操作をした」というエラーになる。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => RoomWaitingPage(roomId: roomId)),
       );
     });
-  });
+    return null;
+  }, [roomAsync.value]);
 }
 
 RoomUser? _findUser(List<RoomUser> users, String uid) {
