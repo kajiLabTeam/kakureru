@@ -140,6 +140,17 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 **既知のトレードオフ**: 指名された本人のアプリがその瞬間バックグラウンド等で `meta` の変化を受け取れないと、`pendingDemonUid` が一時的に残ったままになる(セキュリティ上の問題ではなく、単なる反映待ちの遅延)。
 
+### 「同じメンバーでもう一回」(`RoomRepository.restartRoom`)
+
+ゲーム終了画面のホストが同じ部屋で再戦するときの巻き戻し。新規ノードは追加せず、既存フィールドを次のように書き戻す:
+
+- `meta/status` を `WAITING` に戻し、`startedAt` / `releasedAt` / `endsAt` / `endedAt` / `pendingDemonUid` をクリアする(すべて `restartRoom` が `rooms/{roomId}/meta` への1回の `update` でまとめて書く)
+- 各参加者の `role` を `FUGITIVE` に、`becameDemonAt` をクリアする
+
+保持する(書き換えない)のは `setting` 配下すべてと、各参加者の `pressureOffset` / `pressureSensorAvailable`。参加者自体も退室させない。
+
+`role`/`becameDemonAt` のリセットを `restartRoom` に含めなかったのは、鬼の決定と同じ制約のため: `users/{uid}` は本人しか書き込めないルールなので、ホストが他の参加者の `role` をまとめて書き換えることはできない。代わりに、各端末が `roomStreamProvider` で `status` が `PLAYING` から `WAITING` へ変化したことを検知し(このページに来ている間、`status` は常に `PLAYING` のまま残っているため、この変化は巻き戻し以外では起こらない)、自分の役割が鬼だった場合にだけ `resetOwnRoleForRestart` で自分の `role`/`becameDemonAt` を書き戻す。
+
 ### `catches/{catchId}/demonUserId` はnull許容
 
 逃走者の自己申告（「捕まった」ボタン）で記録する `catches` には、誰が捕まえたか（`demonUserId`）を確実には特定できない。Phase 1では「捕まえた鬼を選択させるUI」は作らず、`demonUserId: null` を許容する形にした。捕獲した鬼を明示的に記録したくなったら、選択UIを別途追加すること。
