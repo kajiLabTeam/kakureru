@@ -236,13 +236,16 @@ def verify_pr(pr_url, expected_branch):
 # --- タスク状態の更新 ---
 def _record_cost_and_usage(task, envelope):
     """total_cost_usd/usageはトークン消費のチューニング判断材料として残すだけの
-    任意項目(issue #47)。envelopeに無くても、キー自体が無い型でも例外を出さない。"""
+    任意項目(issue #47)。envelopeが無い・キーが無い・値の型が不正な場合も
+    例外を出さず、単に記録をスキップする。"""
     if not isinstance(envelope, dict):
         return
-    if "total_cost_usd" in envelope:
-        task["total_cost_usd"] = envelope.get("total_cost_usd")
-    if "usage" in envelope:
-        task["usage"] = envelope.get("usage")
+    cost = envelope.get("total_cost_usd")
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        task["total_cost_usd"] = cost
+    usage = envelope.get("usage")
+    if isinstance(usage, dict):
+        task["usage"] = usage
 
 
 def update_state_done(task, state, claude_stdout):
@@ -518,6 +521,11 @@ def run_task_with_retry(task, state):
                 envelope = json.loads(stdout)
             except json.JSONDecodeError:
                 envelope = None
+
+            # レートリミットのgive-up経路(_retry_after_rate_limit_or_give_up内で
+            # mark_task_failedを直接呼ぶ)はupdate_state_doneを経由しないため、
+            # ここで先に記録しておかないとコストが握り潰される(issue #47)。
+            _record_cost_and_usage(task, envelope)
 
             if _envelope_is_rate_limited(envelope):
                 attempt += 1

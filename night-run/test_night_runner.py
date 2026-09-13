@@ -226,6 +226,13 @@ class RecordCostAndUsageTest(unittest.TestCase):
         night_runner._record_cost_and_usage(task, {"total_cost_usd": 0.5})
         self.assertEqual(task, {"total_cost_usd": 0.5})
 
+    def test_wrong_type_values_are_skipped_not_recorded(self):
+        task = {}
+        night_runner._record_cost_and_usage(
+            task, {"total_cost_usd": "N/A", "usage": "not-a-dict"}
+        )
+        self.assertEqual(task, {})
+
 
 class RateLimitEnvelopeTest(unittest.TestCase):
     def test_is_error_with_rate_limit_text_is_detected(self):
@@ -312,6 +319,28 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
         final_state = night_runner.load_state()
         final_task = final_state["tasks"][0]
         self.assertEqual(final_task["status"], "failed")
+
+    def test_rate_limited_give_up_still_records_cost_and_usage(self):
+        # give-up経路(_retry_after_rate_limit_or_give_up内でmark_task_failedを
+        # 直接呼ぶ)はupdate_state_doneを経由しないため、記録漏れが起きやすい
+        # (コードレビュー指摘の再現ケース)。
+        rate_limited_stdout = json.dumps({
+            "is_error": True, "subtype": "error_during_execution", "result": "429 rate limit",
+            "total_cost_usd": 2.5, "usage": {"input_tokens": 10, "output_tokens": 5},
+        })
+        responses = [(0, rate_limited_stdout, "")] * 3
+
+        with mock.patch.object(night_runner, "run_claude_with_timeout", side_effect=responses), \
+             mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
+             mock.patch.object(night_runner.time, "sleep"), \
+             mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"):
+            night_runner.run_task_with_retry(self.task, self.state)
+
+        final_state = night_runner.load_state()
+        final_task = final_state["tasks"][0]
+        self.assertEqual(final_task["status"], "failed")
+        self.assertEqual(final_task["total_cost_usd"], 2.5)
+        self.assertEqual(final_task["usage"], {"input_tokens": 10, "output_tokens": 5})
 
 
 class GitCleanupRetryTest(unittest.TestCase):

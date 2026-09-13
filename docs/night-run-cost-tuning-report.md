@@ -4,11 +4,12 @@
 
 `update_state_done`(`night-run/night_runner.py`)で、`claude -p --output-format json` の出力(envelope)から `total_cost_usd` と `usage` を state の該当タスクエントリへそのまま転記するようにした。詳細フィールドは `night-run/README.md` の「state ファイルのタスクエントリ」節を参照。要点:
 
-- **成功(`done`)・失敗(`failed`)の両経路で記録される**。`update_state_done` 内の `fail()` を呼ぶより前(envelope をパースした直後)に記録処理を置いたため、`is_error` / `structured_output` 欠落 / 自己申告 `failed` / PR実在確認失敗のどの経路でも、envelope 自体がJSONとしてパースできていればコストが残る。
+- **成功(`done`)・失敗(`failed`)の両経路で記録される**。`update_state_done` 内の `fail()` を呼ぶより前(envelope をパースした直後)に記録処理を置いたため、`is_error` / `structured_output` 欠落 / 自己申告 `failed` / PR実在確認失敗のどの経路でも、envelope 自体がJSONとしてパースできていればコストが残る。加えて、レートリミットで `MAX_RETRY_ATTEMPTS` 回リトライしても解消せず give-up するケース(`run_task_with_retry` → `_retry_after_rate_limit_or_give_up` → `mark_task_failed` と、`update_state_done` を経由しない別経路)でも、`run_task_with_retry` 側で envelope パース直後に記録することで漏れなくカバーしている。
 - **envelope の JSON パース自体に失敗した場合のみ記録されない**(パース前なので実額が取れないため)。この場合も例外は投げず、`failure_reason` だけが記録されて処理は続く。
-- `total_cost_usd`(float, USD)と `usage`(dict、input/output/cacheトークン数の内訳)は、値が無い・型が合わない場合も単に記録がスキップされるだけで、タスク処理は継続する(`_record_cost_and_usage` はbest-effortで、例外を出さない)。
+- `total_cost_usd`(float, USD)と `usage`(dict、input/output/cacheトークン数の内訳)は、キーが無い・値の型が不正な場合も単に記録がスキップされるだけで、タスク処理は継続する(`_record_cost_and_usage` はbest-effortで、例外を出さない)。
+- **リトライをまたいだ累積ではない**: レートリミットでbackoffリトライが発生した場合、記録されるのは最後に完了した試行1回分のコストのみで、それ以前の(レートリミットで捨てられた)試行のコストは合算されない。リトライが多いタスクほど、記録された `total_cost_usd` は実際にそのタスクへ費やされた総コストを過小評価する。
 
-**読み方**: `night-run-state.json` の各タスクの `total_cost_usd` を見れば、そのタスク1回(レビューラウンド往復・PR作成まで含む)にかかった実コストが分かる。`usage` の input/output トークン数を見れば、コストの内訳(長い会話履歴の再送によるinputの肥大化か、出力そのものが重いのか)を切り分けられる。
+**読み方**: `night-run-state.json` の各タスクの `total_cost_usd` を見れば、最後に完了した`claude -p`試行1回分(レビューラウンド往復・PR作成まで含む)の実コストが分かる(リトライが無ければタスク全体のコストと一致する)。`usage` の input/output トークン数を見れば、コストの内訳(長い会話履歴の再送によるinputの肥大化か、出力そのものが重いのか)を切り分けられる。
 
 ## 2. 今回時点で実測データが無いこと自体の確認
 
@@ -22,6 +23,8 @@
 | 上下表示から数値と単位を消し、バーの範囲をフロア相当(±20m)に広げる | 351.7秒 |
 
 いずれも軽量な修正タスクで、時間だけを見ても「予算15ドルを使い切るような重いタスク」の実例は手元に無い。
+
+**注記(データの検証可能性について)**: `night-run/state/` 配下(`night-run-state.json` / `night-run-state.2026-09-03.json` / `alerts.log` / `summary*.txt`)は `.gitignore` により `.gitkeep` を除いてgit管理外(このディレクトリはホスト側のbind mountで、`git_cleanup()` の `git clean -fd` で消えないようにする設計上の意図的な除外)。そのため本レポートが引用した上記の実行時間表や、3.1・3.3節が根拠とする9/3実績の具体的な数値は、**このリポジトリのクローンだけからは再現・検証できない**。この調査を行った時点でホスト上に存在した実ファイルを直接読んで転記したものであり、値そのものの再取得が必要な場合はnight-run運用ホスト側の該当ファイルを確認すること。
 
 ## 3. チューニング方針の調査
 
