@@ -4,7 +4,7 @@
 
 `update_state_done`(`night-run/night_runner.py`)で、`claude -p --output-format json` の出力(envelope)から `total_cost_usd` と `usage` を state の該当タスクエントリへそのまま転記するようにした。詳細フィールドは `night-run/README.md` の「state ファイルのタスクエントリ」節を参照。要点:
 
-- **成功(`done`)・失敗(`failed`)の両経路で記録される**。`update_state_done` 内の `fail()` を呼ぶより前(envelope をパースした直後)に記録処理を置いたため、`is_error` / `structured_output` 欠落 / 自己申告 `failed` / PR実在確認失敗のどの経路でも、envelope 自体がJSONとしてパースできていればコストが残る。加えて、レートリミットで `MAX_RETRY_ATTEMPTS` 回リトライしても解消せず give-up するケース(`run_task_with_retry` → `_retry_after_rate_limit_or_give_up` → `mark_task_failed` と、`update_state_done` を経由しない別経路)でも、`run_task_with_retry` 側で envelope パース直後に記録することで漏れなくカバーしている。
+- **成功(`done`)・失敗(`failed`)の両経路で記録される**。`update_state_done` 内の `fail()` を呼ぶより前(envelope をパースした直後)に記録処理を置いたため、`is_error` / `structured_output` 欠落 / 自己申告 `failed` / PR実在確認失敗のどの経路でも、envelope 自体がJSONとしてパースできていればコストが残る。加えて、`run_task_with_retry` 側でも `claude -p` の returncode や、レートリミットの検知方式(exit 0 + JSON envelope内エラー、あるいは非0 exit + stderrの正規表現マッチ)によらず、毎試行後に一度 `stdout` のJSONパースを試みてから記録するようにしたため、レートリミットで `MAX_RETRY_ATTEMPTS` 回リトライしても解消せず give-up するケース(`_retry_after_rate_limit_or_give_up` → `mark_task_failed` と、`update_state_done` を経由しない別経路)でも、stdoutに有効なenvelopeが残っている限り漏れなくカバーしている。
 - **envelope の JSON パース自体に失敗した場合のみ記録されない**(パース前なので実額が取れないため)。この場合も例外は投げず、`failure_reason` だけが記録されて処理は続く。
 - `total_cost_usd`(float, USD)と `usage`(dict、input/output/cacheトークン数の内訳)は、キーが無い・値の型が不正な場合も単に記録がスキップされるだけで、タスク処理は継続する(`_record_cost_and_usage` はbest-effortで、例外を出さない)。
 - **リトライをまたいだ累積ではない**: レートリミットでbackoffリトライが発生した場合、記録されるのは最後に完了した試行1回分のコストのみで、それ以前の(レートリミットで捨てられた)試行のコストは合算されない。リトライが多いタスクほど、記録された `total_cost_usd` は実際にそのタスクへ費やされた総コストを過小評価する。

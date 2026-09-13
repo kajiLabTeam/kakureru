@@ -513,20 +513,21 @@ def run_task_with_retry(task, state):
             handle_hard_limit_exceeded(task, state)
             return
 
+        # レートリミットのgive-up経路(_retry_after_rate_limit_or_give_up内で
+        # mark_task_failedを直接呼ぶ)や、下のレートリミット以外の異常終了経路は
+        # update_state_doneを経由しないため、ここで先に記録しておかないと
+        # コストが握り潰される(issue #47)。returncodeが0以外でもstdoutに
+        # envelopeが残っていることがあるため、成否を問わず一度パースを試みる。
+        try:
+            envelope = json.loads(stdout)
+        except json.JSONDecodeError:
+            envelope = None
+        _record_cost_and_usage(task, envelope)
+
         if returncode == 0:
             # claude -pはAPIレベルのレートリミットをexit 0 + JSON封筒内のエラーとして
             # 返すことがある。stderrの文字列マッチだけでなく、こちらも見ておかないと
             # 一度で"failed"確定してしまいbackoffリトライへ入れない。
-            try:
-                envelope = json.loads(stdout)
-            except json.JSONDecodeError:
-                envelope = None
-
-            # レートリミットのgive-up経路(_retry_after_rate_limit_or_give_up内で
-            # mark_task_failedを直接呼ぶ)はupdate_state_doneを経由しないため、
-            # ここで先に記録しておかないとコストが握り潰される(issue #47)。
-            _record_cost_and_usage(task, envelope)
-
             if _envelope_is_rate_limited(envelope):
                 attempt += 1
                 if _retry_after_rate_limit_or_give_up(task, state, attempt, stdout):

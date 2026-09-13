@@ -342,6 +342,25 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
         self.assertEqual(final_task["total_cost_usd"], 2.5)
         self.assertEqual(final_task["usage"], {"input_tokens": 10, "output_tokens": 5})
 
+    def test_stderr_rate_limit_give_up_records_cost_if_stdout_has_envelope(self):
+        # returncode!=0 でstderrの正規表現マッチによりgive-upする経路
+        # (night_runner.py 539-543行目)でも、stdoutにenvelopeが残っている
+        # 場合はコストを記録する。
+        stdout_with_cost = json.dumps({"total_cost_usd": 3.7, "usage": {"input_tokens": 20}})
+        responses = [(1, stdout_with_cost, "429 rate limit")] * 3
+
+        with mock.patch.object(night_runner, "run_claude_with_timeout", side_effect=responses), \
+             mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
+             mock.patch.object(night_runner.time, "sleep"), \
+             mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"):
+            night_runner.run_task_with_retry(self.task, self.state)
+
+        final_state = night_runner.load_state()
+        final_task = final_state["tasks"][0]
+        self.assertEqual(final_task["status"], "failed")
+        self.assertEqual(final_task["total_cost_usd"], 3.7)
+        self.assertEqual(final_task["usage"], {"input_tokens": 20})
+
 
 class GitCleanupRetryTest(unittest.TestCase):
     def test_succeeds_on_second_attempt_without_raising(self):
