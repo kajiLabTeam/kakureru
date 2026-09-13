@@ -149,7 +149,9 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 保持する(書き換えない)のは `setting` 配下すべてと、各参加者の `pressureOffset` / `pressureSensorAvailable`。参加者自体も退室させない。
 
-`role`/`becameDemonAt` のリセットを `restartRoom` に含めなかったのは、鬼の決定と同じ制約のため: `users/{uid}` は本人しか書き込めないルールなので、ホストが他の参加者の `role` をまとめて書き換えることはできない。代わりに、各端末が `roomStreamProvider` で `status` が `PLAYING` から `WAITING` へ変化したことを検知し(このページに来ている間、`status` は常に `PLAYING` のまま残っているため、この変化は巻き戻し以外では起こらない)、自分の役割が鬼だった場合にだけ `resetOwnRoleForRestart` で自分の `role`/`becameDemonAt` を書き戻す。
+`role`/`becameDemonAt` のリセットを `restartRoom` に含めなかったのは、鬼の決定と同じ制約のため: `users/{uid}` は本人しか書き込めないルールなので、ホストが他の参加者の `role` をまとめて書き換えることはできない。代わりに、各端末が `roomStreamProvider` で `status` が `PLAYING` から `WAITING` へ変化したことを検知し、自分の役割が鬼だった場合にだけ `resetOwnRoleForRestart` で自分の `role`/`becameDemonAt` を書き戻す(`lib/features/room/restart_recovery.dart` の `useRestartRecovery`)。
+
+この検知はホストが結果画面(`GameResultPage`)にいる間だけでなく `GamePage` からも行う。ホストが「同じメンバーでもう一回」を押した瞬間、他の参加者はまだ `isGameOver` を検知できておらず `GamePage` に留まっている場合がある(バックグラウンド化・ネットワーク遅延等)ため、結果画面を経由できなかった端末も待機画面に戻せるようにするため。
 
 ### `catches/{catchId}/demonUserId` はnull許容
 

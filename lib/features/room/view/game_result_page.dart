@@ -6,11 +6,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
-import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/single_flight_action.dart';
-import 'package:kakureru/features/room/view/room_waiting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 const _demonColor = Color(0xFFE5484D);
@@ -33,38 +32,10 @@ class GameResultPage extends HookConsumerWidget {
     final restartError = useState<Object?>(null);
     final restartGuard = useMemoized(SingleFlightAction.new);
 
-    // このページに来ている間、rooms/{roomId}/meta/status は常に PLAYING
-    // (finishRoomはlib/内から呼ばれておらず、終了判定はGamePage側の
-    // isGameOverによるクライアント判定のみで行われるため)。したがって
-    // ここでの WAITING への変化は、必ず「同じメンバーでもう一回」による
-    // 巻き戻し(RoomRepository.restartRoom)を意味する。
-    //
-    // users/{uid} は本人しか書き込めないルールのため、ホストは他の参加者の
-    // roleをまとめてFUGITIVEに戻せない(鬼の決定がpendingDemonUid経由の
-    // 自己申告方式なのと同じ理由)。そのため巻き戻りを検知した端末ごとに、
-    // 自分が鬼だった場合だけ自分の役割をリセットしてから待機画面へ戻る。
-    final hasHandledRestart = useRef(false);
-    useEffect(() {
-      final room = roomAsync.value;
-      if (hasHandledRestart.value || room == null) return null;
-      if (room.status != RoomStatus.waiting) return null;
-      hasHandledRestart.value = true;
-
-      final myself = myUid == null ? null : _findUser(room.users, myUid);
-      if (myself?.role == UserRole.demon) {
-        unawaited(
-          ref.read(roomRepositoryProvider).resetOwnRoleForRestart(roomId),
-        );
-      }
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => RoomWaitingPage(roomId: roomId)),
-        );
-      });
-      return null;
-    }, [roomAsync.value]);
+    // 巻き戻し(「同じメンバーでもう一回」)の検知・自分の役割リセット・
+    // 待機画面への遷移は、GamePage側でも同じ処理が要るため共通フックに
+    // している(useRestartRecoveryのドキュメント参照)。
+    useRestartRecovery(ref, context, roomId: roomId);
 
     return Scaffold(
       body: SafeArea(
@@ -196,13 +167,6 @@ class GameResultPage extends HookConsumerWidget {
       ),
     );
   }
-}
-
-RoomUser? _findUser(List<RoomUser> users, String uid) {
-  for (final user in users) {
-    if (user.id == uid) return user;
-  }
-  return null;
 }
 
 /// 結果画面の参加者1人ぶんの行(アバター+名前)。
