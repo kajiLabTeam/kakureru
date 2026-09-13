@@ -484,8 +484,7 @@ class GamePage extends HookConsumerWidget {
                     // (誤タップ防止という元の目的はdisabled化で引き継ぐ)。
                     // アプリ全体のテーマ変更の影響も受けないよう、Flutter標準の
                     // ThemeDataで局所的に上書きする構造は維持する。
-                    if (myRole != null &&
-                        canReportCaught(role: myRole, phase: phase))
+                    if (shouldShowBecomeDemonButton(role: myRole, phase: phase))
                       BecomeDemonButton(
                         isDetected: bleBecomeDemonDetected,
                         isSubmitting: isSubmittingCaught.value,
