@@ -19,6 +19,7 @@ import 'package:kakureru/features/pressure/model/pressure_sensor_availability.da
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
+import 'package:kakureru/features/room/location_grid.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -93,6 +94,12 @@ class GamePage extends HookConsumerWidget {
     // nullの間は既定で最も近い相手を選ぶ(下のeffectiveSelectedUid参照)。
     // ウィジェット内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
     final selectedOpponentUid = useState<String?>(null);
+
+    // 鬼視点で逃走者の位置をどれだけグリッドで曖昧化するか(メートル)。
+    // 鬼だけが切り替えられるGamePageに閉じた一時状態で、RTDBには書き込まず
+    // 永続化もしない(切り替えるたびに毎回defaultGridSizeMetersへ戻ってよい、
+    // issue #39)。
+    final gridSizeMeters = useState<int>(defaultGridSizeMeters);
 
     // ゲーム画面に入ったら位置送信・購読を開始し、離れたら止める。
     useEffect(() {
@@ -506,11 +513,24 @@ class GamePage extends HookConsumerWidget {
                           ),
                         ),
                       ),
+                    // 鬼視点のみ、逃走者の位置をどれだけ曖昧化するか
+                    // (グリッドサイズ)を切り替えられる(issue #39)。
+                    // 逃走者からはこの設定自体を見せない・操作させない。
+                    if (myRole == UserRole.demon)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        child: _GridSizeToggle(
+                          selected: gridSizeMeters.value,
+                          onSelect: (value) => gridSizeMeters.value = value,
+                        ),
+                      ),
                     Expanded(
                       child: _LocationMap(
                         locations: visibleLocations,
                         users: room.users,
                         myUid: myUid,
+                        viewerRole: myRole,
+                        gridSizeMeters: gridSizeMeters.value,
                         cachedPosition: cachedPosition.value,
                         gameArea: room.setting.gameArea,
                       ),
@@ -623,6 +643,8 @@ class _LocationMap extends HookWidget {
     required this.locations,
     required this.users,
     required this.myUid,
+    required this.viewerRole,
+    required this.gridSizeMeters,
     required this.cachedPosition,
     required this.gameArea,
   });
@@ -630,6 +652,13 @@ class _LocationMap extends HookWidget {
   final List<UserLocation> locations;
   final List<RoomUser> users;
   final String? myUid;
+
+  /// 自分の役割。鬼視点かどうかで逃走者マーカーの描画方式を切り替える
+  /// (issue #39)ために使う。
+  final UserRole? viewerRole;
+
+  /// 鬼視点で逃走者の位置を丸めるグリッドサイズ(メートル)。
+  final int gridSizeMeters;
   final Position? cachedPosition;
 
   /// ルーム設定で指定されたプレイエリア。未設定なら空。
@@ -696,6 +725,30 @@ class _LocationMap extends HookWidget {
       return null;
     }, [positionTier, currentCenter.latitude, currentCenter.longitude]);
 
+    // 鬼視点で逃走者の位置を正確な点で描画せず、所属グリッドセルの矩形と
+    // して描画するため(issue #39)、対象を先に振り分けておく。それ以外
+    // (同ロール同士・逃走者視点の鬼)は従来どおり正確な点のMarkerのまま。
+    final gridPolygons = <Polygon<Object>>[];
+    final pointMarkers = <Marker>[];
+    final gridLabelMarkers = <Marker>[];
+    for (final location in locations) {
+      final user = _findUser(users, location.uid);
+      if (isGridObfuscated(viewerRole: viewerRole, targetRole: user?.role)) {
+        final cell = snapToGridCell(
+          latitude: location.latitude,
+          longitude: location.longitude,
+          gridSizeMeters: gridSizeMeters,
+        );
+        final color = _colorForRole(user?.role);
+        gridPolygons.add(_gridCellPolygon(cell, color));
+        gridLabelMarkers.add(
+          _buildGridLabelMarker(cell, location, user, color),
+        );
+      } else {
+        pointMarkers.add(_buildMarker(location));
+      }
+    }
+
     return Stack(
       children: [
         FlutterMap(
@@ -720,7 +773,8 @@ class _LocationMap extends HookWidget {
                   _areaBorderPolygon(areaPoints),
                 ],
               ),
-            MarkerLayer(markers: locations.map(_buildMarker).toList()),
+            if (gridPolygons.isNotEmpty) PolygonLayer(polygons: gridPolygons),
+            MarkerLayer(markers: [...pointMarkers, ...gridLabelMarkers]),
           ],
         ),
         if (positionTier == 0)
@@ -852,6 +906,74 @@ class _LocationMap extends HookWidget {
     }
     return null;
   }
+
+  /// グリッドセルを表す矩形ポリゴン。ぼかしていることが分かるよう、
+  /// 通常のMarkerと同じ役割色で薄い塗り+枠線にする。
+  Polygon<Object> _gridCellPolygon(GridCell cell, Color color) {
+    return Polygon(
+      points: _gridCellCorners(cell),
+      color: color.withValues(alpha: 0.25),
+      borderColor: color,
+      borderStrokeWidth: 2,
+    );
+  }
+
+  List<latlong.LatLng> _gridCellCorners(GridCell cell) => [
+    latlong.LatLng(cell.south, cell.west),
+    latlong.LatLng(cell.south, cell.east),
+    latlong.LatLng(cell.north, cell.east),
+    latlong.LatLng(cell.north, cell.west),
+  ];
+
+  /// グリッドセルの中心に置く名前ラベル。正確な地点ではないことが伝わる
+  /// よう、通常のMarker(_buildMarker)と違ってピンアイコンは付けない。
+  Marker _buildGridLabelMarker(
+    GridCell cell,
+    UserLocation location,
+    RoomUser? user,
+    Color color,
+  ) {
+    final label = markerLabelFor(uid: location.uid, myUid: myUid, user: user);
+
+    return Marker(
+      point: latlong.LatLng(cell.centerLatitude, cell.centerLongitude),
+      width: 72,
+      height: 20,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            height: 1.1,
+          ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+      ),
+    );
+  }
+}
+
+/// 鬼視点で逃走者の位置をグリッドセル(矩形)として曖昧化すべきかどうか。
+///
+/// 鬼→逃走者のときだけ矩形にし、それ以外(同ロール同士、または逃走者
+/// 視点での鬼)は従来どおり正確な点のまま描画する(issue #39)。
+/// 自分自身は常に自分と同じ役割なので、この条件では自然にfalseになる
+/// (鬼が自分を見るとき targetRole は demon であって fugitive にはならない)。
+@visibleForTesting
+bool isGridObfuscated({
+  required UserRole? viewerRole,
+  required UserRole? targetRole,
+}) {
+  return viewerRole == UserRole.demon && targetRole == UserRole.fugitive;
 }
 
 /// 自分自身を表す色(青)。docs/ui-mockup-2a.htmlの配色ルール
@@ -950,6 +1072,62 @@ class _PreReleaseBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 鬼のみに見える、逃走者マーカーの曖昧化グリッドサイズ切り替えUI
+/// (issue #39)。選択状態はGamePage側のhooks state(gridSizeMeters)が
+/// 持ち、このウィジェットは選択肢の表示とタップ通知だけを担当する。
+class _GridSizeToggle extends StatelessWidget {
+  const _GridSizeToggle({required this.selected, required this.onSelect});
+
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Text(
+          '曖昧化のグリッド:',
+          style: TextStyle(fontSize: 11, color: appMuted),
+        ),
+        const SizedBox(width: 8),
+        for (final size in gridSizeOptionsMeters) ...[
+          _buildOption(size),
+          const SizedBox(width: 6),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildOption(int size) {
+    final isSelected = size == selected;
+    return GestureDetector(
+      onTap: () => onSelect(size),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? roleThemeOf(UserRole.demon).color : null,
+          border: Border.all(
+            color: isSelected
+                ? roleThemeOf(UserRole.demon).color
+                : appFaintBorder,
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          '${size}m',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: isSelected ? Colors.white : appMuted,
+          ),
+        ),
       ),
     );
   }
