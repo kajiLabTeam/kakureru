@@ -77,4 +77,42 @@ void main() {
       expect(result, closeTo(0, 1e-9));
     });
   });
+
+  group('verticalDotFraction', () {
+    test('returns 0.5 when deltaMeters is 0 (center)', () {
+      expect(verticalDotFraction(0), closeTo(0.5, 1e-9));
+    });
+
+    test('returns 0 at the lower clamp boundary (-20)', () {
+      expect(verticalDotFraction(-20), closeTo(0, 1e-9));
+    });
+
+    test('returns 1 at the upper clamp boundary (+20)', () {
+      expect(verticalDotFraction(20), closeTo(1, 1e-9));
+    });
+
+    test('returns 0.625 at +5 within the default ±20 range', () {
+      expect(verticalDotFraction(5), closeTo(0.625, 1e-9));
+    });
+
+    test('returns 0.375 at -5 within the default ±20 range', () {
+      // 飽和しない負側の中間点。+5の0.625と中心0.5をはさんで対称になることで、
+      // オフセット・符号の取り違え（(clamped + range) を (range - clamped) と
+      // 書くような誤り）を検出する。
+      expect(verticalDotFraction(-5), closeTo(0.375, 1e-9));
+    });
+
+    test('clamps values beyond +20 to 1', () {
+      expect(verticalDotFraction(100), closeTo(1, 1e-9));
+    });
+
+    test('clamps values beyond -20 to 0', () {
+      expect(verticalDotFraction(-100), closeTo(0, 1e-9));
+    });
+
+    test('respects a custom rangeMeters', () {
+      expect(verticalDotFraction(5, rangeMeters: 5), closeTo(1, 1e-9));
+      expect(verticalDotFraction(-5, rangeMeters: 5), closeTo(0, 1e-9));
+    });
+  });
 }

@@ -45,3 +45,12 @@ double calculateRelativeHeightMeters({
   final targetAdjusted = targetPressureHPa - targetOffsetHPa;
   return (selfAdjusted - targetAdjusted) * metersPerHectoPascal;
 }
+
+/// 上下バー内でのドット位置を、deltaMetersから0.0(下端)〜1.0(上端)で返す。
+///
+/// [rangeMeters] を超える差はクランプされる。deltaMetersが正(相手が上)
+/// ほど戻り値が大きくなる。
+double verticalDotFraction(double deltaMeters, {double rangeMeters = 20}) {
+  final clamped = deltaMeters.clamp(-rangeMeters, rangeMeters);
+  return (clamped + rangeMeters) / (2 * rangeMeters);
+}
