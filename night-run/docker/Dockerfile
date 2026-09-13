@@ -20,8 +20,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI(npm配布パッケージ。ホスト側の native installer版と同一ソース)
-RUN npm install -g @anthropic-ai/claude-code
+# Claude Code CLI(npm配布パッケージ。ホスト側の native installer版と同一ソース)。
+# バージョンを固定する。固定しないとビルドした時点のlatestで固まり、ビルドの
+# タイミングによってホスト側のCLIと無言でバージョンがずれる(2026-09-13の実運用で
+# host 2.1.270 / container 2.1.197という差異を確認済み)。上げるときはここを変える。
+ARG CLAUDE_CODE_VERSION=2.1.270
+RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
 # Flutter SDK。Android SDKは意図的にインストールしない
 # (このシステムが自律実行するのは flutter test/analyze/build_runner までで、

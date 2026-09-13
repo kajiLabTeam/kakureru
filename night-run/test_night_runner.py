@@ -279,6 +279,133 @@ class GitCleanupRetryTest(unittest.TestCase):
                 night_runner.git_cleanup_with_retry(max_attempts=3, wait_seconds=1)
 
 
+class SaveDiagnosticBranchTest(unittest.TestCase):
+    """save_diagnostic_branch()自身の失敗(例: git identity未設定)が、元の異常終了
+    処理を握り潰してプロセスを落とさないことを確認する(不具合報告の再現ケース)。"""
+
+    def test_git_failure_is_caught_and_returns_none(self):
+        task = {"title": "タスクA"}
+        error = subprocess.CalledProcessError(128, ["git", "commit"], stderr="Author identity unknown")
+        with mock.patch.object(night_runner.subprocess, "run", side_effect=error), \
+             mock.patch.object(night_runner, "notify_human") as mock_notify:
+            branch = night_runner.save_diagnostic_branch(task)
+
+        self.assertIsNone(branch)
+        mock_notify.assert_called_once()
+
+    def test_success_returns_branch_name(self):
+        task = {"title": "タスクA"}
+        with mock.patch.object(night_runner.subprocess, "run") as mock_run:
+            branch = night_runner.save_diagnostic_branch(task)
+
+        self.assertTrue(branch.startswith("diagnostic/"))
+        self.assertEqual(mock_run.call_count, 4)  # checkout -b / add -A / commit / push
+
+
+class HandleHardLimitExceededTest(unittest.TestCase):
+    """save_diagnostic_branch()がNoneを返した場合でも、create_draft_pr_from_branch()に
+    Noneブランチを渡して失敗させず、通知だけで終えることを確認する。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        patcher_state_file = mock.patch.object(
+            night_runner, "STATE_FILE", os.path.join(self.tmp.name, "night-run-state.json")
+        )
+        patcher_state_file.start()
+        self.addCleanup(patcher_state_file.stop)
+        self.task = {"title": "タスクA", "status": "pending", "branch": "night-run/task-a"}
+        self.state = {"tasks": [self.task]}
+
+    def test_no_branch_skips_draft_pr_and_notifies(self):
+        with mock.patch.object(night_runner, "save_diagnostic_branch", return_value=None), \
+             mock.patch.object(night_runner, "create_draft_pr_from_branch") as mock_create_pr, \
+             mock.patch.object(night_runner, "notify_human") as mock_notify:
+            night_runner.handle_hard_limit_exceeded(self.task, self.state)
+
+        mock_create_pr.assert_not_called()
+        self.assertEqual(self.task["status"], "failed")
+        # mark_task_failed()自体の通知 + 「draft PRも作れない」通知の2回
+        self.assertEqual(mock_notify.call_count, 2)
+
+    def test_with_branch_creates_draft_pr(self):
+        with mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"), \
+             mock.patch.object(night_runner, "create_draft_pr_from_branch") as mock_create_pr:
+            night_runner.handle_hard_limit_exceeded(self.task, self.state)
+
+        mock_create_pr.assert_called_once_with(self.task, "diagnostic/x", reason="締切バッファを超過したため強制終了")
+
+
+class MaskSecretsTest(unittest.TestCase):
+    def test_masks_env_var_values_found_in_text(self):
+        with mock.patch.dict(os.environ, {"GH_TOKEN": "ghp_supersecret123"}):
+            masked = night_runner._mask_secrets("error: bad credentials ghp_supersecret123 (401)")
+        self.assertNotIn("ghp_supersecret123", masked)
+        self.assertIn("***MASKED***", masked)
+
+    def test_empty_env_var_is_not_masked_as_empty_string(self):
+        # os.environ.get(name)が""だと"".replaceで文字化けする心配があるための回帰確認
+        with mock.patch.dict(os.environ, {"GH_TOKEN": ""}):
+            text = "no secrets here"
+            self.assertEqual(night_runner._mask_secrets(text), text)
+
+
+class DescribeClaudeFailureTest(unittest.TestCase):
+    def test_includes_returncode_and_elapsed_time_even_if_stderr_empty(self):
+        # 不具合報告の再現ケース: stderrが空でも診断内容が空にならないこと
+        message = night_runner.describe_claude_failure(
+            returncode=1, stdout='{"is_error": true}', stderr="", elapsed_seconds=12.3
+        )
+        self.assertIn("returncode=1", message)
+        self.assertIn("12.3", message)
+        self.assertIn('{"is_error": true}', message)
+
+    def test_truncates_long_output_with_omitted_count(self):
+        long_text = "x" * (night_runner.DIAGNOSTIC_PREVIEW_CHARS + 100)
+        message = night_runner.describe_claude_failure(1, long_text, "", 1.0)
+        self.assertIn("以下100文字省略", message)
+
+
+class RunTaskNonRateLimitFailureTest(unittest.TestCase):
+    """claude -pがstderrを空にしたまま非0で終了するケース(不具合報告の再現ケース)で、
+    失敗理由が空文字にならず、alerts.logにも診断内容が残ることを確認する。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state_path = os.path.join(self.tmp.name, "night-run-state.json")
+        for name, value in [
+            ("STATE_FILE", self.state_path),
+            ("ALERTS_LOG", os.path.join(self.tmp.name, "alerts.log")),
+        ]:
+            patcher = mock.patch.object(night_runner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+        self.task = {"title": "タスクA", "status": "pending", "branch": "night-run/task-a"}
+        state = {"hard_limit": "2999-01-01T00:00:00+09:00", "tasks": [self.task]}
+        with open(self.state_path, "w") as f:
+            json.dump(state, f)
+        self.state = state
+
+    def test_empty_stderr_nonzero_exit_marks_failed_with_nonblank_reason(self):
+        with mock.patch.object(
+            night_runner, "run_claude_with_timeout", return_value=(1, "some stdout, no error json", "")
+        ), mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
+             mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"):
+            night_runner.run_task_with_retry(self.task, self.state)
+
+        final_state = night_runner.load_state()
+        final_task = final_state["tasks"][0]
+        self.assertEqual(final_task["status"], "failed")
+        self.assertTrue(final_task["failure_reason"].strip())  # 空文字にならないこと
+
+        with open(os.path.join(self.tmp.name, "alerts.log")) as f:
+            alerts = f.read()
+        self.assertIn("returncode=1", alerts)
+        self.assertIn("some stdout, no error json", alerts)
+
+
 class DraftPrBodyTest(unittest.TestCase):
     def test_body_has_no_todo_placeholder_and_embeds_progress(self):
         task = {

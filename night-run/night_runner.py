@@ -23,6 +23,8 @@ STATE_FILE = os.environ.get("NIGHT_RUN_STATE_FILE", "/workdir/state/night-run-st
 ALERTS_LOG = os.path.join(os.path.dirname(STATE_FILE), "alerts.log")
 
 RATE_LIMIT_PATTERN = re.compile(r"rate.?limit|429|usage limit|overloaded", re.IGNORECASE)
+DIAGNOSTIC_PREVIEW_CHARS = 4000  # alerts.logに残すstdout/stderrの上限文字数
+SECRET_ENV_VARS = ("GH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 MAX_RETRY_ATTEMPTS = 5          # 9.10節: backoffの上限回数
 MAX_BACKOFF_SECONDS = 1800      # 9.10節: 1回あたりの待機を最大30分でキャップ
 MAX_REVIEW_ROUNDS = 4           # 3.4節: reviewerサイクルの最大ラウンド数
@@ -165,14 +167,27 @@ def git_cleanup_with_retry(max_attempts=3, wait_seconds=60):
 
 
 def save_diagnostic_branch(task):
-    # cleanupで消える前に、原因調査用に現状をブランチへ退避する
+    """cleanupで消える前に、原因調査用に現状をブランチへ退避する。
+
+    ここは異常終了時の記録処理であり、記録自体が失敗しても元のエラー
+    (呼び出し元がこれから記録・通知しようとしている本来の失敗理由)を握り潰して
+    プロセス全体を落としてはならない。失敗時はここでnotify_humanし、Noneを返す
+    (呼び出し元は「退避ブランチが無い」ケースとして扱う)。
+    """
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     branch = f"diagnostic/{_slug(task['title'])}-{ts}"
-    subprocess.run(["git", "checkout", "-b", branch], check=True)
-    subprocess.run(["git", "add", "-A"], check=True)
-    subprocess.run(["git", "commit", "-m", f"wip: 異常終了時点のスナップショット ({task['title']})", "--allow-empty"], check=True)
-    subprocess.run(["git", "push", "origin", branch], check=True)
-    return branch
+    try:
+        subprocess.run(["git", "checkout", "-b", branch], check=True)
+        subprocess.run(["git", "add", "-A"], check=True)
+        subprocess.run(
+            ["git", "commit", "-m", f"wip: 異常終了時点のスナップショット ({task['title']})", "--allow-empty"],
+            check=True,
+        )
+        subprocess.run(["git", "push", "origin", branch], check=True)
+        return branch
+    except subprocess.CalledProcessError as e:
+        notify_human(f"save_diagnostic_branch()が失敗した(タスク「{task['title']}」の退避ブランチを作成できなかった): {e}")
+        return None
 
 
 def create_draft_pr_from_branch(task, branch, reason):
@@ -267,14 +282,52 @@ def mark_task_failed(task, state, reason, diagnostic_branch=None):
     notify_human(f"タスク「{task['title']}」が failed になりました: {reason}")
 
 
-def log_unexpected_error(task, state, stderr_text):
-    print(f"[ERROR] タスク「{task['title']}」で予期しないエラー: {stderr_text}", file=sys.stderr)
+def _mask_secrets(text):
+    """環境変数に入っている秘密情報(GH_TOKEN等)がalerts.logへそのまま
+    書き出されないようにする。claude -pのエラー出力が認証情報を含む
+    エラーメッセージをそのまま返すことがあるため。"""
+    if not text:
+        return text
+    masked = text
+    for name in SECRET_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            masked = masked.replace(value, "***MASKED***")
+    return masked
+
+
+def _preview(text):
+    text = _mask_secrets(text) or "(空)"
+    if len(text) > DIAGNOSTIC_PREVIEW_CHARS:
+        omitted = len(text) - DIAGNOSTIC_PREVIEW_CHARS
+        return text[:DIAGNOSTIC_PREVIEW_CHARS] + f"...(以下{omitted}文字省略)"
+    return text
+
+
+def describe_claude_failure(returncode, stdout, stderr, elapsed_seconds):
+    """claude -pがエラー内容をstderrではなくstdout側に出すことがあり
+    (2026-09-13の実運用で確認済み)、stderrだけを見ているとreasonが
+    空文字になってしまう。returncode/stdout/stderr/実行時間をすべて残す。"""
+    return (
+        f"claude -p 失敗: returncode={returncode}, 実行時間={elapsed_seconds:.1f}秒\n"
+        f"--- stdout ---\n{_preview(stdout)}\n"
+        f"--- stderr ---\n{_preview(stderr)}"
+    )
+
+
+def log_unexpected_error(task, state, detail_text):
+    message = f"タスク「{task['title']}」で予期しないエラー: {detail_text}"
+    print(f"[ERROR] {message}", file=sys.stderr)
+    notify_human(message)  # docker logsだけでなくalerts.logにも残す
 
 
 def handle_hard_limit_exceeded(task, state):
     branch = save_diagnostic_branch(task)
     mark_task_failed(task, state, reason="hard_limit_exceeded", diagnostic_branch=branch)
-    create_draft_pr_from_branch(task, branch, reason="締切バッファを超過したため強制終了")
+    if branch:
+        create_draft_pr_from_branch(task, branch, reason="締切バッファを超過したため強制終了")
+    else:
+        notify_human(f"タスク「{task['title']}」: 退避ブランチを作成できなかったため draft PR も作成できません。手動確認が必要です。")
 
 
 def _issue_urls(task):
@@ -396,9 +449,11 @@ def run_task_with_retry(task, state):
             return
 
         remaining_seconds = (hard_limit - now).total_seconds()
+        started_at = time.monotonic()
         returncode, stdout, stderr = run_claude_with_timeout(
             build_prompt(task, state), timeout_seconds=remaining_seconds
         )
+        elapsed_seconds = time.monotonic() - started_at
 
         # update_step.py はタスク実行中に別プロセスとしてstateファイルへ書き込む。
         # ここで再読み込みしないと、以降で参照するtask/stateが古いままになる。
@@ -434,10 +489,17 @@ def run_task_with_retry(task, state):
             return
         else:
             # レートリミット以外のエラー: 診断用ブランチへ退避してからfailedに更新し、
-            # 次のタスクへ進む(無限リトライを防止)
+            # 次のタスクへ進む(無限リトライを防止)。
+            # stderrが空でもreasonを空文字にしない(claude -pがエラー内容をstdout側に
+            # 出すケースがあり、そのままだと「が failed になりました: 」で情報ゼロになる)。
+            diagnosis = describe_claude_failure(returncode, stdout, stderr, elapsed_seconds)
+            log_unexpected_error(task, state, diagnosis)
             branch = save_diagnostic_branch(task)
-            mark_task_failed(task, state, stderr, diagnostic_branch=branch)
-            log_unexpected_error(task, state, stderr)
+            reason = (
+                _mask_secrets(stderr).strip() if stderr and stderr.strip()
+                else f"claude -p が終了コード{returncode}で失敗(詳細はalerts.logの直前の[ERROR]行を参照)"
+            )
+            mark_task_failed(task, state, reason, diagnostic_branch=branch)
             return
 
 

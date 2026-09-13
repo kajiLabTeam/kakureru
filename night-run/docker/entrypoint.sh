@@ -23,6 +23,17 @@ echo "[entrypoint] configuring GitHub credential helper..."
 git config --system credential.helper '!gh auth git-credential'
 git config --system --add safe.directory "$REPO_DIR"
 
+echo "[entrypoint] configuring git author identity..."
+# runnerユーザーにはgit user.name/emailが無く、素のgit commitがすべて
+# "unable to auto-detect email address" で失敗する(save_diagnostic_branch()の
+# git commit含む)。ホスト側のgit configをコンテナに持ち込む(ホストの個人情報を
+# 使い捨てコンテナに渡す・bind mountを増やす)よりも、bot専用の固定値にする方が
+# 単純で安全。実際にPRを開くGitHubアカウントはGH_TOKENの持ち主として記録される
+# ので、ここのidentityはgit commitのメタデータ上の著者名を人間のコミットと
+# 区別するためのものと位置づける。
+git config --system user.name "night-run bot"
+git config --system user.email "night-run-bot@users.noreply.github.com"
+
 if [ ! -d "$REPO_DIR/.git" ]; then
     echo "[entrypoint] cloning $REPO_URL into $REPO_DIR ..."
     git clone "$REPO_URL" "$REPO_DIR"
