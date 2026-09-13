@@ -19,6 +19,7 @@ import 'package:kakureru/features/pressure/model/pressure_sensor_availability.da
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
+import 'package:kakureru/features/room/location_grid.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -638,6 +639,13 @@ class _LocationMap extends HookWidget {
   @override
   Widget build(BuildContext context) {
     final selfLocation = _findLocation(locations, myUid);
+    final myRole = myUid == null ? null : _findUser(users, myUid!)?.role;
+
+    // 鬼視点で逃走者GPSをグリッド曖昧化する際のグリッドサイズ(issue #39)。
+    // 鬼のみに見えるローカル状態(RTDBには書き込まない)なので、この
+    // ウィジェットが消えれば一緒に消えてよいhooksで持つ(AGENTS.mdの
+    // 判定基準「消えたとき困るか」に照らして困らないため)。既定値は50m。
+    final gridSizeMeters = useState(50);
 
     // プレイエリアが設定されていれば、地図はその範囲だけを映す。
     // 初期表示をエリアにフィットさせ、地図の中心がエリアから出ないよう制限し、
@@ -696,6 +704,22 @@ class _LocationMap extends HookWidget {
       return null;
     }, [positionTier, currentCenter.latitude, currentCenter.longitude]);
 
+    // マーカー(アイコン+ラベル)と、鬼視点で逃走者に対してのみ描く
+    // グリッドセル矩形(issue #39)を、位置ごとにまとめて組み立てる。
+    final locationVisuals = locations
+        .map(
+          (location) => _buildLocationVisual(
+            location,
+            myRole,
+            gridSizeMeters.value,
+          ),
+        )
+        .toList();
+    final gridPolygons = [
+      for (final visual in locationVisuals)
+        if (visual.gridPolygon != null) visual.gridPolygon!,
+    ];
+
     return Stack(
       children: [
         FlutterMap(
@@ -720,9 +744,25 @@ class _LocationMap extends HookWidget {
                   _areaBorderPolygon(areaPoints),
                 ],
               ),
-            MarkerLayer(markers: locations.map(_buildMarker).toList()),
+            if (gridPolygons.isNotEmpty)
+              PolygonLayer(polygons: gridPolygons),
+            MarkerLayer(
+              markers: [for (final visual in locationVisuals) visual.marker],
+            ),
           ],
         ),
+        // グリッドサイズ切り替えは鬼にのみ意味があるため鬼にのみ表示する
+        // (issue #39)。設定はこのウィジェット内のローカル状態のみで、
+        // RTDBには書き込まない。
+        if (myRole == UserRole.demon)
+          Positioned(
+            top: 12,
+            right: 12,
+            child: _GridSizeSelector(
+              value: gridSizeMeters.value,
+              onChanged: (value) => gridSizeMeters.value = value,
+            ),
+          ),
         if (positionTier == 0)
           Positioned(
             top: 12,
@@ -802,26 +842,72 @@ class _LocationMap extends HookWidget {
     return fallbackMapCenter;
   }
 
-  Marker _buildMarker(UserLocation location) {
+  /// マーカー本体(アイコン+ラベル)と、鬼視点で逃走者に対してだけ追加される
+  /// グリッドセルの矩形(issue #39)を組み立てる。
+  ///
+  /// アイコン・ラベルの役割表記はissue #42対応(色だけでなく形・表記でも
+  /// 鬼/逃走者を見分けられるようにする)。
+  ({Marker marker, Polygon<Object>? gridPolygon}) _buildLocationVisual(
+    UserLocation location,
+    UserRole? myRole,
+    int gridSizeMeters,
+  ) {
     final isSelf = location.uid == myUid;
     final user = _findUser(users, location.uid);
-    final color = isSelf ? _selfColor : _colorForRole(user?.role);
-    final label = markerLabelFor(uid: location.uid, myUid: myUid, user: user);
+    final targetRole = user?.role;
+    // 自分のピンは自分の役割、他人のピンはそのuserの役割(見つからなければ
+    // null=未知)を表示に使う。usersはroom.users全体だが、locations自体が
+    // 呼び出し元(GamePage)でisVisibleToMeによって既に絞り込まれているため、
+    // ここに現れるlocationの役割をそのまま出しても可視性ルールを迂回する
+    // ことにはならない。
+    final displayRole = isSelf ? myRole : targetRole;
+    final color = isSelf ? _selfColor : _colorForRole(targetRole);
+    final icon = displayRole != null
+        ? roleThemeOf(displayRole).icon
+        : Icons.location_pin;
+    final label = markerLabelFor(
+      uid: location.uid,
+      myUid: myUid,
+      displayName: user?.displayName,
+      role: displayRole,
+    );
 
-    return Marker(
-      point: latlong.LatLng(location.latitude, location.longitude),
+    // 鬼視点で逃走者の位置だけ、正確な点ではなくグリッドセルに丸める
+    // (issue #39)。円だと中心が推測できてしまうため矩形のセルにする。
+    // 同ロール間・逃走者視点で見る鬼は従来どおり正確な点のまま。
+    final isGridObfuscated =
+        !isSelf &&
+        myRole == UserRole.demon &&
+        targetRole == UserRole.fugitive;
+    GridCellBounds? cellBounds;
+    final latlong.LatLng point;
+    if (isGridObfuscated) {
+      cellBounds = gridCellFor(
+        latitude: location.latitude,
+        longitude: location.longitude,
+        gridSizeMeters: gridSizeMeters,
+      );
+      // マーカーもセルの中心に置く。実座標のままだとセル(矩形)を描いても
+      // ピンの位置で真の座標が分かってしまい曖昧化にならない。
+      point = latlong.LatLng(cellBounds.centerLat, cellBounds.centerLng);
+    } else {
+      point = latlong.LatLng(location.latitude, location.longitude);
+    }
+
+    final marker = Marker(
+      point: point,
       // ラベル表示のため横幅を拡張(名前が長い場合は省略表示)。
-      // 縦はピンアイコン(36) + ラベル(~18) で余裕を持たせる。
+      // 縦はアイコン(白フチ込みで概ね40) + ラベル(~18) で余裕を持たせる。
       width: 72,
       height: 56,
-      // Icons.location_pinは下端に尖った先端があるアイコンなので、既定の
-      // Alignment.center(中央合わせ)のままだと先端が実座標より下にずれる。
-      // topCenterにして先端を座標に合わせる。
-      alignment: Alignment.topCenter,
+      // 役割アイコン(local_fire_department/directions_run)はlocation_pinと
+      // 異なり下端に尖った先端が無い対称な形なので、アイコン中心が実座標に
+      // 来るAlignment.centerを使う。
+      alignment: Alignment.center,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.location_pin, color: color, size: 36),
+          _MarkerIcon(icon: icon, color: color),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
@@ -843,6 +929,22 @@ class _LocationMap extends HookWidget {
         ],
       ),
     );
+
+    final gridPolygon = cellBounds == null
+        ? null
+        : Polygon<Object>(
+            points: [
+              latlong.LatLng(cellBounds.south, cellBounds.west),
+              latlong.LatLng(cellBounds.south, cellBounds.east),
+              latlong.LatLng(cellBounds.north, cellBounds.east),
+              latlong.LatLng(cellBounds.north, cellBounds.west),
+            ],
+            color: color.withValues(alpha: 0.25),
+            borderStrokeWidth: 2,
+            borderColor: color,
+          );
+
+    return (marker: marker, gridPolygon: gridPolygon);
   }
 
   UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
@@ -864,20 +966,96 @@ Color _colorForRole(UserRole? role) {
   return role == null ? Colors.grey : roleThemeOf(role).color;
 }
 
-/// GPSピンに表示するラベルテキストを返す(issue #13)。
+/// GPSピンに表示するラベルテキストを返す(issue #13、役割表記はissue #42)。
 ///
 /// 自分のピンは「自分」と表示して一目で分かるようにする。
-/// 他のプレイヤーは [RoomUser.displayName] を表示する。
-/// displayName が空(参加直後でまだ届いていない等)のときは「?」をフォールバックにする。
+/// 他のプレイヤーは displayName を表示する。displayName が空(参加直後で
+/// まだ届いていない等)のときは「?」をフォールバックにする。
+///
+/// [role] には「見えていい役割」だけを渡すこと(呼び出し側で
+/// role_visibility.dart による絞り込み後の値を渡す想定)。role が
+/// null(未知、または見せるべきでない)なら役割表記は付けない。
 @visibleForTesting
 String markerLabelFor({
   required String uid,
   required String? myUid,
-  required RoomUser? user,
+  required String? displayName,
+  required UserRole? role,
 }) {
-  if (uid == myUid) return '自分';
-  final name = user?.displayName ?? '';
-  return name.isEmpty ? '?' : name;
+  final suffix = switch (role) {
+    UserRole.demon => '（鬼）',
+    UserRole.fugitive => '（逃走者）',
+    null => '',
+  };
+  if (uid == myUid) return '自分$suffix';
+  final name = displayName ?? '';
+  return name.isEmpty ? '?$suffix' : '$name$suffix';
+}
+
+/// 役割アイコンの視認性向上(issue #42「地図タイルの上でもピンの輪郭が
+/// 視認できる」)のため、白い縁取りを重ねて描く。アイコンフォント自体には
+/// 縁取り指定が無いため、同じアイコンを白・大きめで下に敷き、その上に
+/// 本来の色・サイズで重ねることでフチのように見せている。
+class _MarkerIcon extends StatelessWidget {
+  const _MarkerIcon({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(icon, size: 40, color: Colors.white),
+          Icon(icon, size: 34, color: color),
+        ],
+      ),
+    );
+  }
+}
+
+/// 鬼視点でのみ表示する、逃走者GPSのグリッド曖昧化サイズ切り替えUI
+/// (issue #39)。20m/50m/100mから選べる。端末ローカルの状態のみで、
+/// RTDBへは書き込まない。
+class _GridSizeSelector extends StatelessWidget {
+  const _GridSizeSelector({required this.value, required this.onChanged});
+
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  static const _options = [20, 50, 100];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final option in _options)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: ChoiceChip(
+                label: Text('${option}m'),
+                labelStyle: const TextStyle(fontSize: 11),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                selected: value == option,
+                onSelected: (_) => onChanged(option),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 RoomUser? _findUser(List<RoomUser> users, String uid) {
