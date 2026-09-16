@@ -102,6 +102,25 @@ tail -f night-run/state/alerts.log                          # 異常があれば
 
 止めたいときは `night-run/run.sh stop`。**進行中のタスクは中断され、`done`にならない**（次に`run.sh start`し直すとstateの`pending`/`in_progress`から再開を試みるが、`in_progress`のまま止まったタスクは`main()`が拾わないので、手動で`status`を`pending`に戻すか診断ブランチの内容を確認してから判断すること — 常駐化・自動復旧は今回のスコープ外）。
 
+## state ファイルのタスクエントリ
+
+`night-run-state.json` の `tasks[]` 各要素は、実行が進むにつれてフィールドが増えていく。主なもの:
+
+| フィールド | 内容 |
+|---|---|
+| `title` / `issue_url` | タスク名・起点issue |
+| `status` | `pending` / `in_progress` / `done` / `failed` |
+| `branch` / `step` / `review_round` | 作業ブランチと進捗段階(`update_step.py`が書く) |
+| `pr_status` / `pr_url` | `done`時の最終ステータス(`success`=ready / `draft`)とPR URL |
+| `completed_summary` / `remaining_summary` | タスク側の自己申告サマリ |
+| `failure_reason` / `diagnostic_branch` | `failed`時の理由と退避ブランチ |
+| `total_cost_usd` | そのタスクで発生した`claude -p`の全試行(リトライを含む)のコスト(USD)の累積合計 |
+| `usage` | 同、トークン使用量の累積合計(input/output/cacheの内訳を含む`usage`オブジェクト。キーごとに数値を合算) |
+
+`total_cost_usd`/`usage`は成功(`done`)・失敗(`failed`)(レートリミットで`MAX_RETRY_ATTEMPTS`回リトライしても解消せずgive-upした場合を含む)どちらの経路でも、`claude -p`の出力(envelope)がJSONとしてパースできた場合は記録される。**JSON自体が壊れていてenvelopeが取れなかった場合はその試行分は記録されない**(パース前なのでコストの実額が分からないため)。`total_cost_usd`が数値でない・`usage`がオブジェクトでないなど値の型が不正な場合も、例外にはせず単にその試行分の記録をスキップする。
+
+**リトライをまたいだ累積**: レートリミットでbackoffリトライが発生した場合、各試行が完了するたびにその試行のコスト/usageを直ちに加算し、ディスクへ保存する。そのため`total_cost_usd`/`usage`はタスク全体(打ち切られて捨てられた試行を含む)で実際に使われた総コストに一致する(以前は最後に完了した試行1回分しか記録せず、途中のリトライがTIMEOUT/hard_limitで打ち切られると直前の試行のコストごと失われる問題があったため、リトライのたびに逐次加算・保存する方式に変更した)。この値は`status`を手動で`pending`に戻して同じタスクを再実行した場合もリセットされず、前回までの実行分に上乗せされていく(そのタスクに実際に費やした総コストを知るという目的には合致するが、「再実行後の増分だけ」を見たい場合は前回終了時点の値を別途控えておくこと)。
+
 ## スコープ外（今回は実装していない）
 
 - esa用MCPサーバー（設計書7章、任意扱い）

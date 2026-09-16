@@ -234,15 +234,78 @@ def verify_pr(pr_url, expected_branch):
 
 
 # --- タスク状態の更新 ---
-def update_state_done(task, state, claude_stdout):
+def _merge_usage(existing, new):
+    """usageオブジェクトの各キー(input_tokens/output_tokens/
+    cache_creation_input_tokens/cache_read_input_tokens等)を試行間で合算する。
+    値が両方とも数値の場合だけ加算し、どちらかが数値でない場合(将来envelopeに
+    非数値の内訳が増えた場合など)は合算せず新しい方の値で上書きする——壊れた
+    前提で例外を出さないため。"""
+    if not isinstance(existing, dict):
+        return dict(new)
+    merged = dict(existing)
+    for key, value in new.items():
+        prev = merged.get(key)
+        if (
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            and isinstance(prev, (int, float)) and not isinstance(prev, bool)
+        ):
+            merged[key] = prev + value
+        else:
+            merged[key] = value
+    return merged
+
+
+def _record_cost_and_usage(task, state, envelope):
+    """total_cost_usd/usageはトークン消費のチューニング判断材料として残すだけの
+    任意項目(issue #47)。envelopeが無い・キーが無い・値の型が不正な場合も
+    例外を出さず、単に記録をスキップする。
+
+    レートリミットでbackoffリトライが発生した場合、各試行のコストは累積して
+    記録する(1試行だけを残す設計だと、打ち切り直前の試行がTIMEOUT/hard_limit
+    で終わった際に、その直前の試行で実際に発生していたコストごと丸ごと失われる
+    ため — PR #50レビュー指摘)。記録が実際に変化したときは、その場でsave_state()
+    して即ディスクへ反映する。呼び出し側(run_task_with_retry)は次のループの
+    先頭で必ずload_state()により状態を再読み込みするため、ここで永続化しないと
+    リトライへ進んだ時点で今回記録した分が失われる。"""
+    if not isinstance(envelope, dict):
+        return
+    changed = False
+    cost = envelope.get("total_cost_usd")
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        # task.get("total_cost_usd", 0) はキーが無い場合のみ0を返す——過去に
+        # 人手でstate.jsonを編集して"total_cost_usd": nullにした等、キーは
+        # 存在するが値が数値でないケースでは既存値がそのまま返り、+ cost で
+        # TypeErrorになる。run_task_with_retry内でこの呼び出しを囲むtry/exceptは
+        # 無く、ここで例外を出すとタスク単体ではなくnight_runner.py全体(main()の
+        # ループ)が落ちて残りの全タスクが処理されなくなるため、既存値が数値
+        # でなければ0扱いにしてから加算する。
+        existing_cost = task.get("total_cost_usd")
+        if not isinstance(existing_cost, (int, float)) or isinstance(existing_cost, bool):
+            existing_cost = 0
+        task["total_cost_usd"] = existing_cost + cost
+        changed = True
+    usage = envelope.get("usage")
+    if isinstance(usage, dict):
+        task["usage"] = _merge_usage(task.get("usage"), usage)
+        changed = True
+    if changed:
+        save_state(state)
+
+
+def update_state_done(task, state, envelope):
+    """envelopeは呼び出し元(run_task_with_retry)で既にJSONパース済みのdict
+    (パースに失敗していればNone)を受け取る。ここでは再パースしない——
+    claude_stdoutを渡してこの関数がもう一度json.loads()する従来の実装は、
+    成功パスで呼び出し元と合わせてJSONを2回パースする無駄があった(PR #50
+    レビュー指摘)。コスト/usageの記録も呼び出し元がこの関数を呼ぶ前に
+    _record_cost_and_usage()で既に行っている(このタスクの成否を問わず、
+    レートリミットのgive-up経路も含めて1試行につき1回)ため、ここでは行わない。"""
     def fail(reason):
         branch = save_diagnostic_branch(task)
         mark_task_failed(task, state, reason, diagnostic_branch=branch)
 
-    try:
-        envelope = json.loads(claude_stdout)
-    except json.JSONDecodeError as e:
-        fail(f"claude -p の出力がJSONとして解釈できない: {e}")
+    if not isinstance(envelope, dict):
+        fail("claude -p の出力がJSONとして解釈できない")
         return
 
     if envelope.get("is_error"):
@@ -494,22 +557,39 @@ def run_task_with_retry(task, state):
             handle_hard_limit_exceeded(task, state)
             return
 
+        # レートリミットのgive-up経路(_retry_after_rate_limit_or_give_up内で
+        # mark_task_failedを直接呼ぶ)や、下のレートリミット以外の異常終了経路は
+        # update_state_doneを経由しないため、ここで先に記録しておかないと
+        # コストが握り潰される(issue #47)。returncodeが0以外でもstdoutに
+        # envelopeが残っていることがあるため、成否を問わず一度パースを試みる。
+        # TypeErrorも拾うのは、stdoutがstr以外だった場合(communicate(text=True)
+        # を使っている限り起きないはずだが)にコスト記録という任意処理のために
+        # night_runner.py全体を落とさないため。JSONDecodeErrorはValueErrorの
+        # サブクラスなので、この指定で従来のケースも引き続き含む。
+        #
+        # ここで得たenvelopeはこの後success判定にも使い回す(update_state_done
+        # には既にパース済みのenvelopeを渡し、二重にjson.loads()しない —
+        # PR #50レビュー指摘)。また_record_cost_and_usage()はこの1試行の
+        # コストを直ちにsave_state()で永続化する。以降どの分岐(retry/give-up/
+        # 成功/失敗)へ進んでも、次のloop先頭のload_state()で今回の記録が
+        # 失われることはない(PR #50レビュー指摘)。
+        try:
+            envelope = json.loads(stdout)
+        except (TypeError, ValueError):
+            envelope = None
+        _record_cost_and_usage(task, state, envelope)
+
         if returncode == 0:
             # claude -pはAPIレベルのレートリミットをexit 0 + JSON封筒内のエラーとして
             # 返すことがある。stderrの文字列マッチだけでなく、こちらも見ておかないと
             # 一度で"failed"確定してしまいbackoffリトライへ入れない。
-            try:
-                envelope = json.loads(stdout)
-            except json.JSONDecodeError:
-                envelope = None
-
             if _envelope_is_rate_limited(envelope):
                 attempt += 1
                 if _retry_after_rate_limit_or_give_up(task, state, attempt, stdout):
                     continue
                 return
 
-            update_state_done(task, state, stdout)
+            update_state_done(task, state, envelope)
             return
 
         if RATE_LIMIT_PATTERN.search(stderr):
