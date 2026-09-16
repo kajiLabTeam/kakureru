@@ -8,6 +8,7 @@ void main() {
         'lat': 35.6812,
         'lng': 139.7671,
         'altitude': 12.5,
+        'accuracy': 8.0,
         'updatedAt': 1000,
       };
 
@@ -17,6 +18,7 @@ void main() {
       expect(location.latitude, 35.6812);
       expect(location.longitude, 139.7671);
       expect(location.altitude, 12.5);
+      expect(location.accuracy, 8.0);
       expect(location.pressure, isNull);
     });
 
@@ -28,6 +30,19 @@ void main() {
       expect(map.containsKey('uid'), isFalse);
       expect(map['lat'], 35.0);
       expect(map['lng'], 139.0);
+    });
+
+    test('toMap includes accuracy when present', () {
+      const location = UserLocation(
+        uid: 'uid-1',
+        latitude: 35.1,
+        longitude: 139.1,
+        accuracy: 12.3,
+      );
+
+      final map = location.toMap();
+
+      expect(map['accuracy'], 12.3);
     });
   });
 }

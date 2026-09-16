@@ -12,6 +12,7 @@ abstract class UserLocation with _$UserLocation {
     @JsonKey(name: 'lat') required double latitude,
     @JsonKey(name: 'lng') required double longitude,
     double? altitude,
+    double? accuracy,
     double? pressure,
     WifiScanResult? wifiScan,
     @Default(0) int updatedAt,
