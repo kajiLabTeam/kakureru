@@ -607,7 +607,7 @@ class GamePage extends HookConsumerWidget {
 /// [_LocationMap] をwidgetテストから直接組み立てるための入口。
 ///
 /// 地図ウィジェット自体はGamePageの内部実装なので非公開のままにしたいが、
-/// 「グリッド切替UIを鬼にだけ出す」「resolveMarkerPositionへ
+/// 「グリッド矩形を鬼にだけ描く」「resolveMarkerPositionへ
 /// viewerRole/targetRoleを正しい順で渡す」といった配線は純粋関数の
 /// テストでは一切押さえられない(取り違えても純粋関数のテストは全て通る)。
 /// GamePage全体を立ち上げるにはFirebase・センサー系のproviderを丸ごと
@@ -627,6 +627,10 @@ Widget buildLocationMapForTest({
     gameArea: gameArea,
   );
 }
+
+/// 鬼視点で逃走者GPSをグリッド曖昧化する際のグリッドサイズ(issue #39)。
+/// 以前は20m/50m/100mから選べたが、100m固定にした。
+const _gridSizeMeters = 100;
 
 class _LocationMap extends HookWidget {
   const _LocationMap({
@@ -649,12 +653,6 @@ class _LocationMap extends HookWidget {
   Widget build(BuildContext context) {
     final selfLocation = _findLocation(locations, myUid);
     final myRole = myUid == null ? null : _findUser(users, myUid!)?.role;
-
-    // 鬼視点で逃走者GPSをグリッド曖昧化する際のグリッドサイズ(issue #39)。
-    // 鬼のみに見えるローカル状態(RTDBには書き込まない)なので、この
-    // ウィジェットが消えれば一緒に消えてよいhooksで持つ(AGENTS.mdの
-    // 判定基準「消えたとき困るか」に照らして困らないため)。既定値は50m。
-    final gridSizeMeters = useState(50);
 
     // プレイエリアが設定されていれば、地図はその範囲だけを映す。
     // 初期表示をエリアにフィットさせ、地図の中心がエリアから出ないよう制限し、
@@ -720,7 +718,7 @@ class _LocationMap extends HookWidget {
           (location) => _buildLocationVisual(
             location,
             myRole,
-            gridSizeMeters.value,
+            _gridSizeMeters,
           ),
         )
         .toList();
@@ -753,29 +751,12 @@ class _LocationMap extends HookWidget {
                   _areaBorderPolygon(areaPoints),
                 ],
               ),
-            if (gridPolygons.isNotEmpty)
-              PolygonLayer(polygons: gridPolygons),
+            if (gridPolygons.isNotEmpty) PolygonLayer(polygons: gridPolygons),
             MarkerLayer(
               markers: [for (final visual in locationVisuals) visual.marker],
             ),
           ],
         ),
-        // グリッドサイズ切り替えは鬼にのみ意味があるため鬼にのみ表示する
-        // (issue #39)。設定はこのウィジェット内のローカル状態のみで、
-        // RTDBには書き込まない。
-        if (myRole == UserRole.demon)
-          Positioned(
-            // 「現在地を取得中...」バナー(top: 12、左右いっぱいのCenter)と
-            // 同じ高さに置くと、360dp幅の端末では横方向に重なり、後から
-            // 描かれるバナーに切替チップが隠れる。バナーの下に来る高さまで
-            // 下げて、両方が同時に出ても読めるようにする。
-            top: 56,
-            right: 12,
-            child: _GridSizeSelector(
-              value: gridSizeMeters.value,
-              onChanged: (value) => gridSizeMeters.value = value,
-            ),
-          ),
         if (positionTier == 0)
           Positioned(
             top: 12,
@@ -1087,46 +1068,6 @@ class _MarkerIcon extends StatelessWidget {
         children: [
           Icon(icon, size: _markerIconSize, color: Colors.white),
           Icon(icon, size: 34, color: color),
-        ],
-      ),
-    );
-  }
-}
-
-/// 鬼視点でのみ表示する、逃走者GPSのグリッド曖昧化サイズ切り替えUI
-/// (issue #39)。20m/50m/100mから選べる。端末ローカルの状態のみで、
-/// RTDBへは書き込まない。
-class _GridSizeSelector extends StatelessWidget {
-  const _GridSizeSelector({required this.value, required this.onChanged});
-
-  final int value;
-  final ValueChanged<int> onChanged;
-
-  static const _options = [20, 50, 100];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final option in _options)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: ChoiceChip(
-                label: Text('${option}m'),
-                labelStyle: const TextStyle(fontSize: 11),
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                selected: value == option,
-                onSelected: (_) => onChanged(option),
-              ),
-            ),
         ],
       ),
     );
