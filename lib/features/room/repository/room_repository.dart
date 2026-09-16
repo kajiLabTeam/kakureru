@@ -153,6 +153,42 @@ class RoomRepository {
     });
   }
 
+  /// 「同じメンバーでもう一回」でルームを待機状態に巻き戻す(issue #44)。
+  /// ゲーム進行に関するmetaフィールドをまとめてクリアしてstatusを
+  /// WAITINGへ戻す。プレイエリア設定(`setting`)・各参加者の気圧
+  /// キャリブレーション値(`pressureOffset`/`pressureSensorAvailable`)・
+  /// 参加者そのものは書き換えない(保持する)。
+  ///
+  /// `rooms/{roomId}` 直下でmetaとusersをまたいで一括更新することは
+  /// できない(docs/rtdb-schema.md「一括書き込み・一括読み取りが使えない
+  /// 理由」参照)ため、ここでは単一のref(`meta`)への1回の`update`で
+  /// 原子的に書く(`startGame`と同じ書き方)。各参加者のroleを
+  /// FUGITIVEに戻す処理は[resetOwnRoleForRestart]を参照。
+  Future<void> restartRoom(String roomId) async {
+    await _db.ref('rooms/$roomId/meta').update({
+      'status': 'WAITING',
+      'startedAt': null,
+      'releasedAt': null,
+      'endsAt': null,
+      'endedAt': null,
+      'pendingDemonUid': null,
+    });
+  }
+
+  /// [restartRoom]による巻き戻し後、自分自身の役割を逃走者に戻す。
+  ///
+  /// `users/{uid}` は本人(`auth.uid === $uid`)以外は書き込めないルールの
+  /// ため、ホストが他の参加者のroleをまとめて書き換えることはできない
+  /// (鬼の決定が`meta/pendingDemonUid`経由の自己申告方式になっているのと
+  /// 同じ制約)。そのため、巻き戻り(status==WAITINGへの変化)を検知した
+  /// 各端末が、自分が鬼だった場合にだけこれを呼ぶ形にしている。
+  Future<void> resetOwnRoleForRestart(String roomId) async {
+    await _db.ref('rooms/$roomId/users/$_uid').update({
+      'role': 'FUGITIVE',
+      'becameDemonAt': null,
+    });
+  }
+
   /// ルーム設定画面から呼ばれる。ルール上は誰でも書ける状態のままなので
   /// (docs/rtdb-schema.md「ルーム設定画面」参照)、host以外が呼ばないよう
   /// 画面側(RoomWaitingPage/RoomSettingPage)でホスト限定のガードをかけている。

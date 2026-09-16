@@ -140,6 +140,37 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 **既知のトレードオフ**: 指名された本人のアプリがその瞬間バックグラウンド等で `meta` の変化を受け取れないと、`pendingDemonUid` が一時的に残ったままになる(セキュリティ上の問題ではなく、単なる反映待ちの遅延)。
 
+### 「同じメンバーでもう一回」(`RoomRepository.restartRoom`)
+
+ゲーム終了画面のホストが同じ部屋で再戦するときの巻き戻し。新規ノードは追加せず、既存フィールドを次のように書き戻す:
+
+- `meta/status` を `WAITING` に戻し、`startedAt` / `releasedAt` / `endsAt` / `endedAt` / `pendingDemonUid` をクリアする(すべて `restartRoom` が `rooms/{roomId}/meta` への1回の `update` でまとめて書く)
+- 各参加者の `role` を `FUGITIVE` に、`becameDemonAt` をクリアする
+
+保持する(書き換えない)のは `setting` 配下すべてと、各参加者の `pressureOffset` / `pressureSensorAvailable`。参加者自体も退室させない。
+
+`role`/`becameDemonAt` のリセットを `restartRoom` に含めなかったのは、鬼の決定と同じ制約のため: `users/{uid}` は本人しか書き込めないルールなので、ホストが他の参加者の `role` をまとめて書き換えることはできない。代わりに、各端末が `roomStreamProvider` で観測した `status` が `WAITING` になっていることを検知し、自分の役割が鬼だった場合にだけ `resetOwnRoleForRestart` で自分の `role`/`becameDemonAt` を書き戻す(`lib/features/room/restart_recovery.dart` の `useRestartRecovery`)。
+
+この検知はホストが結果画面(`GameResultPage`)にいる間だけでなく `GamePage` からも行う。ホストが「同じメンバーでもう一回」を押した瞬間、他の参加者はまだ `isGameOver` を検知できておらず `GamePage` に留まっている場合がある(バックグラウンド化・ネットワーク遅延等)ため、結果画面を経由できなかった端末も待機画面に戻せるようにするため。
+
+判定は「`PLAYING` から `WAITING` への変化」という**遷移ベースではなく、「いま `WAITING` である」という状態ベース**(`useEffect`)で行う。`ref.listen` は `fireImmediately` を付けない限り登録後の変化にしか反応しないため、遷移ベースだと「`endsAt` 到達で `GameResultPage` をマウントした直後にホストが再戦を押し、最初に受け取るスナップショットが既に `WAITING`」「一時的な切断で `roomStreamProvider`(autoDispose)が再購読された」「バックグラウンドから復帰した」といったケースで永久に発火しなくなる。`GamePage`/`GameResultPage` はどちらも開始済みのゲームからしか到達しないため、そこで `WAITING` を観測するのは巻き戻し以外にあり得ず、状態ベースでも誤検知しない。同じ罠は `RoomWaitingPage` の遷移・鬼指名受諾でも一度踏んでおり(`room_waiting_page.dart` の `useEffect` のコメント参照)、書き方を揃えてある。
+
+**既知の残存リスク**: `GamePage`/`GameResultPage`のどちらも開いていない端末(アプリを完全に閉じている、プロセスが切られている等)は、この検知自体が実行されないため、巻き戻り後も`role`が`DEMON`のまま残り続ける。状態ベースにしたことで「後からアプリを開いて結果画面/ゲーム画面に着地した」場合は救えるようになったが、巻き戻り後に直接 `RoomWaitingPage` へ入り直した端末は依然として取りこぼす。
+
+この取りこぼしは、**同じ「オフライン端末の取りこぼし」でも鬼の決定(`pendingDemonUid` 自己申告方式)のそれとは復旧可能性が全く違う**ので注意すること:
+
+- 鬼決定の取りこぼし → `pendingDemonUid` が残るだけで `role` は変わらない。待機画面に「鬼が1人も指名されていません」(`room_waiting_page.dart`)が出て、ホストが「取り消す」「鬼にする」で指名し直せる。つまり**異常が見えるし直せる**。
+- 巻き戻しの取りこぼし → 参加者Pが `DEMON` のまま残る。このとき:
+  - `demonCount == 1` になるため `hasStartableRoleComposition(demonCount: 1, totalUserCount: n) == true` となり、「ゲーム開始」が**警告も出ないまま押せてしまう**。キャリブレーション結果(`basePressure` / `pressureOffset`)は仕様どおり保持されるので `allCalibrated` も真になり、**部屋は完全に正常に見える**。その状態で次戦が始まり、鬼役のPは自分が鬼だと知らない(そもそもアプリを開いていない)。
+  - ホスト向けの操作チップは `if (isHost && u.role != UserRole.demon)` という条件で出しているため、**既に `DEMON` の参加者には「取り消す」も「鬼にする」も表示されず、ホストに修正手段が一切ない**。
+  - ホストが気付いて別の人を「鬼にする」と、鬼が2人の状態で始まる。
+
+つまり「部屋が正常に見えたまま壊れた状態で次戦が始まり、ホストにはそれを直す導線が無い」という実害になる。
+
+`RoomWaitingPage` 側で「巻き戻し後に自分が `DEMON` のまま残っている」ケースを自己修復させる案も検討したが、現状は**「正当に指名された鬼」と「前ラウンドの残骸」を区別する手段が無い**ため見送った: `acceptDemonNomination` の直後も `status == WAITING` かつ `role == DEMON` かつ `pendingDemonUid == null` で、残骸と全く同じ状態になる。無条件に自分を `FUGITIVE` へ戻す実装は、正当に指名された鬼を毎回逃走者へ戻してしまい取りこぼしより有害。区別するには `meta/roundId`(または `restartRoom` が書く `meta/restartedAt` + `acceptDemonNomination` が書く `becameDemonAt` の突き合わせ。現状 `acceptDemonNomination` は `becameDemonAt` を書いていないので初期鬼を取りこぼす)の導入が必要で、これはスキーマ追加になる。
+
+根本的に直すには `meta/roundId` の導入か、Cloud Functions側でのロールリセット(Phase 2以降)が必要。Phase 1の「Cloud Functionsを使わずクライアント側だけで実装する」という既存方針(このファイル冒頭「Phase 1の暫定措置」参照)のもとでは、上記の実害を許容している。
+
 ### `catches/{catchId}/demonUserId` はnull許容
 
 逃走者の自己申告（「捕まった」ボタン）で記録する `catches` には、誰が捕まえたか（`demonUserId`）を確実には特定できない。Phase 1では「捕まえた鬼を選択させるUI」は作らず、`demonUserId: null` を許容する形にした。捕獲した鬼を明示的に記録したくなったら、選択UIを別途追加すること。

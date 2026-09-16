@@ -1,11 +1,11 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
 import 'package:kakureru/core/utils/duration_format.dart';
@@ -23,6 +23,7 @@ import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
+import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
@@ -47,7 +48,7 @@ class GamePage extends HookConsumerWidget {
     final room = roomAsync.value;
     final offset = ref.watch(serverTimeOffsetProvider).value ?? 0;
     final locationState = ref.watch(locationViewModelProvider);
-    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    final myUid = ref.watch(myUidProvider);
     // 「自分がどちらの役割か」はヘッダーの色・文言で常に一目で分かるようにする
     // (issue #12)。roomAsyncがまだloading/errorの間、または自分がusersに
     // 見つからない間は役割が確定しないため、その場合はヘッダーを役割色に
@@ -181,17 +182,20 @@ class GamePage extends HookConsumerWidget {
       );
       if (!gameOver) return null;
       hasNavigatedToResult.value = true;
-      final demonNames = room.users
-          .where((u) => u.role == UserRole.demon)
-          .map((u) => u.displayName)
-          .toList();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => GameResultPage(demonNames: demonNames),
+          builder: (_) => GameResultPage(roomId: roomId),
         ),
       );
       return null;
     }, [room?.status, room?.endsAt, tick.value, showCaughtTransition.value]);
+
+    // 「同じメンバーでもう一回」による巻き戻しの検知。ホストが結果画面
+    // (GameResultPage)で巻き戻しを実行した瞬間、この端末がまだisGameOver
+    // を検知できておらずこのGamePageに留まっている場合がある(バック
+    // グラウンド化・ネットワーク遅延等)。その場合でも待機画面に戻れる
+    // よう、GameResultPageと同じフックをここでも使う(issue #44)。
+    useRestartRecovery(ref, context, roomId: roomId);
 
     // 誰かがDEMONになったら(ホストの指名受諾・自己申告どちらでも)全員に
     // 知らせる。表示制御(役割による可視性)とは別軸の情報のため、
@@ -239,6 +243,49 @@ class GamePage extends HookConsumerWidget {
 
     final pressureState = ref.watch(pressureViewModelProvider);
     final bleDetections = ref.watch(bleViewModelProvider);
+
+    // 「鬼になる」ボタンの確定処理。onPressed直下に書くとネストが深くなり
+    // すぎるため、独立した関数として切り出している(挙動は従来通り)。
+    Future<void> handleBecomeDemonPressed() async {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => Theme(
+          data: ThemeData(useMaterial3: true),
+          child: AlertDialog(
+            title: const Text('鬼が近くにいます'),
+            content: const Text(
+              'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
+              '鬼になりますか?この操作は取り消せません。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('鬼になる'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (confirmed != true) return;
+
+      isSubmittingCaught.value = true;
+      try {
+        await ref.read(roomRepositoryProvider).reportCaught(roomId);
+        showCaughtTransition.value = true;
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('送信に失敗しました: $e')));
+        }
+      } finally {
+        isSubmittingCaught.value = false;
+      }
+    }
 
     // ゲーム画面からは戻れない(バックボタン・OSのスワイプ戻る等、
     // どの経路でもポップさせない)。canPop: falseにすると、
@@ -423,88 +470,25 @@ class GamePage extends HookConsumerWidget {
                         ),
                       ),
                     // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた
-                    // ときだけ出す「鬼になる」に一本化した。ローディング表示・
+                    // ときだけ押せる「鬼になる」に一本化した。ローディング表示・
                     // エラー処理・確定演出(CaughtTransitionOverlay)は、旧
                     // 「捕まった」ボタンのものをそのまま踏襲している。
-                    // この「鬼になる」ボタン(BLE 3m接近検知時)はissue #29の
-                    // スコープ外(2a-05相当。既存のUIのまま一切変更しないと
-                    // ユーザー確認済み)。アプリ全体のテーマ変更の影響も受け
-                    // ないよう、Flutter標準のThemeDataで局所的に上書きする。
-                    if (myRole != null &&
-                        canReportCaught(role: myRole, phase: phase) &&
-                        bleBecomeDemonDetected)
-                      Theme(
-                        data: ThemeData(useMaterial3: true),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 4,
-                          ),
-                          child: FilledButton.icon(
-                            icon: isSubmittingCaught.value
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.priority_high),
-                            label: const Text('鬼になる'),
-                            onPressed: isSubmittingCaught.value
-                                ? null
-                                : () async {
-                                    final confirmed = await showDialog<bool>(
-                                      context: context,
-                                      builder: (dialogContext) => Theme(
-                                        data: ThemeData(useMaterial3: true),
-                                        child: AlertDialog(
-                                          title: const Text('鬼が近くにいます'),
-                                          content: const Text(
-                                            'BLEで鬼が至近距離(3m程度)にいることを検知しました。'
-                                            '鬼になりますか?この操作は取り消せません。',
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () => Navigator.of(
-                                                dialogContext,
-                                              ).pop(false),
-                                              child: const Text('キャンセル'),
-                                            ),
-                                            FilledButton(
-                                              onPressed: () => Navigator.of(
-                                                dialogContext,
-                                              ).pop(true),
-                                              child: const Text('鬼になる'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                    if (confirmed != true) return;
-
-                                    isSubmittingCaught.value = true;
-                                    try {
-                                      await ref
-                                          .read(roomRepositoryProvider)
-                                          .reportCaught(roomId);
-                                      showCaughtTransition.value = true;
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text('送信に失敗しました: $e'),
-                                          ),
-                                        );
-                                      }
-                                    } finally {
-                                      isSubmittingCaught.value = false;
-                                    }
-                                  },
-                          ),
-                        ),
+                    //
+                    // ボタン自体は常に表示し、BLEで検知していない間はdisabled
+                    // にする(issue #43)。以前(issue #16/#29)はBLE検知時だけ
+                    // Widgetごと出し入れする方式だったが、検知距離が閾値付近を
+                    // 行き来するたびにボタンの出現/消滅でレイアウト全体が
+                    // 上下にガタつく問題があった。「常時表示にすると誤タップが
+                    // 増えるのでは」という2a-05以来の懸念は、disabledのままなら
+                    // 押しても何も起きない=誤タップにならないため両立する
+                    // (誤タップ防止という元の目的はdisabled化で引き継ぐ)。
+                    // アプリ全体のテーマ変更の影響も受けないよう、Flutter標準の
+                    // ThemeDataで局所的に上書きする構造は維持する。
+                    if (shouldShowBecomeDemonButton(role: myRole, phase: phase))
+                      BecomeDemonButton(
+                        isDetected: bleBecomeDemonDetected,
+                        isSubmitting: isSubmittingCaught.value,
+                        onPressed: handleBecomeDemonPressed,
                       ),
                     Expanded(
                       child: _LocationMap(
@@ -922,6 +906,83 @@ bool _isCalibrated(Room room, String? myUid) {
   if (myUid == null) return false;
   if (myUid == room.hostUserId) return room.basePressure != null;
   return _findUser(room.users, myUid)?.pressureOffset != null;
+}
+
+/// 「鬼になる」ボタン(アイコン+ラベル+押せない理由)。
+///
+/// ボタン自体は常に表示し、[isDetected](BLEで至近距離を検知したか)が
+/// falseの間はdisabledにする(issue #43。詳しい経緯はGamePage.build内の
+/// 呼び出し箇所のコメントを参照)。dialog表示・reportCaught送信などの
+/// 実処理はGamePage側の[onPressed]に任せ、このWidget自体はGamePageが
+/// 抱える他のprovider(位置情報・Wi-Fi・気圧など)に依存しない見た目だけの
+/// 部品にしている(widgetテストをそれらのproviderのfake抜きで書けるように
+/// するため)。
+@visibleForTesting
+class BecomeDemonButton extends StatelessWidget {
+  const BecomeDemonButton({
+    super.key,
+    required this.isDetected,
+    required this.isSubmitting,
+    required this.onPressed,
+  });
+
+  /// BLEで対象役割の相手を至近距離(3m程度)に検知しているか。
+  final bool isDetected;
+
+  /// reportCaughtの送信中かどうか。送信中は検知の有無にかかわらずdisabled。
+  final bool isSubmitting;
+
+  /// 押されたときの処理(確認ダイアログ表示〜reportCaught送信)。
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: ThemeData(useMaterial3: true),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Column(
+          // GamePage内では親Columnが非flexの子にmaxHeight:infinityを渡すため
+          // 指定が無くてもshrink-wrapする(本番の見た目は変わらない)。ただし
+          // Scaffoldのbodyへ直接置くなど有限のmaxHeightがルーズに渡る場面
+          // (widgetテスト)では画面いっぱいまで伸びてしまい、「検知の有無で
+          // 高さが変わらない」ことを高さで検証できなくなる(テストが空振り
+          // する)。制約に依存せずshrink-wrapさせるために明示する。
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton.icon(
+              icon: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.priority_high),
+              label: const Text('鬼になる'),
+              onPressed: isSubmitting || !isDetected ? null : onPressed,
+            ),
+            // 押せない理由をボタンのすぐ下に出す。disabledとenabledの
+            // 切り替えでレイアウトが動くと元のチラつき問題が再発するため、
+            // Visibility(maintainSize:true)で高さは常に確保しておき、
+            // 表示/非表示だけ切り替える。
+            Visibility(
+              visible: !isDetected,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  '鬼が3m以内に近づくと押せます',
+                  style: TextStyle(color: appMuted, fontSize: 11),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// 鬼放出前、逃走者に「いまのうちに離れる」ことを促すバナー
