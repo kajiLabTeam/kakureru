@@ -272,7 +272,17 @@ def _record_cost_and_usage(task, state, envelope):
     changed = False
     cost = envelope.get("total_cost_usd")
     if isinstance(cost, (int, float)) and not isinstance(cost, bool):
-        task["total_cost_usd"] = task.get("total_cost_usd", 0) + cost
+        # task.get("total_cost_usd", 0) はキーが無い場合のみ0を返す——過去に
+        # 人手でstate.jsonを編集して"total_cost_usd": nullにした等、キーは
+        # 存在するが値が数値でないケースでは既存値がそのまま返り、+ cost で
+        # TypeErrorになる。run_task_with_retry内でこの呼び出しを囲むtry/exceptは
+        # 無く、ここで例外を出すとタスク単体ではなくnight_runner.py全体(main()の
+        # ループ)が落ちて残りの全タスクが処理されなくなるため、既存値が数値
+        # でなければ0扱いにしてから加算する。
+        existing_cost = task.get("total_cost_usd")
+        if not isinstance(existing_cost, (int, float)) or isinstance(existing_cost, bool):
+            existing_cost = 0
+        task["total_cost_usd"] = existing_cost + cost
         changed = True
     usage = envelope.get("usage")
     if isinstance(usage, dict):

@@ -258,6 +258,21 @@ class RecordCostAndUsageTest(unittest.TestCase):
         self.assertEqual(self.task["total_cost_usd"], 3.5)
         self.assertEqual(self.task["usage"], {"input_tokens": 30, "output_tokens": 5})
 
+    def test_non_numeric_existing_total_cost_usd_does_not_raise(self):
+        # 再レビューで発見した回帰: state.jsonが手動編集等で
+        # "total_cost_usd": null (あるいは文字列等)を既に持っている状態で
+        # 新しいコストを加算しようとすると、素朴に
+        # task.get("total_cost_usd", 0) + cost するとTypeErrorになる
+        # (dict.getのdefaultはキーが無いときしか使われないため)。
+        # run_task_with_retry内でこの呼び出しはtry/exceptに囲まれておらず、
+        # ここで例外を出すとタスク単体ではなくnight_runner.py全体が落ちて
+        # 残りの全タスクが処理されなくなる。既存値が数値でなければ0として
+        # 扱い、例外を出さずに加算できることを確認する。
+        self.task["total_cost_usd"] = None
+        with mock.patch.object(night_runner, "save_state"):
+            night_runner._record_cost_and_usage(self.task, self.state, {"total_cost_usd": 1.5})
+        self.assertEqual(self.task["total_cost_usd"], 1.5)
+
 
 class RateLimitEnvelopeTest(unittest.TestCase):
     def test_is_error_with_rate_limit_text_is_detected(self):
