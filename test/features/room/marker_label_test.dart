@@ -7,21 +7,23 @@ void main() {
     const myUid = 'uid-me';
     const otherUid = 'uid-other';
 
-    RoomUser makeUser({required String id, required String displayName}) {
-      return RoomUser(id: id, displayName: displayName);
-    }
-
     test('自分のUIDなら「自分」を返す', () {
       final label = markerLabelFor(
         uid: myUid,
         myUid: myUid,
-        user: makeUser(id: myUid, displayName: 'Alice'),
+        displayName: 'Alice',
+        role: null,
       );
       expect(label, '自分');
     });
 
-    test('自分のUIDならuserがnullでも「自分」を返す', () {
-      final label = markerLabelFor(uid: myUid, myUid: myUid, user: null);
+    test('自分のUIDならdisplayNameがnullでも「自分」を返す', () {
+      final label = markerLabelFor(
+        uid: myUid,
+        myUid: myUid,
+        displayName: null,
+        role: null,
+      );
       expect(label, '自分');
     });
 
@@ -29,7 +31,8 @@ void main() {
       final label = markerLabelFor(
         uid: otherUid,
         myUid: myUid,
-        user: makeUser(id: otherUid, displayName: 'Bob'),
+        displayName: 'Bob',
+        role: null,
       );
       expect(label, 'Bob');
     });
@@ -38,13 +41,19 @@ void main() {
       final label = markerLabelFor(
         uid: otherUid,
         myUid: myUid,
-        user: makeUser(id: otherUid, displayName: ''),
+        displayName: '',
+        role: null,
       );
       expect(label, '?');
     });
 
-    test('他プレイヤーのuserがnullなら「?」を返す', () {
-      final label = markerLabelFor(uid: otherUid, myUid: myUid, user: null);
+    test('他プレイヤーのdisplayNameがnullなら「?」を返す', () {
+      final label = markerLabelFor(
+        uid: otherUid,
+        myUid: myUid,
+        displayName: null,
+        role: null,
+      );
       expect(label, '?');
     });
 
@@ -52,9 +61,62 @@ void main() {
       final label = markerLabelFor(
         uid: otherUid,
         myUid: null,
-        user: makeUser(id: otherUid, displayName: 'Carol'),
+        displayName: 'Carol',
+        role: null,
       );
       expect(label, 'Carol');
+    });
+
+    group('役割表記(issue #42: 地図ピンの見分けやすさ改善)', () {
+      test('自分が鬼なら「自分（鬼）」を返す', () {
+        final label = markerLabelFor(
+          uid: myUid,
+          myUid: myUid,
+          displayName: null,
+          role: UserRole.demon,
+        );
+        expect(label, '自分（鬼）');
+      });
+
+      test('自分が逃走者なら「自分（逃走者）」を返す', () {
+        final label = markerLabelFor(
+          uid: myUid,
+          myUid: myUid,
+          displayName: null,
+          role: UserRole.fugitive,
+        );
+        expect(label, '自分（逃走者）');
+      });
+
+      test('他プレイヤーが鬼なら名前に「（鬼）」が付く', () {
+        final label = markerLabelFor(
+          uid: otherUid,
+          myUid: myUid,
+          displayName: 'Bob',
+          role: UserRole.demon,
+        );
+        expect(label, 'Bob（鬼）');
+      });
+
+      test('他プレイヤーが逃走者なら名前に「（逃走者）」が付く', () {
+        final label = markerLabelFor(
+          uid: otherUid,
+          myUid: myUid,
+          displayName: 'Bob',
+          role: UserRole.fugitive,
+        );
+        expect(label, 'Bob（逃走者）');
+      });
+
+      test('役割が未知(null)なら役割表記を付けない(断定しない)', () {
+        final label = markerLabelFor(
+          uid: otherUid,
+          myUid: myUid,
+          displayName: 'Bob',
+          role: null,
+        );
+        expect(label, 'Bob');
+      });
     });
   });
 }
