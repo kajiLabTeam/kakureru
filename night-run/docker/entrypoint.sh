@@ -92,9 +92,21 @@ runner_env=(
     "NIGHT_RUNNER_SANDBOX=1"
     "NIGHT_RUN_REPO_DIR=$REPO_DIR"
     "NIGHT_RUN_STATE_FILE=$STATE_FILE_PATH"
-    "NIGHT_RUN_MAX_BUDGET_USD=${NIGHT_RUN_MAX_BUDGET_USD:-15}"
     "GH_TOKEN=$GH_TOKEN"
 )
+
+# 消費量の設定(モデル・effort・タスク数・予算)は、渡されているものだけを転送する。
+# ここで既定値を埋めると、night_runner.pyの優先順位(環境変数 > stateの"limits" >
+# 既定値)で環境変数が常に勝ち、ヒアリングSkillがstateに書いた設定が無視される。
+for name in NIGHT_RUN_MODEL NIGHT_RUN_EFFORT NIGHT_RUN_REVIEWER_MODEL \
+            NIGHT_RUN_MAX_TASKS NIGHT_RUN_MAX_REVIEW_ROUNDS \
+            NIGHT_RUN_MAX_BUDGET_USD NIGHT_RUN_MAX_TOTAL_BUDGET_USD; do
+    value="${!name:-}"
+    if [ -n "$value" ]; then
+        runner_env+=("$name=$value")
+        echo "[entrypoint] $name=$value (stateのlimitsより優先)"
+    fi
+done
 # ANTHROPIC_API_KEY(APIキー課金)かCLAUDE_CODE_OAUTH_TOKEN(claude setup-tokenで発行する
 # サブスクリプション連携の長期トークン)のどちらかで動く。両方渡さない
 # (空文字を渡すと「設定されているが空」という別の状態になり、未設定より紛らわしいため)。

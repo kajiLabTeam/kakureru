@@ -4,6 +4,7 @@
 docker/claude/ghの実プロセスは呼ばず、subprocessやネットワークをモックする。
 実行方法: python3 night-run/test_night_runner.py
 """
+import datetime
 import json
 import os
 import subprocess
@@ -343,7 +344,9 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
         final_task = final_state["tasks"][0]
         self.assertEqual(final_task["status"], "done")  # 一度目でfailed確定していないこと
 
-    def test_rate_limited_envelope_gives_up_after_max_attempts(self):
+    def test_rate_limited_defers_task_after_max_attempts(self):
+        # 枠が戻らないのは「実装の失敗」ではないので、failedではなく
+        # pendingのまま持ち越して次回の実行で再開できるようにする。
         rate_limited_stdout = json.dumps({
             "is_error": True, "subtype": "error_during_execution", "result": "429 rate limit",
         })
@@ -354,14 +357,18 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
              mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
              mock.patch.object(night_runner.time, "sleep"), \
              mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"):
-            night_runner.run_task_with_retry(self.task, self.state)
+            outcome = night_runner.run_task_with_retry(self.task, self.state)
 
+        self.assertEqual(outcome, "deferred")  # main()はこれを見て実行自体を終える
         final_state = night_runner.load_state()
         final_task = final_state["tasks"][0]
-        self.assertEqual(final_task["status"], "failed")
+        self.assertEqual(final_task["status"], "pending")
+        self.assertIn("レートリミット", final_task["deferred_reason"])
+        self.assertEqual(final_task["diagnostic_branch"], "diagnostic/x")
+        self.assertNotIn("failure_reason", final_task)
 
-    def test_rate_limited_give_up_still_records_accumulated_cost_and_usage(self):
-        # give-up経路(_retry_after_rate_limit_or_give_up内でmark_task_failedを
+    def test_rate_limited_defer_still_records_accumulated_cost_and_usage(self):
+        # 持ち越し経路(_handle_rate_limit内でmark_task_deferredを
         # 直接呼ぶ)はupdate_state_doneを経由しないため、記録漏れが起きやすい
         # (コードレビュー指摘の再現ケース)。3回とも同じレートリミット応答だが、
         # 各試行は実際に課金が発生しているため、記録される値は3回分の累積になる
@@ -380,12 +387,12 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
 
         final_state = night_runner.load_state()
         final_task = final_state["tasks"][0]
-        self.assertEqual(final_task["status"], "failed")
+        self.assertEqual(final_task["status"], "pending")  # 持ち越し
         self.assertEqual(final_task["total_cost_usd"], 7.5)  # 2.5 x 3試行
         self.assertEqual(final_task["usage"], {"input_tokens": 30, "output_tokens": 15})
 
-    def test_stderr_rate_limit_give_up_records_accumulated_cost_if_stdout_has_envelope(self):
-        # returncode!=0 でstderrの正規表現マッチによりgive-upする経路でも、
+    def test_stderr_rate_limit_defer_records_accumulated_cost_if_stdout_has_envelope(self):
+        # returncode!=0 でstderrの正規表現マッチにより持ち越す経路でも、
         # stdoutにenvelopeが残っている場合は各試行のコストを累積して記録する。
         stdout_with_cost = json.dumps({"total_cost_usd": 3.7, "usage": {"input_tokens": 20}})
         responses = [(1, stdout_with_cost, "429 rate limit")] * 3
@@ -398,7 +405,7 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
 
         final_state = night_runner.load_state()
         final_task = final_state["tasks"][0]
-        self.assertEqual(final_task["status"], "failed")
+        self.assertEqual(final_task["status"], "pending")  # 持ち越し
         self.assertAlmostEqual(final_task["total_cost_usd"], 11.1)  # 3.7 x 3試行(浮動小数点誤差を許容)
         self.assertEqual(final_task["usage"], {"input_tokens": 60})
 
@@ -635,6 +642,380 @@ class DraftPrBodyTest(unittest.TestCase):
         self.assertNotIn("TODO", body)
         self.assertIn("レビュー", body)
         self.assertIn("画面Aを実装した", body)
+
+
+def clean_limit_env(**overrides):
+    """NIGHT_RUN_* の設定系環境変数を取り除いた状態を作る。実行環境に残っている
+    値でテストの期待値がぶれないようにするため。"""
+    env = {
+        k: v for k, v in os.environ.items()
+        if k not in night_runner.LIMIT_ENV_VARS.values()
+    }
+    env.update(overrides)
+    return mock.patch.dict(os.environ, env, clear=True)
+
+
+class ResolveLimitsTest(unittest.TestCase):
+    """消費量の設定は 環境変数 > state["limits"] > DEFAULT_LIMITS の順で解決する。"""
+
+    def setUp(self):
+        patcher = mock.patch.object(night_runner, "notify_human")
+        self.notify = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_defaults_are_pro_plan_oriented(self):
+        with clean_limit_env():
+            limits = night_runner.resolve_limits({})
+        self.assertEqual(limits["model"], "sonnet")   # ProにOpusは含まれない
+        self.assertEqual(limits["effort"], "medium")
+        self.assertEqual(limits["max_tasks_per_run"], 2)
+        self.assertEqual(limits["max_review_rounds"], 2)
+        self.assertEqual(limits["max_budget_usd_per_task"], 5.0)
+        self.assertEqual(limits["max_total_budget_usd"], 10.0)
+
+    def test_state_limits_override_defaults(self):
+        with clean_limit_env():
+            limits = night_runner.resolve_limits(
+                {"limits": {"model": "opus", "max_tasks_per_run": 5}}
+            )
+        self.assertEqual(limits["model"], "opus")
+        self.assertEqual(limits["max_tasks_per_run"], 5)
+        self.assertEqual(limits["effort"], "medium")  # 指定しなかったものは既定のまま
+
+    def test_env_var_overrides_state(self):
+        with clean_limit_env(NIGHT_RUN_MAX_TASKS="3"):
+            limits = night_runner.resolve_limits({"limits": {"max_tasks_per_run": 5}})
+        self.assertEqual(limits["max_tasks_per_run"], 3)
+
+    def test_empty_env_var_does_not_override(self):
+        # run.sh/entrypoint.shは未設定の変数を渡さない方針だが、空文字が
+        # 紛れ込んでもstateの設定を潰さないこと。
+        with clean_limit_env(NIGHT_RUN_MODEL="   "):
+            limits = night_runner.resolve_limits({"limits": {"model": "haiku"}})
+        self.assertEqual(limits["model"], "haiku")
+
+    def test_unknown_key_in_state_is_ignored(self):
+        with clean_limit_env():
+            limits = night_runner.resolve_limits({"limits": {"max_turns": 10}})
+        self.assertNotIn("max_turns", limits)
+
+    def test_non_numeric_value_falls_back_to_default_without_raising(self):
+        with clean_limit_env(NIGHT_RUN_MAX_TASKS="たくさん"):
+            limits = night_runner.resolve_limits({})
+        self.assertEqual(limits["max_tasks_per_run"], 2)
+        self.notify.assert_called()  # 黙って既定値に戻さず、alerts.logに残す
+
+    def test_negative_value_falls_back_to_default(self):
+        with clean_limit_env():
+            limits = night_runner.resolve_limits({"limits": {"max_total_budget_usd": -1}})
+        self.assertEqual(limits["max_total_budget_usd"], 10.0)
+
+    def test_unknown_effort_falls_back_to_default(self):
+        # 未知のeffortをそのまま渡すとCLIが引数エラーで即死し、その夜が
+        # 丸ごと無駄になるため、既定値へ寄せて警告だけ残す。
+        with clean_limit_env(NIGHT_RUN_EFFORT="ultra"):
+            limits = night_runner.resolve_limits({})
+        self.assertEqual(limits["effort"], "medium")
+        self.notify.assert_called()
+
+    def test_zero_means_unlimited_and_is_preserved(self):
+        with clean_limit_env():
+            limits = night_runner.resolve_limits(
+                {"limits": {"max_tasks_per_run": 0, "max_total_budget_usd": 0}}
+            )
+        self.assertEqual(limits["max_tasks_per_run"], 0)
+        self.assertEqual(limits["max_total_budget_usd"], 0)
+
+
+class BuildClaudeArgvTest(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(night_runner, "notify_human")
+        self.notify = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _limits(self, **overrides):
+        limits = dict(night_runner.DEFAULT_LIMITS)
+        limits.update(overrides)
+        return limits
+
+    def test_model_effort_and_budget_are_passed(self):
+        with mock.patch.object(night_runner, "claude_supported_flags", return_value=None):
+            argv = night_runner.build_claude_argv("p", self._limits())
+        self.assertEqual(argv[argv.index("--model") + 1], "sonnet")
+        self.assertEqual(argv[argv.index("--effort") + 1], "medium")
+        self.assertEqual(argv[argv.index("--max-budget-usd") + 1], "5.0")
+
+    def test_unsupported_flags_are_dropped_instead_of_crashing_the_cli(self):
+        # 古いCLIが焼き込まれたイメージで --effort を渡すと引数エラーで即死し、
+        # その夜のタスクが1件も進まない。落として警告する方を選ぶ。
+        supported = frozenset({"--model", "--output-format", "--max-budget-usd"})
+        with mock.patch.object(night_runner, "claude_supported_flags", return_value=supported):
+            argv = night_runner.build_claude_argv("p", self._limits())
+        self.assertIn("--model", argv)
+        self.assertNotIn("--effort", argv)
+        self.notify.assert_called()
+
+    def test_zero_budget_is_omitted(self):
+        with mock.patch.object(night_runner, "claude_supported_flags", return_value=None):
+            argv = night_runner.build_claude_argv("p", self._limits(max_budget_usd_per_task=0))
+        self.assertNotIn("--max-budget-usd", argv)
+
+    def test_empty_model_is_omitted(self):
+        with mock.patch.object(night_runner, "claude_supported_flags", return_value=None):
+            argv = night_runner.build_claude_argv("p", self._limits(model=""))
+        self.assertNotIn("--model", argv)
+
+    def test_reviewer_model_is_only_set_when_configured(self):
+        without = json.loads(night_runner.reviewer_agents_json(self._limits()))
+        self.assertNotIn("model", without["reviewer"])
+        with_model = json.loads(
+            night_runner.reviewer_agents_json(self._limits(reviewer_model="haiku"))
+        )
+        self.assertEqual(with_model["reviewer"]["model"], "haiku")
+        # 元の定義を書き換えていないこと(次のタスクに漏れない)
+        self.assertNotIn("model", night_runner.REVIEWER_AGENT_DEFINITION["reviewer"])
+
+
+class ParseRateLimitResetTest(unittest.TestCase):
+    def test_epoch_after_pipe_is_parsed(self):
+        # Claude Code CLIが返す "Claude AI usage limit reached|<epoch>" 形式
+        reset = night_runner.parse_rate_limit_reset("Claude AI usage limit reached|1757808000")
+        self.assertEqual(reset, datetime.datetime.fromtimestamp(1757808000, datetime.timezone.utc))
+
+    def test_iso_with_timezone_is_parsed(self):
+        reset = night_runner.parse_rate_limit_reset("usage limit; resets at 2026-09-14T03:00:00+09:00")
+        self.assertEqual(
+            reset,
+            datetime.datetime(2026, 9, 13, 18, 0, tzinfo=datetime.timezone.utc),
+        )
+
+    def test_naive_iso_is_treated_as_utc(self):
+        reset = night_runner.parse_rate_limit_reset("rate limit reset 2026-09-14 03:00:00")
+        self.assertEqual(reset, datetime.datetime(2026, 9, 14, 3, 0, tzinfo=datetime.timezone.utc))
+
+    def test_returns_none_when_no_reset_information(self):
+        self.assertIsNone(night_runner.parse_rate_limit_reset("429 rate limit"))
+        self.assertIsNone(night_runner.parse_rate_limit_reset(""))
+        self.assertIsNone(night_runner.parse_rate_limit_reset(None))
+
+
+class PlanRateLimitWaitTest(unittest.TestCase):
+    def setUp(self):
+        self.now = datetime.datetime(2026, 9, 14, 0, 0, tzinfo=datetime.timezone.utc)
+
+    def test_waits_until_reset_time_when_it_fits_in_the_window(self):
+        reset_epoch = int((self.now + datetime.timedelta(hours=2)).timestamp())
+        hard_limit = self.now + datetime.timedelta(hours=6)
+        action, wait_seconds, reset_at = night_runner.plan_rate_limit_wait(
+            1, f"usage limit reached|{reset_epoch}", self.now, hard_limit,
+        )
+        self.assertEqual(action, "wait")
+        self.assertAlmostEqual(
+            wait_seconds, 2 * 3600 + night_runner.RATE_LIMIT_RESET_MARGIN_SECONDS, delta=1
+        )
+        self.assertIsNotNone(reset_at)
+
+    def test_defers_when_reset_is_after_the_hard_limit(self):
+        # Pro契約の5時間枠。締切までに戻らないと分かっているのに待つのは
+        # 待ち時間もトークンも無駄なので、待たずに持ち越す。
+        reset_epoch = int((self.now + datetime.timedelta(hours=5)).timestamp())
+        hard_limit = self.now + datetime.timedelta(hours=2)
+        action, wait_seconds, _ = night_runner.plan_rate_limit_wait(
+            1, f"usage limit reached|{reset_epoch}", self.now, hard_limit,
+        )
+        self.assertEqual(action, "defer")
+        self.assertEqual(wait_seconds, 0.0)
+
+    def test_defers_when_only_a_few_minutes_would_remain(self):
+        reset_epoch = int((self.now + datetime.timedelta(minutes=50)).timestamp())
+        hard_limit = self.now + datetime.timedelta(minutes=55)
+        action, _, _ = night_runner.plan_rate_limit_wait(
+            1, f"usage limit reached|{reset_epoch}", self.now, hard_limit,
+        )
+        self.assertEqual(action, "defer")
+
+    def test_falls_back_to_backoff_when_reset_time_is_unknown(self):
+        hard_limit = self.now + datetime.timedelta(hours=6)
+        action, wait_seconds, reset_at = night_runner.plan_rate_limit_wait(
+            2, "429 rate limit", self.now, hard_limit,
+        )
+        self.assertEqual(action, "wait")
+        self.assertEqual(wait_seconds, float(night_runner.backoff_seconds(2)))
+        self.assertIsNone(reset_at)
+
+    def test_defers_once_retry_attempts_are_exhausted(self):
+        hard_limit = self.now + datetime.timedelta(hours=6)
+        action, _, _ = night_runner.plan_rate_limit_wait(
+            night_runner.MAX_RETRY_ATTEMPTS + 1, "429 rate limit", self.now, hard_limit,
+        )
+        self.assertEqual(action, "defer")
+
+
+class ClearDeferredMarkersTest(unittest.TestCase):
+    def test_done_clears_previous_deferral(self):
+        task = {
+            "title": "タスクA", "status": "pending", "branch": "night-run/task-a",
+            "deferred_reason": "レートリミット", "deferred_at": "2026-09-14T00:00:00+00:00",
+            "rate_limit_reset_at": "2026-09-14T05:00:00+00:00",
+        }
+        state = {"tasks": [task]}
+        envelope = {
+            "is_error": False,
+            "structured_output": {
+                "status": "success", "pr_url": "https://github.com/x/y/pull/1",
+                "branch": "night-run/task-a", "review_round": 1,
+                "completed_summary": "done", "remaining_summary": "なし",
+            },
+        }
+        with mock.patch.object(night_runner, "verify_pr", return_value=True), \
+             mock.patch.object(night_runner, "save_state"):
+            night_runner.update_state_done(task, state, envelope)
+        self.assertEqual(task["status"], "done")
+        self.assertNotIn("deferred_reason", task)
+        self.assertNotIn("rate_limit_reset_at", task)
+
+
+class MainRunLimitsTest(unittest.TestCase):
+    """1回の実行で使い切らないための歯止め(タスク数・実行全体の予算)。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state_path = os.path.join(self.tmp.name, "night-run-state.json")
+        marker = os.path.join(self.tmp.name, "sandbox-marker")
+        open(marker, "w").close()
+        for name, value in [
+            ("STATE_FILE", self.state_path),
+            ("ALERTS_LOG", os.path.join(self.tmp.name, "alerts.log")),
+            ("SANDBOX_MARKER_FILE", marker),
+            ("REPO_DIR", self.tmp.name),
+        ]:
+            patcher = mock.patch.object(night_runner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        for target in ("notify_human", "git_cleanup_with_retry"):
+            patcher = mock.patch.object(night_runner, target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        patcher = mock.patch.dict(os.environ, {"NIGHT_RUNNER_SANDBOX": "1"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _write_state(self, limits, task_count=3):
+        state = {
+            "deadline": "2999-01-01T00:00:00+09:00",
+            "hard_limit": "2999-01-01T01:00:00+09:00",
+            "limits": limits,
+            "tasks": [
+                {"title": f"タスク{i}", "status": "pending", "branch": f"night-run/task-{i}"}
+                for i in range(1, task_count + 1)
+            ],
+        }
+        with open(self.state_path, "w") as f:
+            json.dump(state, f)
+
+    @staticmethod
+    def _complete_with_cost(cost):
+        def side_effect(task, state):
+            task["status"] = "done"
+            task["total_cost_usd"] = cost
+            night_runner.save_state(state)
+        return side_effect
+
+    def test_stops_after_max_tasks_per_run_and_leaves_the_rest_pending(self):
+        self._write_state({"max_tasks_per_run": 2, "max_total_budget_usd": 0})
+        with clean_limit_env(), \
+             mock.patch.object(
+                 night_runner, "run_task_with_retry",
+                 side_effect=self._complete_with_cost(1.0),
+             ) as mock_run:
+            night_runner.main()
+
+        self.assertEqual(mock_run.call_count, 2)
+        state = night_runner.load_state()
+        self.assertEqual([t["status"] for t in state["tasks"]], ["done", "done", "pending"])
+        self.assertEqual(state["run_summary"]["tasks_started"], 2)
+        self.assertIn("タスク数上限", state["run_summary"]["stopped_reason"])
+
+    def test_stops_when_total_budget_is_reached(self):
+        # 1タスク4ドル・上限5ドル: 1件目で4ドル(継続) → 2件目で8ドル(打ち切り)
+        self._write_state({"max_tasks_per_run": 0, "max_total_budget_usd": 5})
+        with clean_limit_env(), \
+             mock.patch.object(
+                 night_runner, "run_task_with_retry",
+                 side_effect=self._complete_with_cost(4.0),
+             ) as mock_run:
+            night_runner.main()
+
+        self.assertEqual(mock_run.call_count, 2)
+        state = night_runner.load_state()
+        self.assertEqual(state["tasks"][2]["status"], "pending")
+        self.assertIn("予算上限", state["run_summary"]["stopped_reason"])
+        self.assertAlmostEqual(state["run_summary"]["spent_usd"], 8.0)
+
+    def test_deferred_task_stops_the_run(self):
+        # 枠が戻らないまま次のタスクへ進んでも同じところで止まるだけなので、
+        # 実行自体を終えて残りは次回に回す。
+        self._write_state({"max_tasks_per_run": 0, "max_total_budget_usd": 0})
+
+        def defer(task, state):
+            task["deferred_reason"] = "レートリミットのため中断"
+            night_runner.save_state(state)
+            return "deferred"
+
+        with clean_limit_env(), \
+             mock.patch.object(night_runner, "run_task_with_retry", side_effect=defer) as mock_run:
+            night_runner.main()
+
+        self.assertEqual(mock_run.call_count, 1)
+        state = night_runner.load_state()
+        self.assertEqual([t["status"] for t in state["tasks"]], ["pending"] * 3)
+        self.assertIn("レートリミット", state["run_summary"]["stopped_reason"])
+
+    def test_only_this_runs_cost_counts_toward_the_budget(self):
+        # total_cost_usdは夜をまたいで累積する(issue #47)。前回までの消費を
+        # 今回の予算にカウントすると、再開した瞬間に上限に達してしまう。
+        self._write_state({"max_tasks_per_run": 0, "max_total_budget_usd": 5})
+        state = json.load(open(self.state_path))
+        state["tasks"][0]["total_cost_usd"] = 100.0  # 前回までの累積
+        with open(self.state_path, "w") as f:
+            json.dump(state, f)
+
+        def add_cost(task, state):
+            task["status"] = "done"
+            task["total_cost_usd"] = night_runner._task_cost_usd(task) + 1.0
+            night_runner.save_state(state)
+
+        with clean_limit_env(), \
+             mock.patch.object(night_runner, "run_task_with_retry", side_effect=add_cost) as mock_run:
+            night_runner.main()
+
+        self.assertEqual(mock_run.call_count, 3)  # 増分1ドル x 3件 = 上限未満
+        self.assertAlmostEqual(night_runner.load_state()["run_summary"]["spent_usd"], 3.0)
+
+
+class GenerateSummaryTest(unittest.TestCase):
+    def test_deferred_tasks_are_listed_separately_from_untouched_ones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = os.path.join(tmp, "night-run-state.json")
+            state = {
+                "tasks": [
+                    {"title": "済", "status": "done", "pr_url": "u", "total_cost_usd": 1.5},
+                    {"title": "持ち越し", "status": "pending",
+                     "deferred_reason": "レートリミットのため中断", "diagnostic_branch": "diagnostic/x"},
+                    {"title": "未着手", "status": "pending"},
+                ],
+                "run_summary": {"tasks_started": 1, "spent_usd": 1.5, "stopped_reason": "テスト"},
+            }
+            with mock.patch.object(night_runner, "STATE_FILE", state_path):
+                night_runner.generate_summary(state)
+                summary = open(os.path.join(tmp, "summary.txt"), encoding="utf-8").read()
+
+        self.assertIn("持ち越し: 1件", summary)
+        self.assertIn("未着手: 1件", summary)
+        self.assertIn("[deferred] 持ち越し", summary)
+        self.assertIn("[pending] 未着手", summary)
+        self.assertIn("$1.50", summary)
 
 
 if __name__ == "__main__":

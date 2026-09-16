@@ -27,6 +27,16 @@
 # 必須の環境変数(ホスト側で事前に export しておく。詳細はnight-run/README.md):
 #   CLAUDE_CODE_OAUTH_TOKEN (デフォルト) か ANTHROPIC_API_KEY(--use-api-key時)   claude -p の認証
 #   GH_TOKEN            git push / gh pr create の認証(対象repoへの書き込み権限が要る)
+#
+# 任意の環境変数(消費量の設定。通常はヒアリングSkillがstateの"limits"に書くので不要。
+# exportされているときだけコンテナへ渡され、stateの設定より優先される):
+#   NIGHT_RUN_MODEL                  使用モデル(既定 sonnet。ProにOpusは含まれない)
+#   NIGHT_RUN_EFFORT                 low|medium|high|xhigh|max(既定 medium)
+#   NIGHT_RUN_REVIEWER_MODEL         reviewerサブエージェントのモデル(未指定なら実装と同じ)
+#   NIGHT_RUN_MAX_TASKS              1回の実行で着手するタスク数(既定 2、0で無制限)
+#   NIGHT_RUN_MAX_REVIEW_ROUNDS      レビューの最大ラウンド数(既定 2)
+#   NIGHT_RUN_MAX_BUDGET_USD         1タスクあたりの予算(既定 5、0で指定しない)
+#   NIGHT_RUN_MAX_TOTAL_BUDGET_USD   実行全体の予算(既定 10、0で無制限)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -121,6 +131,19 @@ PYEOF
 
         docker_env_args=(-e GH_TOKEN "${auth_env_args[@]}")
 
+        # 消費量の設定(モデル・effort・タスク数・予算)は、ホスト側で明示的に
+        # exportされているときだけ渡す。ここで既定値を埋めてしまうと、
+        # night_runner.pyの優先順位(環境変数 > stateの"limits" > 既定値)により
+        # 環境変数が常に勝ち、ヒアリングSkillがstateに書いた設定が黙って無視される。
+        for name in NIGHT_RUN_MODEL NIGHT_RUN_EFFORT NIGHT_RUN_REVIEWER_MODEL \
+                    NIGHT_RUN_MAX_TASKS NIGHT_RUN_MAX_REVIEW_ROUNDS \
+                    NIGHT_RUN_MAX_BUDGET_USD NIGHT_RUN_MAX_TOTAL_BUDGET_USD; do
+            if [ -n "${!name:-}" ]; then
+                docker_env_args+=(-e "$name")
+                echo "[run.sh] 環境変数 $name を渡します(stateのlimitsより優先されます)"
+            fi
+        done
+
         docker run -d --rm \
             --name "$CONTAINER_NAME" \
             --cap-add=NET_ADMIN --cap-add=NET_RAW \
@@ -128,7 +151,6 @@ PYEOF
             -v "$STATE_DIR:/workdir/state" \
             "${docker_env_args[@]}" \
             -e NIGHT_RUN_REPO_URL="${NIGHT_RUN_REPO_URL:-https://github.com/kajiLabTeam/kakureru.git}" \
-            -e NIGHT_RUN_MAX_BUDGET_USD="${NIGHT_RUN_MAX_BUDGET_USD:-15}" \
             "$IMAGE_NAME"
         echo "起動した。ログ確認: night-run/run.sh logs / 進捗確認: night-run/state/night-run-state.json, alerts.log"
         ;;
