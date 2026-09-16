@@ -57,6 +57,26 @@ EOF
 - **同じ夜にまとめて1ブランチで進める**: 依存する複数タスクを1つの実装単位（state上は1エントリ、PRも1つ）として扱う
 - **別の夜に回す**: 依存先のタスクは今夜のリストに含めない（stateに書き出さない）
 
+## Step 3.5: 契約プランと1回の分量を確認する（Claude night-runのみ）
+
+Step 0で**Claude night-run**を選んだ場合だけ行う（Antigravityは別の枠なので不要）。
+
+night-runの1タスクは`claude -p`のセッションを実装〜レビュー〜PR作成まで走らせるもので、**人間の対話利用と同じ枠を消費する**。Pro契約で上限なしに回すと、その夜のうちに枠を使い切り、翌日の自分の作業まで止まる。`AskUserQuestion`で契約プランを聞き、以下のプリセットを`limits`としてstateに書き出す。
+
+| プラン | `model` | `effort` | `max_tasks_per_run` | `max_review_rounds` | `max_budget_usd_per_task` | `max_total_budget_usd` |
+|---|---|---|---|---|---|---|
+| **Claude Pro** | `sonnet` | `medium` | `2` | `2` | `5` | `10` |
+| **Claude Max** | `sonnet` | `high` | `4` | `3` | `10` | `40` |
+| **APIキー(従量課金)** | `sonnet` | `high` | `0`(無制限) | `3` | `15` | ユーザーに金額を聞く |
+
+- **ProにOpusは含まれない**。`model`を`opus`にしたいと言われたら、Proでは使えないことを伝える
+- APIキーの場合だけ実費が発生する。`max_total_budget_usd`(その回の実行で使ってよい上限)を必ず本人に確認して決める。サブスクリプションでは金額が報告されないことがあり、その場合の実効的な歯止めは`max_tasks_per_run`(件数)だけになる点も伝える
+
+**タスク数が`max_tasks_per_run`を超えている場合**（例: Proで5件挙がった）は、以下を伝えたうえで`AskUserQuestion`で選んでもらう。**勝手にタスクを削らない**。
+
+- **そのまま全部書き出す（推奨）**: 上限までのタスクを今回実行し、残りは`pending`のまま残る。翌日もう一度`night-run/run.sh start`すれば続きから拾われる
+- **今回の上限を上げる**: 全部を一晩で狙う。枠を使い切って翌日の対話利用が制限される可能性が高いことを明示してから決めてもらう
+
 ## Step 4: 内容を要約提示する
 
 各タスクについて、issueの内容を要約してユーザーに提示する。
@@ -80,6 +100,14 @@ Step 0で選んだエンジンに応じて、以下のどちらかを行う。
   "deadline": "2026-08-30T06:00:00+09:00",
   "hard_limit": "2026-08-30T07:30:00+09:00",
   "hard_limit_buffer_minutes": 90,
+  "limits": {
+    "model": "sonnet",
+    "effort": "medium",
+    "max_tasks_per_run": 2,
+    "max_review_rounds": 2,
+    "max_budget_usd_per_task": 5,
+    "max_total_budget_usd": 10
+  },
   "tasks": [
     { "title": "タスクA", "issue_url": "https://github.com/kajiLabTeam/kakureru/issues/12", "status": "pending", "branch": "night-run/2026-08-29/task-1" },
     { "title": "タスクB + タスクC(依存によりまとめて実施)", "issue_url": "https://github.com/kajiLabTeam/kakureru/issues/13", "status": "pending", "branch": "night-run/2026-08-29/task-2" }
@@ -89,6 +117,8 @@ Step 0で選んだエンジンに応じて、以下のどちらかを行う。
 
 - `issue_url` はStep 2で実在確認した実際のissue URLを入れる(タスクプロンプト側がタイトルの曖昧一致ではなく、この番号で直接`gh issue view`できるようにするため)。依存タスクをまとめた場合は、実装の起点となる方のissue URLを入れる
 - `status` は全タスク `"pending"` で書き出す
+- `limits` はStep 3.5で確定したプリセットを書く(省略すると`night_runner.py`側のPro向け既定値が使われる)。設定の意味は `night-run/README.md` の「Pro契約での運用」を参照
+- **既存の`night-run-state.json`に前回の`pending`タスクが残っている場合**(上限やレートリミットで持ち越されたもの)は、上書きで消してよいか必ず確認する。`deferred_reason`が付いているタスクは「枠が足りず中断したが、途中まで実装が進んでいる」ものなので、消すと作業が捨てられる
 - `depends_on` フィールドは書かない（Step 3で解消済みのため）
 - `hard_limit`・`deadline` は必ず絶対時刻(ISO8601)。ランタイム側では計算し直さない
 

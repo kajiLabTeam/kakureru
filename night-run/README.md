@@ -49,7 +49,7 @@ night-run/run.sh build
 claude setup-token
 ```
 
-ブラウザでの認証後、長期トークンが表示される。これを`CLAUDE_CODE_OAUTH_TOKEN`として使う。**レート制限は人間の対話利用ペース想定なので、1晩に複数タスクを回すと途中で制限に達しやすい**(致命的ではない。backoffで数回リトライした上でそのタスクは`failed`として安全に終わる)。
+ブラウザでの認証後、長期トークンが表示される。これを`CLAUDE_CODE_OAUTH_TOKEN`として使う。**サブスクリプションの枠は対話利用と共有で、しかも夜間実行の1タスクは人間の数十プロンプト分に相当する**。特にProは5時間ローリング枠+週次上限が厳しく、無制限に回すと翌日の対話利用分まで使い切る。そのため既定では「1回の実行につき2タスクまで・sonnet・effort medium」に制限してある(下の「Pro契約での運用」参照)。枠に当たったタスクは`failed`ではなく**持ち越し(pendingのまま)**になり、次回の実行がそのまま続きを再開する。
 
 **方式B: APIキーを使う（[Anthropic Console](https://console.anthropic.com/)で発行、従量課金）**
 
@@ -81,15 +81,77 @@ source ~/.night-run-secrets.env && night-run/run.sh start
 
 2026-08-30に一度実施済み(issue #12、締切10分後・軽量タスク1件で完走・draft PR #18を確認)。`night-run/`配下のスクリプト自体を変更したときは、以下の手順でもう一度確認すること。設計書9.6節。
 
+0. `night-run/run.sh build` でイメージを作り直す(`night-run/docker/`配下——特にCLIのバージョン——を変えた場合は必須)
 1. ヒアリングSkillを実行する際、「何時まで」の質問に対して**現在時刻から5〜10分後**を答える
 2. タスクは1件、既存コードの小さな修正など軽量なものにする
 3. `night-run/run.sh start` → `night-run/run.sh logs` で経過を見る
 4. 確認すること:
+   - 起動ログに `night-run開始: model=sonnet / effort=medium / ...` が出ること(モデル・effortが意図した値になっているか)
+   - `このCLIは --effort に対応していない` という警告が出ていないこと(出ていたらイメージのCLIが古い)
    - `init-firewall.sh` の自己検証（`example.com`拒否/`api.github.com`許可）が通ること
    - ソフトカットオフ（新規タスク非着手）とハードリミット（強制終了）が期待通りのタイミングで効くこと
    - 締切超過時に診断用ブランチが作られ、`night-run-state.json`の該当タスクが`failed`になり、draft PRの本文にTODOプレースホルダーではなく実際の進捗が入っていること
    - 正常完走した場合、`gh pr view`での実在確認（9.8節）を経て`done`になっていること
 5. 問題があれば該当箇所を直し、もう一度ドライランする。**通るまで本番の締切・タスクでは実行しない**
+
+## Pro契約での運用(消費量の設定)
+
+night-runの1タスクは、`claude -p`のセッションを実装〜レビュー〜PR作成まで走らせる(2026-09-13の実績で1タスクあたり6〜32分)。**Claude Proの枠は対話利用と共有**なので、上限なしで回すと一晩で使い切る。既定値はProを基準に置いてある。
+
+| 設定 | 既定値 | 意味 |
+|---|---|---|
+| `model` | `sonnet` | 使用モデル。**ProにOpusは含まれない**。CLIの既定任せにすると契約・CLIバージョンによって変わるため明示する |
+| `effort` | `medium` | 1リクエストあたりの思考量(`low`/`medium`/`high`/`xhigh`/`max`) |
+| `reviewer_model` | (空) | reviewerサブエージェントのモデル。空なら実装と同じモデルを継承する |
+| `max_tasks_per_run` | `2` | **1回の実行で着手するタスク数**。超えた分はpendingのまま残り、次回の実行が拾う(0で無制限) |
+| `max_review_rounds` | `2` | reviewerサイクルの最大ラウンド数。ここに到達したらdraft PRで打ち切る |
+| `max_budget_usd_per_task` | `5` | `claude -p --max-budget-usd` に渡す値(0で指定しない) |
+| `max_total_budget_usd` | `10` | 実行全体の上限。超えたら新規タスクに着手しない(0で無制限) |
+
+**予算(USD)はAPIキー課金のときだけ実質的な歯止めになる**。サブスクリプション認証ではコストが報告されないことがあり、その場合`total_cost_usd`は記録されず予算判定も効かない。**Pro契約で効く歯止めは`max_tasks_per_run`(件数)の方**なので、そちらを主に調整すること。
+
+### 設定の書き場所と優先順位
+
+`環境変数 > state の "limits" > 既定値` の順で解決する。通常はヒアリングSkillが契約プランに応じて`night-run-state.json`へ書き出すので、手で設定する必要はない。
+
+```json
+{
+  "deadline": "2026-09-16T06:00:00+09:00",
+  "hard_limit": "2026-09-16T07:30:00+09:00",
+  "limits": { "model": "sonnet", "effort": "medium", "max_tasks_per_run": 2,
+              "max_review_rounds": 2, "max_budget_usd_per_task": 5, "max_total_budget_usd": 10 },
+  "tasks": [ ... ]
+}
+```
+
+その場限りで上書きしたいときだけ環境変数を使う(`NIGHT_RUN_MODEL` / `NIGHT_RUN_EFFORT` / `NIGHT_RUN_REVIEWER_MODEL` / `NIGHT_RUN_MAX_TASKS` / `NIGHT_RUN_MAX_REVIEW_ROUNDS` / `NIGHT_RUN_MAX_BUDGET_USD` / `NIGHT_RUN_MAX_TOTAL_BUDGET_USD`)。例:
+
+```sh
+source ~/.night-run-secrets.env && NIGHT_RUN_MAX_TASKS=1 night-run/run.sh start
+```
+
+**環境変数はstateの設定より強い**。`run.sh`/`entrypoint.sh`は「ホスト側で明示的にexportされている変数だけ」をコンテナへ渡すので、シェルに残った古い値が黙って効くことはない(渡した場合は起動ログに出る)。
+
+### 枠に当たったときの挙動(持ち越し)
+
+レートリミットを検知すると、まず解除時刻をエラー本文から読む(`Claude AI usage limit reached|<epoch>` 形式やISO8601)。
+
+- **解除時刻が分かり、締切までに実作業の時間(15分以上)が残る** → その時刻+2分まで待って再開する
+- **解除が締切より後 / 時刻が読めずbackoffの回数上限に達した** → **待たずに持ち越す**
+
+持ち越したタスクは`failed`ではなく`status: "pending"`のまま残り、`deferred_reason`・`deferred_at`・`rate_limit_reset_at`が記録される。作業途中は診断ブランチへ退避され、次回の実行では`build_prompt`の再開ノートからそのブランチを参照して続きから進む。**翌晩は`night-run/run.sh start`をそのまま実行すればよい**(`--retry-failed`は不要。あれは本当に失敗したタスク用)。
+
+持ち越しが発生した時点でその回の実行は終了する(枠が空いていないのに次のタスクへ進んでも同じところで止まるだけのため)。
+
+### 1回の実行の結果
+
+実行の終わりに`night-run-state.json`へ`run_summary`が書かれ、`summary.txt`にも出る。
+
+```
+完了: 2件 / 失敗: 0件 / 持ち越し: 1件 / 未着手: 3件
+今回の実行: 3件に着手 / 消費 $7.20 / 終了理由: レートリミットのため中断しました。...
+設定: model=sonnet / effort=medium / reviewer=実装と同じモデル / 1回のタスク数上限=2 / ...
+```
 
 ## コマンド早見表
 
@@ -113,13 +175,23 @@ tail -f night-run/state/alerts.log                          # 異常があれば
 | `branch` / `step` / `review_round` | 作業ブランチと進捗段階(`update_step.py`が書く) |
 | `pr_status` / `pr_url` | `done`時の最終ステータス(`success`=ready / `draft`)とPR URL |
 | `completed_summary` / `remaining_summary` | タスク側の自己申告サマリ |
-| `failure_reason` / `diagnostic_branch` | `failed`時の理由と退避ブランチ |
+| `failure_reason` / `diagnostic_branch` | `failed`時の理由と退避ブランチ(持ち越し時も退避ブランチは記録される) |
+| `deferred_reason` / `deferred_at` / `rate_limit_reset_at` | レートリミットで次回へ持ち越したときの理由・時刻・枠の解除予定時刻。`status`は`pending`のまま。done/failedに達した時点で消える |
 | `total_cost_usd` | そのタスクで発生した`claude -p`の全試行(リトライを含む)のコスト(USD)の累積合計 |
 | `usage` | 同、トークン使用量の累積合計(input/output/cacheの内訳を含む`usage`オブジェクト。キーごとに数値を合算) |
 
 `total_cost_usd`/`usage`は成功(`done`)・失敗(`failed`)(レートリミットで`MAX_RETRY_ATTEMPTS`回リトライしても解消せずgive-upした場合を含む)どちらの経路でも、`claude -p`の出力(envelope)がJSONとしてパースできた場合は記録される。**JSON自体が壊れていてenvelopeが取れなかった場合はその試行分は記録されない**(パース前なのでコストの実額が分からないため)。`total_cost_usd`が数値でない・`usage`がオブジェクトでないなど値の型が不正な場合も、例外にはせず単にその試行分の記録をスキップする。
 
 **リトライをまたいだ累積**: レートリミットでbackoffリトライが発生した場合、各試行が完了するたびにその試行のコスト/usageを直ちに加算し、ディスクへ保存する。そのため`total_cost_usd`/`usage`はタスク全体(打ち切られて捨てられた試行を含む)で実際に使われた総コストに一致する(以前は最後に完了した試行1回分しか記録せず、途中のリトライがTIMEOUT/hard_limitで打ち切られると直前の試行のコストごと失われる問題があったため、リトライのたびに逐次加算・保存する方式に変更した)。この値は`status`を手動で`pending`に戻して同じタスクを再実行した場合もリセットされず、前回までの実行分に上乗せされていく(そのタスクに実際に費やした総コストを知るという目的には合致するが、「再実行後の増分だけ」を見たい場合は前回終了時点の値を別途控えておくこと)。
+
+### stateのトップレベル
+
+| フィールド | 内容 |
+|---|---|
+| `deadline` / `hard_limit` / `hard_limit_buffer_minutes` | 締切とバッファ(ヒアリング時に確定した絶対時刻) |
+| `limits` | 消費量の設定(上の「Pro契約での運用」参照)。省略時は既定値 |
+| `run_summary` | 直近の実行の結果。`tasks_started` / `spent_usd`(その実行で増えた分) / `stopped_reason` / `limits_description` |
+| `last_updated` | 最終更新時刻(`save_state`が自動で入れる) |
 
 ## スコープ外（今回は実装していない）
 
@@ -130,5 +202,6 @@ tail -f night-run/state/alerts.log                          # 異常があれば
 ## トラブルシュート
 
 - **タスク中に`flutter pub get`が失敗する**: 新しいパッケージを追加するタスクで、そのパッケージの配信元CDNのIPが`init-firewall.sh`の許可リストにない可能性がある。`pub.dev`/`storage.googleapis.com`のIPは起動時に一度だけ解決しており、実行中にIPが変わると通信がブロックされうる（この方式の既知の制約）。`night-run/run.sh stop && night-run/run.sh rm && night-run/run.sh start`でコンテナを作り直す（`init-firewall.sh`が再実行されIPを再解決する）
+- **朝になってもタスクが`pending`のまま残っている**: 異常ではなく、上限に達して次回へ回されたケースがほとんど。`night-run/state/summary.txt`の「終了理由」を見る(`タスク数上限` / `予算上限` / `レートリミット`)。続きをやらせたいときは`night-run/run.sh start`をそのまま実行する(`--retry-failed`は不要)。1回にもっと回したい場合は`limits`の`max_tasks_per_run`を上げる——**ただしProの枠は対話利用と共有なので、上げた分だけ翌日の自分の作業が止まりやすくなる**
 - **`gh pr create`/`gh issue view`が権限エラーで失敗する**: `GH_TOKEN`のスコープ（`repo`。issueの読み書きも含まれる）と対象リポジトリへの権限を確認する
 - **コンテナがすぐ落ちる**: `night-run/run.sh logs`で`[init-firewall]`のFATALログを確認する。ネットワーク許可リストの設定ミスであることが多い
