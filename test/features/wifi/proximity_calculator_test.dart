@@ -61,6 +61,36 @@ void main() {
     });
   });
 
+  group('classifyProximity 共通APが少ない環境でも分岐は入れない(issue #45追加調査)', () {
+    // 8章(8-4)参照: 当初「共通APが少なければJaccard係数を使わずRSSI差
+    // だけで判定する」分岐を検討したが、(1)APを挟んで対称な位置にいると
+    // 共通APのRSSI差だけは小さく見えることがあり、Jaccard係数と組み合わせて
+    // これを弾く設計が崩れる、(2)共通AP数はスキャンごとに揺らぐため、
+    // 分岐の閾値をまたぐたびに判定ロジック自体が切り替わりバタつく、
+    // という2つのリスクが指摘され見送った。実測データ自体は
+    // クランプ修正(固有APのみクランプ、8-3)だけでJaccard係数が0.667まで
+    // 回復し、分岐を入れなくても以下の通常経路で「近い」と判定できる。
+    test('Jaccard係数がclose閾値未満なら、共通AP数が少なくRSSI差が小さくても'
+        '近いとは判定しない(対称位置での誤検知対策を維持)', () {
+      final result = classifyProximity(
+        commonApCount: 4,
+        jaccardIndex: 0.40, // notDetectedThreshold(0.35)は超えるがclose未満
+        averageRssiDiffDbm: 2, // RSSI差は小さい
+      );
+      expect(result, ProximityLevel.far);
+    });
+
+    test('Jaccard係数がclose閾値以上ならcloseになる'
+        '(実測データはこの経路で通るため分岐は不要)', () {
+      final result = classifyProximity(
+        commonApCount: 4,
+        jaccardIndex: 0.667,
+        averageRssiDiffDbm: 3,
+      );
+      expect(result, ProximityLevel.close);
+    });
+  });
+
   group('filterWeakSignals', () {
     test('-80dBm未満のAPを除外する', () {
       final filtered = filterWeakSignals({
@@ -228,7 +258,7 @@ void main() {
     });
   });
 
-  group('判定時の対称top-Mクランプ(issue #45 / |A| != |B|)', () {
+  group('判定時の固有APのみの対称クランプ(issue #45 / |A| != |B|)', () {
     // 同じ場所にいるがアンテナ利得やポケット/手持ちの差でB側が一律に弱く
     // 見えており、-80dBmの絶対足切りの後にA=40件・B=14件と集合サイズが
     // 非対称になっている状況。Bの14件はすべてAにも含まれている(=本来は
@@ -239,6 +269,7 @@ void main() {
     final b = {
       for (var i = 0; i < 14; i++) 'ap$i': -31 - i, // ap0: -31 〜 ap13: -44
     };
+    final common = a.keys.toSet().intersection(b.keys.toSet()); // = b全体
 
     test('クランプ無しだと和集合だけが膨らみ Jaccard=0.35 で「近い」にならない', () {
       // 共通14件 / 和集合40件 = 0.35。notDetected閾値(0.35)は下回らないが
@@ -254,9 +285,17 @@ void main() {
       );
     });
 
-    test('クランプ有りなら M=14 に揃って Jaccard=1.0 となり「近い」と判定できる', () {
-      final aClamped = clampToSymmetricTop(a, otherLength: b.length);
-      final bClamped = clampToSymmetricTop(b, otherLength: a.length);
+    test('クランプ有りなら固有APが揃って Jaccard=1.0 となり「近い」と判定できる', () {
+      final aClamped = clampPrivateAccessPoints(
+        a,
+        common: common,
+        otherPrivateCount: 0, // bの固有APは0件(bはaに完全に含まれる)
+      );
+      final bClamped = clampPrivateAccessPoints(
+        b,
+        common: common,
+        otherPrivateCount: 26, // aの固有APは26件
+      );
 
       expect(aClamped.length, 14);
       expect(bClamped.length, 14);
@@ -268,11 +307,35 @@ void main() {
       expect(calculateProximity(a, b), ProximityLevel.close);
     });
 
-    test('件数が同じならクランプは何もしない(no-op)', () {
-      final other = {for (var i = 0; i < 40; i++) 'ap$i': -32 - i};
+    test('共通APはRSSI順位に関係なく必ず残る(旧実装の不具合の再現)', () {
+      // 旧実装(clampToSymmetricTop, PR #51)は「全体の中でRSSIが強い順の
+      // 上位M件」を選んでいたため、共通APがたまたま自分の中で最弱グループに
+      // 入っていると、自分に固有の(相手には存在しない)強いAPに押し出されて
+      // 共通APごと削られてしまっていた。実測RTDBデータ(8章)で確認された
+      // 不具合で、これを再現する。
+      const weakCommon = {'common1', 'common2'};
+      final target = {
+        'common1': -70,
+        'common2': -71, // 自分の中では最弱の2件が、たまたま共通AP
+        'p1': -50, 'p2': -55, 'p3': -60, // 固有APの方がずっと強い
+      };
 
-      expect(clampToSymmetricTop(a, otherLength: other.length), a);
-      expect(clampToSymmetricTop(other, otherLength: a.length), other);
+      // 相手に固有APが無い(otherPrivateCount=0)ので固有APは全部削られるが、
+      // 共通APは弱くても必ず残る
+      final clamped = clampPrivateAccessPoints(
+        target,
+        common: weakCommon,
+        otherPrivateCount: 0,
+      );
+
+      expect(clamped.keys.toSet(), weakCommon);
+    });
+
+    test('自分の固有APが相手の固有AP数以下ならクランプは何もしない(no-op)', () {
+      expect(
+        clampPrivateAccessPoints(b, common: common, otherPrivateCount: 26),
+        b,
+      );
     });
 
     test('端末ごとの一律な利得オフセットに対して不変', () {
@@ -281,14 +344,22 @@ void main() {
       final weakerB = {for (final e in b.entries) e.key: e.value - 6};
 
       expect(
-        clampToSymmetricTop(weakerB, otherLength: a.length).keys.toSet(),
-        clampToSymmetricTop(b, otherLength: a.length).keys.toSet(),
+        clampPrivateAccessPoints(
+          weakerB,
+          common: common,
+          otherPrivateCount: 26,
+        ).keys.toSet(),
+        clampPrivateAccessPoints(
+          b,
+          common: common,
+          otherPrivateCount: 26,
+        ).keys.toSet(),
       );
       expect(calculateProximity(a, weakerB), ProximityLevel.close);
     });
 
-    test('離れている場合は対称クランプを入れても「近い」にはならない', () {
-      // 共通APが1件しかない(=実際に離れている)ケース。Mを揃えても
+    test('離れている場合は固有APのクランプを入れても「近い」にはならない', () {
+      // 共通APが1件しかない(=実際に離れている)ケース。固有APを揃えても
       // 共通AP数が[minCommonApCount]に届かず検知なしのまま。
       final far = {
         'ap0': -60,
@@ -299,6 +370,65 @@ void main() {
       };
 
       expect(calculateProximity(a, far), ProximityLevel.notDetected);
+    });
+  });
+
+  group('実測RTDBデータでの回帰テスト(issue #45追加調査)', () {
+    // rooms/-P1gUWbhk6VoveK3mN6O/locations から取得した実際のスキャン結果。
+    // 2台を真隣に置いた状態で取得したもので、期待される判定は「近い」。
+    //
+    // 旧実装(対称top-Mクランプ, PR #51)では、B側の最弱の共通AP
+    // (96:...:e7)がBの上位5件(=min(|A|,|B|)=5)から漏れて削られ、
+    // 共通AP数が4→3に減ってJaccard係数が0.571→0.429まで悪化し、
+    // 「遠い」に誤判定していた(8章参照)。固有APのみをクランプする
+    // 現在の実装では、共通APが常に残るため正しく「近い」と判定される。
+    final deviceA = {
+      '9e:2b:f5:f2:12:e4': -32,
+      '9e:2b:f5:f2:12:e9': -58,
+      '96:2b:f5:f2:12:e2': -70,
+      '96:2b:f5:f2:12:e7': -70,
+      '96:2b:f5:f2:12:e8': -71,
+      'bc:5c:4c:0d:a8:0b': -86, // -80dBm足切りで除外される
+    };
+    final deviceB = {
+      '9e:2b:f5:f2:12:e4': -53,
+      '9e:2b:f5:f2:12:e9': -57,
+      '9a:2b:f5:f2:12:e3': -64,
+      '9a:2b:f5:f2:12:e9': -64,
+      '96:2b:f5:f2:12:e2': -66,
+      '96:2b:f5:f2:12:e7': -66,
+    };
+
+    test('隣り合わせの実測データで「近い」と判定される', () {
+      expect(calculateProximity(deviceA, deviceB), ProximityLevel.close);
+    });
+
+    test('共通APは4件で変わらず、和集合は6件まで縮む(固有APだけがクランプされる)', () {
+      final selfFiltered = filterWeakSignals(deviceA);
+      final targetFiltered = filterWeakSignals(deviceB);
+      final common = selfFiltered.keys.toSet().intersection(
+        targetFiltered.keys.toSet(),
+      );
+
+      final aClamped = clampPrivateAccessPoints(
+        selfFiltered,
+        common: common,
+        otherPrivateCount: targetFiltered.length - common.length,
+      );
+      final bClamped = clampPrivateAccessPoints(
+        targetFiltered,
+        common: common,
+        otherPrivateCount: selfFiltered.length - common.length,
+      );
+
+      final commonCount = aClamped.keys
+          .toSet()
+          .intersection(bClamped.keys.toSet())
+          .length;
+      final union = aClamped.keys.toSet().union(bClamped.keys.toSet());
+
+      expect(commonCount, 4);
+      expect(union.length, 6);
     });
   });
 

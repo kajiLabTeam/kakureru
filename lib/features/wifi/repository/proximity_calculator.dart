@@ -70,9 +70,11 @@ Map<String, int> selectTopAccessPoints(
   return Map.fromEntries(sorted.take(count));
 }
 
-/// 判定直前に適用する「対称top-Mクランプ」。[bssidRssi]を、相手の件数
-/// [otherLength]と自分の件数のうち小さい方(M)だけRSSIの強い順に残して返す。
-/// 自分・相手それぞれについて呼ぶことで、両者のAP集合が同じ件数Mに揃う。
+/// 判定直前に適用する「固有APのみの対称クランプ」。[bssidRssi]のうち
+/// [common](両者に共通するAP)は常に残し、片側にしかないAP(固有AP)だけを
+/// RSSIの強い順の上位min(自分の固有件数, [otherPrivateCount])件に絞って返す。
+/// 自分・相手それぞれについて呼ぶことで、固有APの件数が揃う
+/// (共通APはどちらの呼び出しでも削られない)。
 ///
 /// なぜ必要か: [filterWeakSignals]の足切りは-80dBmという**絶対値**で行うため、
 /// アンテナ利得の差・ポケットか手持ちか、といった端末差で一律に数dB弱く
@@ -81,17 +83,35 @@ Map<String, int> selectTopAccessPoints(
 /// 膨らむため係数が不当に下がる(例: |A|=40・|B|=14でBがAに完全に含まれる
 /// ときJ=14/40=0.35。実際には同じ場所にいるのにfar/検知なしになる)。
 ///
-/// 件数を揃えてから比較すれば、上の例ではM=14となりJ=1.0まで回復する。
-/// RSSIの強い順の上位M件という選び方は、端末ごとの**一律な**利得オフセットに
+/// 以前は件数M=min(|A|,|B|)だけで揃える`clampToSymmetricTop`相当の実装
+/// だったが、実測RTDBデータで**共通APまでクランプに巻き込まれて削られ、
+/// 逆にJaccard係数が悪化する**ケースが見つかった(A=5件/B=6件で、Bの
+/// 最弱の共通AP1件が「Bの上位5件」から漏れて削られ、共通4件→3件、
+/// Jaccard 0.571→0.429と悪化。docs/wifi-proximity-investigation.md 8章
+/// 参照)。共通APは集合サイズの非対称と無関係にどちらの集合にも既に
+/// 存在しているため、クランプで削る理由が無い。固有APだけをクランプ対象に
+/// することで、和集合の膨らみ(=片方だけが一律に弱く見えて生まれる固有APの
+/// 偏り)だけを是正し、共通APは触らない。
+///
+/// RSSIの強い順の上位N件という選び方は、端末ごとの**一律な**利得オフセットに
 /// 対して不変(オフセットを足しても順位は変わらない)なので、利得差の正規化と
 /// して機能する。判定側だけの変更であり、送信するデータ形は変えない。
-Map<String, int> clampToSymmetricTop(
+Map<String, int> clampPrivateAccessPoints(
   Map<String, int> bssidRssi, {
-  required int otherLength,
+  required Set<String> common,
+  required int otherPrivateCount,
 }) {
-  return selectTopAccessPoints(
-    bssidRssi,
-    count: math.min(bssidRssi.length, otherLength),
+  final private = Map.fromEntries(
+    bssidRssi.entries.where((e) => !common.contains(e.key)),
+  );
+  final clampedPrivate = selectTopAccessPoints(
+    private,
+    count: math.min(private.length, otherPrivateCount),
+  );
+  return Map.fromEntries(
+    bssidRssi.entries.where(
+      (e) => common.contains(e.key) || clampedPrivate.containsKey(e.key),
+    ),
   );
 }
 
@@ -104,6 +124,15 @@ Map<String, int> clampToSymmetricTop(
 /// 3. Jaccard係数 >= [ProximityThresholds.jaccardCloseThreshold] かつ
 ///    RSSI差平均 < [ProximityThresholds.rssiDiffCloseThresholdDbm] → close
 /// 4. それ以外 → far
+///
+/// 共通APが少ない環境ではJaccard係数が(AP1件の増減で)不安定になりうるが、
+/// 「共通AP数が少なければRSSI差だけで判定する」という分岐は**意図的に
+/// 入れていない**。APを挟んで対称な位置にいる(=離れているのにRSSI差だけ
+/// 小さく見える)ケースをJaccard係数と組み合わせて弾く設計のため、RSSI差
+/// 単独の判定に切り替えるとこの防御が外れる。また共通AP数はスキャンごとに
+/// 揺らぐため、分岐の閾値をまたぐたびに判定ロジックそのものが切り替わり、
+/// 別種のバタつきを生む。検討の経緯はdocs/wifi-proximity-investigation.md
+/// 8章(8-4)を参照。
 ProximityLevel classifyProximity({
   required int commonApCount,
   required double jaccardIndex,
@@ -125,8 +154,8 @@ ProximityLevel classifyProximity({
 
 /// 2人分のWi-Fiスキャン結果(BSSID→RSSI)から近接度を判定する。
 ///
-/// 手順は 足切り([filterWeakSignals]) → 対称top-Mクランプ
-/// ([clampToSymmetricTop]) → 各指標の計算 → [classifyProximity]。
+/// 手順は 足切り([filterWeakSignals]) → 固有APのみの対称クランプ
+/// ([clampPrivateAccessPoints]) → 各指標の計算 → [classifyProximity]。
 /// クランプを足切りの**後**に置くのが重要で、逆順(top-N絞り込みの後に
 /// 絶対値の足切り)にすると足切り後のサイズが端末間で非対称になる。
 ProximityLevel calculateProximity(
@@ -136,13 +165,21 @@ ProximityLevel calculateProximity(
   final selfFiltered = filterWeakSignals(selfBssidRssi);
   final targetFiltered = filterWeakSignals(targetBssidRssi);
 
-  final selfClamped = clampToSymmetricTop(
-    selfFiltered,
-    otherLength: targetFiltered.length,
+  final common = selfFiltered.keys.toSet().intersection(
+    targetFiltered.keys.toSet(),
   );
-  final targetClamped = clampToSymmetricTop(
+  final selfPrivateCount = selfFiltered.length - common.length;
+  final targetPrivateCount = targetFiltered.length - common.length;
+
+  final selfClamped = clampPrivateAccessPoints(
+    selfFiltered,
+    common: common,
+    otherPrivateCount: targetPrivateCount,
+  );
+  final targetClamped = clampPrivateAccessPoints(
     targetFiltered,
-    otherLength: selfFiltered.length,
+    common: common,
+    otherPrivateCount: selfPrivateCount,
   );
 
   final commonCount = selfClamped.keys
@@ -246,10 +283,10 @@ String? applyNearestUidHysteresis({
 /// [ProximityThresholds.minCommonApCount]未満の候補は除外する。
 /// 該当者がいなければnull。
 ///
-/// [calculateProximity]と違い[clampToSymmetricTop]は適用しない。ここで使う
-/// 指標は共通AP(積集合)のRSSI差だけで和集合を使わないため、集合サイズの
-/// 非対称でJaccard係数が下がる問題([clampToSymmetricTop]参照)が起きず、
-/// むしろクランプすると比較に使える共通APを減らしてしまうため。
+/// [calculateProximity]と違い[clampPrivateAccessPoints]は適用しない。ここで
+/// 使う指標は共通AP(積集合)のRSSI差だけで和集合を使わないため、集合サイズの
+/// 非対称でJaccard係数が下がる問題([clampPrivateAccessPoints]参照)が
+/// 起きず、むしろクランプすると比較に使える共通APを減らしてしまうため。
 String? findNearestUid(
   Map<String, int> selfBssidRssi,
   Map<String, Map<String, int>> candidateBssidRssiByUid,
