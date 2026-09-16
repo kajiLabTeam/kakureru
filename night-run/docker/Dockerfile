@@ -24,7 +24,11 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # バージョンを固定する。固定しないとビルドした時点のlatestで固まり、ビルドの
 # タイミングによってホスト側のCLIと無言でバージョンがずれる(2026-09-13の実運用で
 # host 2.1.270 / container 2.1.197という差異を確認済み)。上げるときはここを変える。
-ARG CLAUDE_CODE_VERSION=2.1.270
+# night_runner.pyは消費量を抑えるために --model / --effort を渡す。これらに
+# 対応しないCLIを焼き込むと、night_runner.py側が起動時に対応状況を確認して
+# 該当オプションを外す(claude_supported_flags)——落ちはしないが消費の制御は
+# 効かなくなるので、ここは --effort を持つバージョン以上を指定すること。
+ARG CLAUDE_CODE_VERSION=2.1.273
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
 # Flutter SDK。Android SDKは意図的にインストールしない
