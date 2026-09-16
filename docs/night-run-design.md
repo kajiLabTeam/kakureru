@@ -427,17 +427,22 @@ if __name__ == "__main__":
 
 設定は`環境変数 > state["limits"] > DEFAULT_LIMITS`の順で解決する(`resolve_limits`)。既定値はClaude Proを基準にする。
 
+方針は「**夜は締切まで使い切ってよいが、1タスクが夜を丸ごと食わないようにする**」。したがって全体の上限ではなく、1タスク単位の上限を主の歯止めに置く。
+
 | キー | 既定 | 役割 |
 |---|---|---|
 | `model` | `sonnet` | CLIの既定任せにしない(ProにOpusは含まれない) |
 | `effort` | `medium` | 1リクエストあたりの思考量 |
 | `reviewer_model` | (空) | reviewerサブエージェントのモデル。空なら実装と同じモデルを継承 |
-| `max_tasks_per_run` | `2` | 1回の実行で着手するタスク数。**Proで実効性のある主な歯止め** |
+| `max_tasks_per_run` | `0`(無制限) | 1回の実行で着手するタスク数。締切まで回し続ける |
 | `max_review_rounds` | `2` | reviewerサイクルの上限(3.4節の値をここへ移した) |
-| `max_budget_usd_per_task` | `5` | `--max-budget-usd`に渡す値。APIキー課金時のみ実効 |
-| `max_total_budget_usd` | `10` | 実行全体の上限。`total_cost_usd`(issue #47で記録)の**今回の実行での増分**で判定する |
+| `max_task_minutes` | `60` | **1タスクの実行時間上限**。`run_claude_with_timeout`へ渡すタイムアウトを`min(締切までの残り, この値)`にする(`task_timeout_seconds`) |
+| `max_budget_usd_per_task` | `8` | `--max-budget-usd`に渡す値。APIキー課金時のみ実効 |
+| `max_total_budget_usd` | `50` | 実行全体のバックストップ。`total_cost_usd`(issue #47で記録)の**今回の実行での増分**で判定する |
 
-上限に達しても残りのタスクは`pending`のまま残すだけで、`failed`にはしない(次回の実行がそのまま拾う)。実行の最後に`state["run_summary"]`へ着手件数・消費額・終了理由・適用した設定を記録し、`summary.txt`にも出す。
+**`max_task_minutes`を置いた理由**: v7の初版はタスク数(`max_tasks_per_run`)を主の歯止めにしていたが、1タスクのタイムアウトは`hard_limit`までの残り時間そのものだったため、**重いタスク1件がその夜を丸ごと使い切れた**。金額の上限はサブスクリプション認証だとコストが報告されず効かないことがあるので、時間で切る手段を併せて持つ。この上限で打ち切られたタスクは`failed`(`failure_reason: task_time_cap_exceeded`)にし、退避ブランチとdraft PRへ作業を残したうえで次のタスクへ進む(締切超過とは別の理由として記録する)。
+
+タスク数・予算の上限に達した場合は、残りのタスクは`pending`のまま残すだけで`failed`にはしない(次回の実行がそのまま拾う)。実行の最後に`state["run_summary"]`へ着手件数・消費額・終了理由・適用した設定を記録し、`summary.txt`にも出す。
 
 CLIのバージョンが古く`--model`/`--effort`を知らない場合、そのまま渡すとCLIが引数エラーで即死し、その夜のタスクが1件も進まない。起動時に`claude --help`で対応状況を確認し(`claude_supported_flags`)、知らないオプションは外して警告を残す。
 

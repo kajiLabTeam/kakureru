@@ -98,17 +98,22 @@ source ~/.night-run-secrets.env && night-run/run.sh start
 
 night-runの1タスクは、`claude -p`のセッションを実装〜レビュー〜PR作成まで走らせる(2026-09-13の実績で1タスクあたり6〜32分)。**Claude Proの枠は対話利用と共有**なので、上限なしで回すと一晩で使い切る。既定値はProを基準に置いてある。
 
+方針は「**夜は締切まで使い切ってよい。ただし1タスクが夜を丸ごと食わないようにする**」。タスク数に上限は置かず、1タスク単位で時間と金額の両方を頭打ちにしている。
+
 | 設定 | 既定値 | 意味 |
 |---|---|---|
 | `model` | `sonnet` | 使用モデル。**ProにOpusは含まれない**。CLIの既定任せにすると契約・CLIバージョンによって変わるため明示する |
 | `effort` | `medium` | 1リクエストあたりの思考量(`low`/`medium`/`high`/`xhigh`/`max`) |
 | `reviewer_model` | (空) | reviewerサブエージェントのモデル。空なら実装と同じモデルを継承する |
-| `max_tasks_per_run` | `2` | **1回の実行で着手するタスク数**。超えた分はpendingのまま残り、次回の実行が拾う(0で無制限) |
+| `max_tasks_per_run` | `0`(無制限) | 1回の実行で着手するタスク数。締切(`deadline`)まで回し続ける。件数で抑えたい場合だけ指定する |
 | `max_review_rounds` | `2` | reviewerサイクルの最大ラウンド数。ここに到達したらdraft PRで打ち切る |
-| `max_budget_usd_per_task` | `5` | `claude -p --max-budget-usd` に渡す値(0で指定しない) |
-| `max_total_budget_usd` | `10` | 実行全体の上限。超えたら新規タスクに着手しない(0で無制限) |
+| **`max_task_minutes`** | **`60`** | **1タスクの実行時間上限**。超えたらそのタスクだけ打ち切ってdraft PRへ退避し、次のタスクへ進む(0で無制限) |
+| `max_budget_usd_per_task` | `8` | `claude -p --max-budget-usd` に渡す値(0で指定しない) |
+| `max_total_budget_usd` | `50` | 実行全体の上限。暴走時のバックストップで、通常は届かない(0で無制限) |
 
-**予算(USD)はAPIキー課金のときだけ実質的な歯止めになる**。サブスクリプション認証ではコストが報告されないことがあり、その場合`total_cost_usd`は記録されず予算判定も効かない。**Pro契約で効く歯止めは`max_tasks_per_run`(件数)の方**なので、そちらを主に調整すること。
+**「1タスクで全部使わせない」を金額だけに頼らないこと。** サブスクリプション認証ではコストが報告されないことがあり、その場合`total_cost_usd`は記録されず`--max-budget-usd`も`max_total_budget_usd`も効かない。**サブスクで確実に効くのは`max_task_minutes`(時間)** で、これがあるから1タスクの実行時間は必ず有限になる(この上限を入れるまでは、1タスクのタイムアウトが「締切までの残り全部」だったため、重いタスク1件がその夜を丸ごと使えた)。
+
+打ち切られたタスクは`failed`(`failure_reason: task_time_cap_exceeded`)になり、作業は退避ブランチとdraft PRに残る。**レートリミットによる持ち越し(下記)とは別物**で、こちらは人が中身を見て続けるか判断する。
 
 ### 設定の書き場所と優先順位
 
@@ -118,13 +123,14 @@ night-runの1タスクは、`claude -p`のセッションを実装〜レビュ�
 {
   "deadline": "2026-09-16T06:00:00+09:00",
   "hard_limit": "2026-09-16T07:30:00+09:00",
-  "limits": { "model": "sonnet", "effort": "medium", "max_tasks_per_run": 2,
-              "max_review_rounds": 2, "max_budget_usd_per_task": 5, "max_total_budget_usd": 10 },
+  "limits": { "model": "sonnet", "effort": "medium", "max_tasks_per_run": 0,
+              "max_review_rounds": 2, "max_task_minutes": 60,
+              "max_budget_usd_per_task": 8, "max_total_budget_usd": 50 },
   "tasks": [ ... ]
 }
 ```
 
-その場限りで上書きしたいときだけ環境変数を使う(`NIGHT_RUN_MODEL` / `NIGHT_RUN_EFFORT` / `NIGHT_RUN_REVIEWER_MODEL` / `NIGHT_RUN_MAX_TASKS` / `NIGHT_RUN_MAX_REVIEW_ROUNDS` / `NIGHT_RUN_MAX_BUDGET_USD` / `NIGHT_RUN_MAX_TOTAL_BUDGET_USD`)。例:
+その場限りで上書きしたいときだけ環境変数を使う(`NIGHT_RUN_MODEL` / `NIGHT_RUN_EFFORT` / `NIGHT_RUN_REVIEWER_MODEL` / `NIGHT_RUN_MAX_TASKS` / `NIGHT_RUN_MAX_REVIEW_ROUNDS` / `NIGHT_RUN_MAX_TASK_MINUTES` / `NIGHT_RUN_MAX_BUDGET_USD` / `NIGHT_RUN_MAX_TOTAL_BUDGET_USD`)。例:
 
 ```sh
 source ~/.night-run-secrets.env && NIGHT_RUN_MAX_TASKS=1 night-run/run.sh start
@@ -202,6 +208,7 @@ tail -f night-run/state/alerts.log                          # 異常があれば
 ## トラブルシュート
 
 - **タスク中に`flutter pub get`が失敗する**: 新しいパッケージを追加するタスクで、そのパッケージの配信元CDNのIPが`init-firewall.sh`の許可リストにない可能性がある。`pub.dev`/`storage.googleapis.com`のIPは起動時に一度だけ解決しており、実行中にIPが変わると通信がブロックされうる（この方式の既知の制約）。`night-run/run.sh stop && night-run/run.sh rm && night-run/run.sh start`でコンテナを作り直す（`init-firewall.sh`が再実行されIPを再解決する）
-- **朝になってもタスクが`pending`のまま残っている**: 異常ではなく、上限に達して次回へ回されたケースがほとんど。`night-run/state/summary.txt`の「終了理由」を見る(`タスク数上限` / `予算上限` / `レートリミット`)。続きをやらせたいときは`night-run/run.sh start`をそのまま実行する(`--retry-failed`は不要)。1回にもっと回したい場合は`limits`の`max_tasks_per_run`を上げる——**ただしProの枠は対話利用と共有なので、上げた分だけ翌日の自分の作業が止まりやすくなる**
+- **朝になってもタスクが`pending`のまま残っている**: 異常ではなく、締切到達・レートリミットでの持ち越し・上限到達のいずれか。`night-run/state/summary.txt`の「終了理由」を見る。続きをやらせたいときは`night-run/run.sh start`をそのまま実行する(`--retry-failed`は不要)。**Proの枠は対話利用と共有なので、夜に使い切った分だけ翌日の自分の作業が止まりやすくなる**点は承知の上で運用すること
+- **1タスクが`task_time_cap_exceeded`で失敗している**: 1タスクの実行時間上限(既定60分)に達した。draft PRと退避ブランチに途中までの作業が残っているので中身を確認する。そのタスクが本来重い(複数issueをまとめた等)なら`limits`の`max_task_minutes`を上げるか、issueを分割する
 - **`gh pr create`/`gh issue view`が権限エラーで失敗する**: `GH_TOKEN`のスコープ（`repo`。issueの読み書きも含まれる）と対象リポジトリへの権限を確認する
 - **コンテナがすぐ落ちる**: `night-run/run.sh logs`で`[init-firewall]`のFATALログを確認する。ネットワーク許可リストの設定ミスであることが多い

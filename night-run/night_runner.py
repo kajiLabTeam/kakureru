@@ -53,10 +53,11 @@ DEFAULT_LIMITS = {
     "model": "sonnet",              # Proでは Opus は使えない。CLI既定任せにしない
     "effort": "medium",             # 1リクエストあたりの思考量
     "reviewer_model": "",           # 空ならセッションのモデルを継承する
-    "max_tasks_per_run": 2,         # 1回の実行で着手するタスク数(0で無制限)
+    "max_tasks_per_run": 0,         # 1回の実行で着手するタスク数(0で無制限=締切まで回す)
     "max_review_rounds": 2,         # reviewerサイクルの最大ラウンド数
-    "max_budget_usd_per_task": 5.0,  # claude -p --max-budget-usd に渡す値(0で指定しない)
-    "max_total_budget_usd": 10.0,   # 実行全体の上限(0で無制限)。超えたら新規タスクに着手しない
+    "max_task_minutes": 60,         # 1タスクの実行時間上限(0で無制限)
+    "max_budget_usd_per_task": 8.0,  # claude -p --max-budget-usd に渡す値(0で指定しない)
+    "max_total_budget_usd": 50.0,   # 実行全体の上限(0で無制限)。暴走時のバックストップ
 }
 
 LIMIT_ENV_VARS = {
@@ -65,6 +66,7 @@ LIMIT_ENV_VARS = {
     "reviewer_model": "NIGHT_RUN_REVIEWER_MODEL",
     "max_tasks_per_run": "NIGHT_RUN_MAX_TASKS",
     "max_review_rounds": "NIGHT_RUN_MAX_REVIEW_ROUNDS",
+    "max_task_minutes": "NIGHT_RUN_MAX_TASK_MINUTES",
     "max_budget_usd_per_task": "NIGHT_RUN_MAX_BUDGET_USD",
     "max_total_budget_usd": "NIGHT_RUN_MAX_TOTAL_BUDGET_USD",
 }
@@ -212,6 +214,7 @@ def describe_limits(limits):
         f"model={limits['model']} / effort={limits['effort']} / "
         f"reviewer={reviewer} / "
         f"1回のタスク数上限={limits['max_tasks_per_run'] or '無制限'} / "
+        f"1タスク{limits['max_task_minutes'] or '無制限'}分 / "
         f"レビュー最大{limits['max_review_rounds']}ラウンド / "
         f"1タスク予算={usd(limits['max_budget_usd_per_task'])} / "
         f"実行全体の予算={usd(limits['max_total_budget_usd'])}"
@@ -589,11 +592,27 @@ def _log_full_exception(task, context, exc):
     )
 
 
-def handle_hard_limit_exceeded(task, state):
+def task_timeout_seconds(remaining_seconds, limits):
+    """このタスクに与えるタイムアウト秒と、それが1タスク上限由来かを返す。
+
+    「1つのタスクで夜を全部使わせない」ための歯止め。金額の上限
+    (--max-budget-usd)はサブスクリプション認証だとコストが報告されず
+    効かないことがあるため、時間で切れる手段を併せて持つ。"""
+    cap_minutes = limits.get("max_task_minutes") or 0
+    if cap_minutes <= 0:
+        return remaining_seconds, False
+    cap_seconds = cap_minutes * 60
+    if cap_seconds < remaining_seconds:
+        return cap_seconds, True
+    return remaining_seconds, False
+
+
+def handle_hard_limit_exceeded(task, state, reason="締切バッファを超過したため強制終了",
+                               failure_reason="hard_limit_exceeded"):
     branch = save_diagnostic_branch(task)
-    mark_task_failed(task, state, reason="hard_limit_exceeded", diagnostic_branch=branch)
+    mark_task_failed(task, state, reason=failure_reason, diagnostic_branch=branch)
     if branch:
-        create_draft_pr_from_branch(task, branch, reason="締切バッファを超過したため強制終了")
+        create_draft_pr_from_branch(task, branch, reason=reason)
     else:
         notify_human(f"タスク「{task['title']}」: 退避ブランチを作成できなかったため draft PR も作成できません。手動確認が必要です。")
 
@@ -823,17 +842,22 @@ def run_task_with_retry(task, state):
             return
 
         remaining_seconds = (hard_limit - now).total_seconds()
+        hit_task_cap = False
         try:
             notify_human(f"タスク「{task['title']}」: プロンプト組み立て開始")
             limits = resolve_limits(state)
+            # 1タスクのタイムアウトに「締切までの残り全部」を渡すと、重いタスク1件が
+            # その夜を丸ごと使い切れてしまう(実際、上限を入れるまでそうなっていた)。
+            # 締切までの残り時間と1タスクの上限の、短い方で切る。
+            timeout_seconds, hit_task_cap = task_timeout_seconds(remaining_seconds, limits)
             prompt = build_prompt(task, state)
             notify_human(
                 f"タスク「{task['title']}」: プロンプト組み立て完了(文字数={len(prompt)})。"
-                f"claude -p 実行開始({describe_limits(limits)})"
+                f"claude -p 実行開始(上限{timeout_seconds / 60:.0f}分, {describe_limits(limits)})"
             )
             started_at = time.monotonic()
             returncode, stdout, stderr = run_claude_with_timeout(
-                prompt, timeout_seconds=remaining_seconds, limits=limits,
+                prompt, timeout_seconds=timeout_seconds, limits=limits,
             )
             elapsed_seconds = time.monotonic() - started_at
             notify_human(
@@ -857,7 +881,17 @@ def run_task_with_retry(task, state):
         task = next((t for t in state["tasks"] if t["title"] == task["title"]), task)
 
         if stderr == "TIMEOUT":
-            handle_hard_limit_exceeded(task, state)
+            if hit_task_cap:
+                # 締切にはまだ余裕がある。このタスクだけを打ち切り、draft PRへ退避して
+                # 次のタスクへ進む(main()のループが続く)。
+                minutes = resolve_limits(state)["max_task_minutes"]
+                handle_hard_limit_exceeded(
+                    task, state,
+                    reason=f"1タスクの実行時間上限({minutes}分)を超過したため打ち切り",
+                    failure_reason="task_time_cap_exceeded",
+                )
+            else:
+                handle_hard_limit_exceeded(task, state)
             return
 
         # レートリミットのgive-up経路(_retry_after_rate_limit_or_give_up内で

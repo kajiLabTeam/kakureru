@@ -468,7 +468,8 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
         final_state = night_runner.load_state()
         final_task = final_state["tasks"][0]
         self.assertEqual(final_task["status"], "failed")
-        self.assertEqual(final_task["failure_reason"], "hard_limit_exceeded")
+        # 締切まではまだ余裕があるので、hard_limitではなく1タスクの時間上限で切れる
+        self.assertEqual(final_task["failure_reason"], "task_time_cap_exceeded")
         self.assertEqual(final_task["total_cost_usd"], 2.0)
         self.assertEqual(final_task["usage"], {"input_tokens": 10})
 
@@ -664,14 +665,17 @@ class ResolveLimitsTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def test_defaults_are_pro_plan_oriented(self):
+        # 夜間は締切まで使い切ってよい(タスク数は無制限)が、1タスクは時間と
+        # 金額の両方で必ず頭打ちにする——1件が夜を丸ごと食わないようにするため。
         with clean_limit_env():
             limits = night_runner.resolve_limits({})
         self.assertEqual(limits["model"], "sonnet")   # ProにOpusは含まれない
         self.assertEqual(limits["effort"], "medium")
-        self.assertEqual(limits["max_tasks_per_run"], 2)
+        self.assertEqual(limits["max_tasks_per_run"], 0)    # 無制限
         self.assertEqual(limits["max_review_rounds"], 2)
-        self.assertEqual(limits["max_budget_usd_per_task"], 5.0)
-        self.assertEqual(limits["max_total_budget_usd"], 10.0)
+        self.assertEqual(limits["max_task_minutes"], 60)
+        self.assertEqual(limits["max_budget_usd_per_task"], 8.0)
+        self.assertEqual(limits["max_total_budget_usd"], 50.0)
 
     def test_state_limits_override_defaults(self):
         with clean_limit_env():
@@ -700,15 +704,15 @@ class ResolveLimitsTest(unittest.TestCase):
         self.assertNotIn("max_turns", limits)
 
     def test_non_numeric_value_falls_back_to_default_without_raising(self):
-        with clean_limit_env(NIGHT_RUN_MAX_TASKS="たくさん"):
+        with clean_limit_env(NIGHT_RUN_MAX_TASK_MINUTES="たくさん"):
             limits = night_runner.resolve_limits({})
-        self.assertEqual(limits["max_tasks_per_run"], 2)
+        self.assertEqual(limits["max_task_minutes"], 60)
         self.notify.assert_called()  # 黙って既定値に戻さず、alerts.logに残す
 
     def test_negative_value_falls_back_to_default(self):
         with clean_limit_env():
             limits = night_runner.resolve_limits({"limits": {"max_total_budget_usd": -1}})
-        self.assertEqual(limits["max_total_budget_usd"], 10.0)
+        self.assertEqual(limits["max_total_budget_usd"], 50.0)
 
     def test_unknown_effort_falls_back_to_default(self):
         # 未知のeffortをそのまま渡すとCLIが引数エラーで即死し、その夜が
@@ -743,7 +747,7 @@ class BuildClaudeArgvTest(unittest.TestCase):
             argv = night_runner.build_claude_argv("p", self._limits())
         self.assertEqual(argv[argv.index("--model") + 1], "sonnet")
         self.assertEqual(argv[argv.index("--effort") + 1], "medium")
-        self.assertEqual(argv[argv.index("--max-budget-usd") + 1], "5.0")
+        self.assertEqual(argv[argv.index("--max-budget-usd") + 1], "8.0")
 
     def test_unsupported_flags_are_dropped_instead_of_crashing_the_cli(self):
         # 古いCLIが焼き込まれたイメージで --effort を渡すと引数エラーで即死し、
@@ -992,6 +996,86 @@ class MainRunLimitsTest(unittest.TestCase):
 
         self.assertEqual(mock_run.call_count, 3)  # 増分1ドル x 3件 = 上限未満
         self.assertAlmostEqual(night_runner.load_state()["run_summary"]["spent_usd"], 3.0)
+
+
+class TaskTimeCapTest(unittest.TestCase):
+    """1タスクが夜を丸ごと使い切らないための時間上限。金額の上限
+    (--max-budget-usd)はサブスク認証だとコストが報告されず効かないことが
+    あるため、時間で切れる手段を併せて持つ。"""
+
+    def _limits(self, minutes):
+        return dict(night_runner.DEFAULT_LIMITS, max_task_minutes=minutes)
+
+    def test_cap_shorter_than_remaining_time_wins(self):
+        seconds, hit_cap = night_runner.task_timeout_seconds(8 * 3600, self._limits(60))
+        self.assertEqual(seconds, 3600)
+        self.assertTrue(hit_cap)
+
+    def test_remaining_time_shorter_than_cap_wins(self):
+        # 締切間際は締切の方が先に来る(こちらはhard_limit扱い)
+        seconds, hit_cap = night_runner.task_timeout_seconds(600, self._limits(60))
+        self.assertEqual(seconds, 600)
+        self.assertFalse(hit_cap)
+
+    def test_zero_means_no_task_cap(self):
+        seconds, hit_cap = night_runner.task_timeout_seconds(8 * 3600, self._limits(0))
+        self.assertEqual(seconds, 8 * 3600)
+        self.assertFalse(hit_cap)
+
+
+class TaskTimeCapIntegrationTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state_path = os.path.join(self.tmp.name, "night-run-state.json")
+        for name, value in [
+            ("STATE_FILE", self.state_path),
+            ("ALERTS_LOG", os.path.join(self.tmp.name, "alerts.log")),
+        ]:
+            patcher = mock.patch.object(night_runner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.task = {"title": "タスクA", "status": "pending", "branch": "night-run/task-a"}
+        state = {"hard_limit": "2999-01-01T00:00:00+09:00", "tasks": [self.task]}
+        with open(self.state_path, "w") as f:
+            json.dump(state, f)
+        self.state = state
+
+    def test_timeout_at_task_cap_salvages_to_draft_pr_and_moves_on(self):
+        # 締切(2999年)にはまだ余裕があるので、これはhard_limit超過ではなく
+        # 1タスクの時間上限による打ち切り。作業はdraft PRへ退避し、
+        # run_task_with_retryは戻る(main()が次のタスクへ進める)。
+        with clean_limit_env(), \
+             mock.patch.object(night_runner, "run_claude_with_timeout", return_value=(None, "", "TIMEOUT")), \
+             mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
+             mock.patch.object(night_runner, "notify_human"), \
+             mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"), \
+             mock.patch.object(night_runner, "create_draft_pr_from_branch") as mock_pr:
+            outcome = night_runner.run_task_with_retry(self.task, self.state)
+
+        self.assertIsNone(outcome)  # "deferred"ではない: 実行は続く
+        final_task = night_runner.load_state()["tasks"][0]
+        self.assertEqual(final_task["status"], "failed")
+        self.assertEqual(final_task["failure_reason"], "task_time_cap_exceeded")
+        mock_pr.assert_called_once()
+        self.assertIn("60分", mock_pr.call_args.kwargs["reason"])
+
+    def test_timeout_passed_to_claude_is_capped(self):
+        captured = {}
+
+        def fake_run(prompt, timeout_seconds, limits=None):
+            captured["timeout"] = timeout_seconds
+            return (None, "", "TIMEOUT")
+
+        with clean_limit_env(), \
+             mock.patch.object(night_runner, "run_claude_with_timeout", side_effect=fake_run), \
+             mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
+             mock.patch.object(night_runner, "notify_human"), \
+             mock.patch.object(night_runner, "save_diagnostic_branch", return_value=None):
+            night_runner.run_task_with_retry(self.task, self.state)
+
+        # 締切まで数百年あっても、claude -p に渡るのは60分
+        self.assertEqual(captured["timeout"], 3600)
 
 
 class GenerateSummaryTest(unittest.TestCase):
