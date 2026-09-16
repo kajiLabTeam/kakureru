@@ -18,6 +18,25 @@ class RoomHomePage extends HookConsumerWidget {
     // TextFieldの入力を毎回のbuildで拾えるよう、controllerの変更を購読して
     // 再描画をトリガーする(controllerだけではウィジェットは自動で更新されない)。
     useListenable(nameController);
+
+    // 前回保存済みの名前を、入力欄がまだ空のうちだけ初期値として復元する
+    // (ユーザーが既に入力し始めていたら上書きしない)。nameErrorの計算より
+    // 前のbuild本体で同期的に行うことで、復元されたフレームでも
+    // ボタンの有効/無効判定に反映される(useEffectで行うとnameErrorの
+    // 計算後に実行されてしまい、復元直後のフレームではボタンが
+    // 無効のまま描画されてしまう)。
+    final savedDisplayName = ref.watch(savedDisplayNameProvider);
+    final hasRestoredName = useRef(false);
+    if (!hasRestoredName.value) {
+      final saved = savedDisplayName.asData?.value;
+      if (saved != null && saved.isNotEmpty) {
+        hasRestoredName.value = true;
+        if (nameController.text.isEmpty) {
+          nameController.text = saved;
+        }
+      }
+    }
+
     final nameError = validatePlayerName(nameController.text);
 
     // 名前が無効な間は「作成/参加」ボタン自体を無効化するため、押してから
@@ -33,21 +52,6 @@ class RoomHomePage extends HookConsumerWidget {
     // どちらを押したかを持つ。
     final isCreating = useState(false);
     final isJoining = useState(false);
-
-    // 前回保存済みの名前を、入力欄がまだ空のうちだけ初期値として復元する
-    // (ユーザーが既に入力し始めていたら上書きしない)。
-    final savedDisplayName = ref.watch(savedDisplayNameProvider);
-    final hasRestoredName = useRef(false);
-    useEffect(() {
-      final saved = savedDisplayName.asData?.value;
-      if (saved != null && saved.isNotEmpty && !hasRestoredName.value) {
-        hasRestoredName.value = true;
-        if (nameController.text.isEmpty) {
-          nameController.text = saved;
-        }
-      }
-      return null;
-    }, [savedDisplayName.asData?.value]);
 
     ref.listen(roomViewModelProvider, (prev, next) {
       if (!next.isLoading) {
