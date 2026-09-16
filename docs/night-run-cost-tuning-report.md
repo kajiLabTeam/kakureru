@@ -1,5 +1,23 @@
 # night-run のコスト実測とチューニング方針調査(issue #47)
 
+> **このレポートの3節の推奨値は、後続のPRで上書きされている。**
+> 本レポートは「実測が無い段階では現状維持」を推奨したが、その後にPro契約での
+> 運用方針を決めたことで、既定値は以下のように変わった(理由は `night-run/README.md`
+> の「Pro契約での運用」と `docs/night-run-design.md` 4.4節を参照)。
+>
+> | 項目 | 本レポートの推奨 | 現在の既定値 |
+> |---|---|---|
+> | 1タスクの予算 | 15ドルを維持 | **8ドル** |
+> | レビューラウンド数 | 4を維持 | **2** |
+> | レートリミット時 | (言及なし) | 解除時刻まで待つ、待てなければ**持ち越し**(failedにしない) |
+> | 1タスクの実行時間 | (言及なし) | **60分**(サブスクリプションで唯一確実に効く上限) |
+>
+> 本文中の `MAX_BUDGET_USD_PER_TASK` / `MAX_REVIEW_ROUNDS` は定数ではなくなり、
+> `DEFAULT_LIMITS`(環境変数 > state の `limits` > 既定値)へ移動した。
+> `_retry_after_rate_limit_or_give_up` は `_handle_rate_limit` に改名され、
+> `mark_task_failed` ではなく `mark_task_deferred` を呼ぶ。
+> **1節(記録項目の読み方)と4節(次に何を測るか)は引き続き有効。**
+
 ## 1. 追加した記録項目と読み方
 
 `run_task_with_retry`(`night-run/night_runner.py`)で、`claude -p --output-format json` の出力(envelope)から毎試行後に `total_cost_usd` と `usage` を `_record_cost_and_usage()` で state の該当タスクエントリへ累積(加算)し、その場で `save_state()` する。詳細フィールドは `night-run/README.md` の「state ファイルのタスクエントリ」節を参照。要点:

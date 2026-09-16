@@ -11,9 +11,11 @@
 #                             #   事前に .claude/skills/night-run-hearing/SKILL.md で
 #                             #   night-run/state/night-run-state.json を作成しておくこと
 #                             #   --retry-failed: 起動前に、state内のstatus="failed"な
-#                             #   タスクをpendingへ戻す(failure_reason/diagnostic_branch/
-#                             #   step/review_roundは消す)。デバッグ中に毎回エディタで
-#                             #   手で書き換える手間を省くためのもの
+#                             #   タスクをpendingへ戻す(failure_reasonだけ消し、
+#                             #   step/diagnostic_branch/review_roundは残す)。1タスクの
+#                             #   時間上限による打ち切り(task_time_cap_exceeded)は
+#                             #   途中まで進んだ作業が退避ブランチに残っているので、
+#                             #   そこへの手がかりを消すと最初からやり直しになる
 #                             #   --use-api-key: デフォルトのCLAUDE_CODE_OAUTH_TOKENの代わりに
 #                             #   ANTHROPIC_API_KEYを使う(明示的に選んだときだけ)。Claude Code
 #                             #   のセッション内でこのスクリプトを実行すると、Claude Code自身が
@@ -33,10 +35,11 @@
 #   NIGHT_RUN_MODEL                  使用モデル(既定 sonnet。ProにOpusは含まれない)
 #   NIGHT_RUN_EFFORT                 low|medium|high|xhigh|max(既定 medium)
 #   NIGHT_RUN_REVIEWER_MODEL         reviewerサブエージェントのモデル(未指定なら実装と同じ)
-#   NIGHT_RUN_MAX_TASKS              1回の実行で着手するタスク数(既定 2、0で無制限)
+#   NIGHT_RUN_MAX_TASKS              1回の実行で着手するタスク数(既定 0=無制限。締切まで回す)
 #   NIGHT_RUN_MAX_REVIEW_ROUNDS      レビューの最大ラウンド数(既定 2)
-#   NIGHT_RUN_MAX_BUDGET_USD         1タスクあたりの予算(既定 5、0で指定しない)
-#   NIGHT_RUN_MAX_TOTAL_BUDGET_USD   実行全体の予算(既定 10、0で無制限)
+#   NIGHT_RUN_MAX_TASK_MINUTES       1タスクの実行時間上限(既定 60、0で無制限)
+#   NIGHT_RUN_MAX_BUDGET_USD         1タスクあたりの予算(既定 8、0で指定しない)
+#   NIGHT_RUN_MAX_TOTAL_BUDGET_USD   実行全体の予算(既定 50、0で無制限)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -114,8 +117,10 @@ changed = 0
 for t in state.get("tasks", []):
     if t.get("status") == "failed":
         t["status"] = "pending"
-        for key in ("failure_reason", "diagnostic_branch", "step", "review_round"):
-            t.pop(key, None)
+        # step/diagnostic_branch/review_round は残す。時間上限での打ち切りは
+        # 途中まで進んだ作業が退避ブランチに残っており、build_prompt の再開ノートが
+        # それを参照して続きから進められるため(消すとゼロからやり直しになる)。
+        t.pop("failure_reason", None)
         changed += 1
 
 with open(path, "w") as f:
@@ -136,7 +141,7 @@ PYEOF
         # night_runner.pyの優先順位(環境変数 > stateの"limits" > 既定値)により
         # 環境変数が常に勝ち、ヒアリングSkillがstateに書いた設定が黙って無視される。
         for name in NIGHT_RUN_MODEL NIGHT_RUN_EFFORT NIGHT_RUN_REVIEWER_MODEL \
-                    NIGHT_RUN_MAX_TASKS NIGHT_RUN_MAX_REVIEW_ROUNDS \
+                    NIGHT_RUN_MAX_TASKS NIGHT_RUN_MAX_REVIEW_ROUNDS NIGHT_RUN_MAX_TASK_MINUTES \
                     NIGHT_RUN_MAX_BUDGET_USD NIGHT_RUN_MAX_TOTAL_BUDGET_USD; do
             if [ -n "${!name:-}" ]; then
                 docker_env_args+=(-e "$name")

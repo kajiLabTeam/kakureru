@@ -271,7 +271,7 @@ def parse_rate_limit_reset(text):
     return None
 
 
-def plan_rate_limit_wait(attempt, detail_text, now, hard_limit):
+def plan_rate_limit_wait(attempt, detail_text, now, deadline):
     """レートリミット検知時に「待つか/持ち越すか」を決める(戻り値: (action, 待機秒, 解除時刻))。
 
     従来は指数backoffで最大5回(合計1時間強)待ち、解消しなければfailedにしていた。
@@ -287,11 +287,21 @@ def plan_rate_limit_wait(attempt, detail_text, now, hard_limit):
     reset_at = parse_rate_limit_reset(detail_text)
     if attempt > MAX_RETRY_ATTEMPTS:
         return ("defer", 0.0, reset_at)
+
+    wait_seconds = None
     if reset_at is not None:
-        wait_seconds = max((reset_at - now).total_seconds() + RATE_LIMIT_RESET_MARGIN_SECONDS, 0.0)
-    else:
+        wait_seconds = (reset_at - now).total_seconds() + RATE_LIMIT_RESET_MARGIN_SECONDS
+    if wait_seconds is None or wait_seconds <= 0:
+        # 解除時刻が読めない場合と、読めたが既に過去の場合は指数backoffへ倒す。
+        # 過去の時刻をそのまま使うと待機0秒になり、リトライ上限まで数秒で撃ち切って
+        # その夜が終わる。「5時間枠は明けたが週次上限で止まっている」ケースや、
+        # エージェントの出力に紛れた10桁数字を誤検出した場合に実際に起こりうる。
         wait_seconds = float(backoff_seconds(attempt))
-    remaining_after_wait = (hard_limit - now).total_seconds() - wait_seconds
+
+    # 判定の基準は hard_limit ではなく deadline(人が「何時まで」と答えた時刻)。
+    # hard_limit は進行中の作業を終わらせるための猶予であって、そこまで眠ってから
+    # 新しいセッションを起こしてよい時刻ではない。
+    remaining_after_wait = (deadline - now).total_seconds() - wait_seconds
     if remaining_after_wait < MIN_USEFUL_REMAINING_SECONDS:
         return ("defer", 0.0, reset_at)
     return ("wait", wait_seconds, reset_at)
@@ -607,14 +617,32 @@ def task_timeout_seconds(remaining_seconds, limits):
     return remaining_seconds, False
 
 
-def handle_hard_limit_exceeded(task, state, reason="締切バッファを超過したため強制終了",
-                               failure_reason="hard_limit_exceeded"):
+def terminate_task_with_draft_pr(task, state, failure_code, pr_reason):
+    """タスクを打ち切り、作業を退避ブランチとdraft PRへ残す。
+
+    引数は役割で分けている: failure_code は state の failure_reason に入る機械可読な
+    識別子("hard_limit_exceeded" 等)、pr_reason は draft PR 本文に出る日本語の説明。
+    以前は両方 reason という名前で、内側で mark_task_failed(reason=failure_reason) と
+    入れ替わる形になっており、呼び出し側で取り違えても誰も気付けなかった。
+
+    create_draft_pr_from_branch は check=True の subprocess の列なので、gh の一時的な
+    失敗(502、既存PRとの衝突、トークンのスコープ不足)で CalledProcessError を投げる。
+    1タスクの時間上限(max_task_minutes)を入れたことでこの経路が夜の途中でも通るように
+    なったため、ここで例外を通すと night_runner.py 全体が死に、残りのタスクが
+    すべて未着手のまま朝を迎える。記録はもう済んでいるので、PR作成の失敗は
+    通知にとどめて次のタスクへ進む。"""
     branch = save_diagnostic_branch(task)
-    mark_task_failed(task, state, reason=failure_reason, diagnostic_branch=branch)
-    if branch:
-        create_draft_pr_from_branch(task, branch, reason=reason)
-    else:
+    mark_task_failed(task, state, reason=failure_code, diagnostic_branch=branch)
+    if not branch:
         notify_human(f"タスク「{task['title']}」: 退避ブランチを作成できなかったため draft PR も作成できません。手動確認が必要です。")
+        return
+    try:
+        create_draft_pr_from_branch(task, branch, reason=pr_reason)
+    except (subprocess.CalledProcessError, OSError) as e:
+        notify_human(
+            f"タスク「{task['title']}」: draft PRを作成できませんでした"
+            f"({type(e).__name__}: {e})。作業は {branch} に退避済みです。手動で確認してください。"
+        )
 
 
 def _issue_urls(task):
@@ -627,8 +655,11 @@ def _issue_urls(task):
 
 
 # --- タスクプロンプトの組み立て(3章) ---
-def build_prompt(task, state):
-    limits = resolve_limits(state)
+def build_prompt(task, state, limits=None):
+    # limitsは呼び出し側(run_task_with_retry)が解決済みの値を渡す。ここで再解決すると
+    # 設定値が不正なときの警告が同じタスクで何度もalerts.logへ出るうえ、実行中に
+    # stateが編集されると実際に適用した値とプロンプトの記述がずれる。
+    limits = limits if limits is not None else resolve_limits(state)
     max_review_rounds = limits["max_review_rounds"]
 
     resume_note = ""
@@ -730,7 +761,15 @@ def claude_supported_flags():
     if result.returncode != 0:
         notify_human(f"`claude --help` が終了コード{result.returncode}で失敗したため、オプションの対応確認をスキップします。")
         return None
-    _claude_flags = frozenset(re.findall(r"--[a-zA-Z0-9][a-zA-Z0-9-]*", result.stdout))
+    flags = frozenset(re.findall(r"--[a-zA-Z0-9][a-zA-Z0-9-]*", result.stdout))
+    if not flags:
+        # helpをstderrに出す・ページャに通す等でstdoutが空だった場合。空集合を
+        # 「対応フラグが1つも無い」と解釈すると--model/--effort/--max-budget-usdを
+        # すべて落としてしまい、このPRが防ごうとしている暴走そのものになる。
+        # 他の失敗経路と同じく「不明なのでフィルタしない」に倒す。
+        notify_human("`claude --help` の出力を解析できなかったため、オプションの対応確認をスキップします。")
+        return None
+    _claude_flags = flags
     return _claude_flags
 
 
@@ -805,9 +844,10 @@ def _handle_rate_limit(task, state, attempt, detail_text):
     従来はここで指数backoffを撃ち切ってfailedにしていたが、サブスクリプション
     契約では枠の解除が数時間先のことがあり、待ち切れずにfailedへ倒れるのが
     常態だった。待って意味があるときだけ待つ(plan_rate_limit_wait)。"""
-    hard_limit = datetime.datetime.fromisoformat(state["hard_limit"])
+    # deadlineが無い状態(古いstate)ではhard_limitで代替する
+    deadline = datetime.datetime.fromisoformat(state.get("deadline") or state["hard_limit"])
     now = datetime.datetime.now(datetime.timezone.utc)
-    action, wait_seconds, reset_at = plan_rate_limit_wait(attempt, detail_text, now, hard_limit)
+    action, wait_seconds, reset_at = plan_rate_limit_wait(attempt, detail_text, now, deadline)
     reset_note = f"(解除予定: {reset_at.isoformat()})" if reset_at else "(解除時刻は取得できず)"
 
     if action == "wait":
@@ -815,8 +855,7 @@ def _handle_rate_limit(task, state, attempt, detail_text):
             f"タスク「{task['title']}」: レートリミット検知{reset_note}。"
             f"{wait_seconds / 60:.1f}分待機して再開します({attempt}/{MAX_RETRY_ATTEMPTS})。"
         )
-        print(message)
-        notify_human(message)
+        notify_human(message)  # notify_human自身がstderrへも出す(printすると二重になる)
         time.sleep(wait_seconds)
         return True
 
@@ -838,7 +877,11 @@ def run_task_with_retry(task, state):
         hard_limit = datetime.datetime.fromisoformat(state["hard_limit"])
         now = datetime.datetime.now(datetime.timezone.utc)
         if now >= hard_limit:
-            handle_hard_limit_exceeded(task, state)
+            terminate_task_with_draft_pr(
+                task, state,
+                failure_code="hard_limit_exceeded",
+                pr_reason="締切バッファを超過したため強制終了",
+            )
             return
 
         remaining_seconds = (hard_limit - now).total_seconds()
@@ -850,7 +893,7 @@ def run_task_with_retry(task, state):
             # その夜を丸ごと使い切れてしまう(実際、上限を入れるまでそうなっていた)。
             # 締切までの残り時間と1タスクの上限の、短い方で切る。
             timeout_seconds, hit_task_cap = task_timeout_seconds(remaining_seconds, limits)
-            prompt = build_prompt(task, state)
+            prompt = build_prompt(task, state, limits=limits)
             notify_human(
                 f"タスク「{task['title']}」: プロンプト組み立て完了(文字数={len(prompt)})。"
                 f"claude -p 実行開始(上限{timeout_seconds / 60:.0f}分, {describe_limits(limits)})"
@@ -883,15 +926,20 @@ def run_task_with_retry(task, state):
         if stderr == "TIMEOUT":
             if hit_task_cap:
                 # 締切にはまだ余裕がある。このタスクだけを打ち切り、draft PRへ退避して
-                # 次のタスクへ進む(main()のループが続く)。
-                minutes = resolve_limits(state)["max_task_minutes"]
-                handle_hard_limit_exceeded(
+                # 次のタスクへ進む(main()のループが続く)。分数は実際に適用した
+                # limitsから採る(ここで再解決すると、実行中にstateが編集された場合に
+                # 発火した上限とPR本文の数字がずれる)。
+                terminate_task_with_draft_pr(
                     task, state,
-                    reason=f"1タスクの実行時間上限({minutes}分)を超過したため打ち切り",
-                    failure_reason="task_time_cap_exceeded",
+                    failure_code="task_time_cap_exceeded",
+                    pr_reason=f"1タスクの実行時間上限({limits['max_task_minutes']}分)を超過したため打ち切り",
                 )
             else:
-                handle_hard_limit_exceeded(task, state)
+                terminate_task_with_draft_pr(
+                    task, state,
+                    failure_code="hard_limit_exceeded",
+                    pr_reason="締切バッファを超過したため強制終了",
+                )
             return
 
         # レートリミットのgive-up経路(_retry_after_rate_limit_or_give_up内で
@@ -1030,6 +1078,20 @@ def main():
     limits = resolve_limits(initial_state)
     notify_human(f"night-run開始: {describe_limits(limits)}")
 
+    # 開始時点で run_summary を上書きしておく。実行の最後にしか書かないと、
+    # 途中でクラッシュしたり run.sh stop で止めた場合に前回の実行結果が
+    # 残り続け、翌朝の棚卸し(night-run-statusスキル)が前夜の「全タスク完了」を
+    # 今回の結果として報告してしまう。
+    initial_state["run_summary"] = {
+        "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "tasks_started": 0,
+        "spent_usd": 0.0,
+        "stopped_reason": "実行中(まだ終了していない。ここが残っている場合は途中で停止した)",
+        "limits": limits,
+        "limits_description": describe_limits(limits),
+    }
+    save_state(initial_state)
+
     tasks_started = 0
     spent_usd = 0.0
     stopped_reason = "全タスク完了"
@@ -1100,6 +1162,7 @@ def main():
     print(stopped_reason)
     final_state = load_state()
     final_state["run_summary"] = {
+        "started_at": (final_state.get("run_summary") or {}).get("started_at"),
         "finished_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "tasks_started": tasks_started,
         "spent_usd": round(spent_usd, 4),

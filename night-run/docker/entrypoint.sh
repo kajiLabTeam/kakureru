@@ -99,7 +99,7 @@ runner_env=(
 # ここで既定値を埋めると、night_runner.pyの優先順位(環境変数 > stateの"limits" >
 # 既定値)で環境変数が常に勝ち、ヒアリングSkillがstateに書いた設定が無視される。
 for name in NIGHT_RUN_MODEL NIGHT_RUN_EFFORT NIGHT_RUN_REVIEWER_MODEL \
-            NIGHT_RUN_MAX_TASKS NIGHT_RUN_MAX_REVIEW_ROUNDS \
+            NIGHT_RUN_MAX_TASKS NIGHT_RUN_MAX_REVIEW_ROUNDS NIGHT_RUN_MAX_TASK_MINUTES \
             NIGHT_RUN_MAX_BUDGET_USD NIGHT_RUN_MAX_TOTAL_BUDGET_USD; do
     value="${!name:-}"
     if [ -n "$value" ]; then

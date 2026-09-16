@@ -103,10 +103,11 @@ Step 0で選んだエンジンに応じて、以下のどちらかを行う。
   "limits": {
     "model": "sonnet",
     "effort": "medium",
-    "max_tasks_per_run": 2,
+    "max_tasks_per_run": 0,
     "max_review_rounds": 2,
-    "max_budget_usd_per_task": 5,
-    "max_total_budget_usd": 10
+    "max_task_minutes": 60,
+    "max_budget_usd_per_task": 8,
+    "max_total_budget_usd": 50
   },
   "tasks": [
     { "title": "タスクA", "issue_url": "https://github.com/kajiLabTeam/kakureru/issues/12", "status": "pending", "branch": "night-run/2026-08-29/task-1" },
@@ -117,7 +118,7 @@ Step 0で選んだエンジンに応じて、以下のどちらかを行う。
 
 - `issue_url` はStep 2で実在確認した実際のissue URLを入れる(タスクプロンプト側がタイトルの曖昧一致ではなく、この番号で直接`gh issue view`できるようにするため)。依存タスクをまとめた場合は、実装の起点となる方のissue URLを入れる
 - `status` は全タスク `"pending"` で書き出す
-- `limits` はStep 3.5で確定したプリセットを書く(省略すると`night_runner.py`側のPro向け既定値が使われる)。設定の意味は `night-run/README.md` の「Pro契約での運用」を参照
+- `limits` はStep 3.5で確定したプリセット(上の例はClaude Proの値)をそのまま書く。**Step 3.5の表と食い違わせないこと**——特に`max_task_minutes`は、サブスクリプションで唯一確実に効く上限なので省略しない(省略すると`night_runner.py`側のPro向け既定値が使われる)。設定の意味は `night-run/README.md` の「Pro契約での運用」を参照
 - **既存の`night-run-state.json`に前回の`pending`タスクが残っている場合**(上限やレートリミットで持ち越されたもの)は、上書きで消してよいか必ず確認する。`deferred_reason`が付いているタスクは「枠が足りず中断したが、途中まで実装が進んでいる」ものなので、消すと作業が捨てられる
 - `depends_on` フィールドは書かない（Step 3で解消済みのため）
 - `hard_limit`・`deadline` は必ず絶対時刻(ISO8601)。ランタイム側では計算し直さない

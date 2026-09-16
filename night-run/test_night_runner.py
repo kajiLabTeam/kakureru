@@ -533,11 +533,18 @@ class HandleHardLimitExceededTest(unittest.TestCase):
         self.task = {"title": "タスクA", "status": "pending", "branch": "night-run/task-a"}
         self.state = {"tasks": [self.task]}
 
+    def _terminate(self):
+        night_runner.terminate_task_with_draft_pr(
+            self.task, self.state,
+            failure_code="hard_limit_exceeded",
+            pr_reason="締切バッファを超過したため強制終了",
+        )
+
     def test_no_branch_skips_draft_pr_and_notifies(self):
         with mock.patch.object(night_runner, "save_diagnostic_branch", return_value=None), \
              mock.patch.object(night_runner, "create_draft_pr_from_branch") as mock_create_pr, \
              mock.patch.object(night_runner, "notify_human") as mock_notify:
-            night_runner.handle_hard_limit_exceeded(self.task, self.state)
+            self._terminate()
 
         mock_create_pr.assert_not_called()
         self.assertEqual(self.task["status"], "failed")
@@ -547,9 +554,23 @@ class HandleHardLimitExceededTest(unittest.TestCase):
     def test_with_branch_creates_draft_pr(self):
         with mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"), \
              mock.patch.object(night_runner, "create_draft_pr_from_branch") as mock_create_pr:
-            night_runner.handle_hard_limit_exceeded(self.task, self.state)
+            self._terminate()
 
         mock_create_pr.assert_called_once_with(self.task, "diagnostic/x", reason="締切バッファを超過したため強制終了")
+
+    def test_draft_pr_failure_does_not_kill_the_runner(self):
+        # 1タスクの時間上限を入れたことでこの経路は夜の途中でも通る。ghの一時的な
+        # 失敗で例外が伝播すると、残りのタスクが全部未着手のまま朝を迎える
+        # (コードレビュー指摘の再現ケース)。
+        error = subprocess.CalledProcessError(1, ["gh", "pr", "create"])
+        with mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"), \
+             mock.patch.object(night_runner, "create_draft_pr_from_branch", side_effect=error), \
+             mock.patch.object(night_runner, "notify_human") as mock_notify:
+            self._terminate()  # 例外が飛ばなければOK
+
+        self.assertEqual(self.task["status"], "failed")
+        self.assertEqual(self.task["diagnostic_branch"], "diagnostic/x")
+        self.assertTrue(any("draft PR" in str(c) for c in mock_notify.call_args_list))
 
 
 class MaskSecretsTest(unittest.TestCase):
@@ -847,6 +868,28 @@ class PlanRateLimitWaitTest(unittest.TestCase):
         self.assertEqual(wait_seconds, float(night_runner.backoff_seconds(2)))
         self.assertIsNone(reset_at)
 
+    def test_past_reset_time_falls_back_to_backoff_instead_of_zero_wait(self):
+        # 「5時間枠は明けたが週次上限で止まっている」場合や、エージェントの出力に
+        # 紛れた10桁数字を誤検出した場合、解除時刻が過去になる。0秒待機で
+        # リトライを撃ち切ると、その夜が数秒で終わる(コードレビュー指摘)。
+        past_epoch = int((self.now - datetime.timedelta(hours=1)).timestamp())
+        hard_limit = self.now + datetime.timedelta(hours=6)
+        action, wait_seconds, _ = night_runner.plan_rate_limit_wait(
+            1, f"usage limit reached|{past_epoch}", self.now, hard_limit,
+        )
+        self.assertEqual(action, "wait")
+        self.assertEqual(wait_seconds, float(night_runner.backoff_seconds(1)))
+
+    def test_wait_is_budgeted_against_deadline_not_hard_limit(self):
+        # 第4引数は deadline(人が「何時まで」と答えた時刻)。hard_limitは進行中の
+        # 作業を終わらせる猶予であって、そこまで眠ってよい時刻ではない。
+        reset_epoch = int((self.now + datetime.timedelta(hours=3)).timestamp())
+        deadline = self.now + datetime.timedelta(hours=3)  # 起きた時点で締切を過ぎる
+        action, _, _ = night_runner.plan_rate_limit_wait(
+            1, f"usage limit reached|{reset_epoch}", self.now, deadline,
+        )
+        self.assertEqual(action, "defer")
+
     def test_defers_once_retry_attempts_are_exhausted(self):
         hard_limit = self.now + datetime.timedelta(hours=6)
         action, _, _ = night_runner.plan_rate_limit_wait(
@@ -883,6 +926,9 @@ class MainRunLimitsTest(unittest.TestCase):
     """1回の実行で使い切らないための歯止め(タスク数・実行全体の予算)。"""
 
     def setUp(self):
+        # main()はos.chdir(REPO_DIR)する。TemporaryDirectoryを消す前にCWDを戻さないと、
+        # 以降のテストが存在しないディレクトリから動くことになる(コードレビュー指摘)。
+        self.addCleanup(os.chdir, os.getcwd())
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.state_path = os.path.join(self.tmp.name, "night-run-state.json")
