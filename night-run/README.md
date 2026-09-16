@@ -114,12 +114,12 @@ tail -f night-run/state/alerts.log                          # 異常があれば
 | `pr_status` / `pr_url` | `done`時の最終ステータス(`success`=ready / `draft`)とPR URL |
 | `completed_summary` / `remaining_summary` | タスク側の自己申告サマリ |
 | `failure_reason` / `diagnostic_branch` | `failed`時の理由と退避ブランチ |
-| `total_cost_usd` | 最後に完了した`claude -p`試行1回分の実コスト(USD)。envelopeの同名フィールドをそのまま転記する |
-| `usage` | 同、トークン使用量(input/output/cacheの内訳を含む生の`usage`オブジェクト) |
+| `total_cost_usd` | そのタスクで発生した`claude -p`の全試行(リトライを含む)のコスト(USD)の累積合計 |
+| `usage` | 同、トークン使用量の累積合計(input/output/cacheの内訳を含む`usage`オブジェクト。キーごとに数値を合算) |
 
-`total_cost_usd`/`usage`は成功(`done`)・失敗(`failed`)(レートリミットで`MAX_RETRY_ATTEMPTS`回リトライしても解消せずgive-upした場合を含む)どちらの経路でも、`claude -p`の出力(envelope)がJSONとしてパースできた場合は記録される。**JSON自体が壊れていてenvelopeが取れなかった場合はこの2項目は記録されない**(パース前なのでコストの実額が分からないため)。`total_cost_usd`が数値でない・`usage`がオブジェクトでないなど値の型が不正な場合も、例外にはせず単にその項目の記録をスキップする。
+`total_cost_usd`/`usage`は成功(`done`)・失敗(`failed`)(レートリミットで`MAX_RETRY_ATTEMPTS`回リトライしても解消せずgive-upした場合を含む)どちらの経路でも、`claude -p`の出力(envelope)がJSONとしてパースできた場合は記録される。**JSON自体が壊れていてenvelopeが取れなかった場合はその試行分は記録されない**(パース前なのでコストの実額が分からないため)。`total_cost_usd`が数値でない・`usage`がオブジェクトでないなど値の型が不正な場合も、例外にはせず単にその試行分の記録をスキップする。
 
-**リトライをまたいだ累積ではない**: レートリミットでbackoffリトライが発生した場合、記録されるのは最後に完了した試行1回分のコストのみで、それ以前の(レートリミットで捨てられた)試行のコストは合算されない。タスク全体で実際に使われたコストを知りたい場合は過小評価になりうる点に注意する。
+**リトライをまたいだ累積**: レートリミットでbackoffリトライが発生した場合、各試行が完了するたびにその試行のコスト/usageを直ちに加算し、ディスクへ保存する。そのため`total_cost_usd`/`usage`はタスク全体(打ち切られて捨てられた試行を含む)で実際に使われた総コストに一致する(以前は最後に完了した試行1回分しか記録せず、途中のリトライがTIMEOUT/hard_limitで打ち切られると直前の試行のコストごと失われる問題があったため、リトライのたびに逐次加算・保存する方式に変更した)。
 
 ## スコープ外（今回は実装していない）
 

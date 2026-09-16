@@ -118,60 +118,65 @@ class UpdateStateDoneTest(unittest.TestCase):
         self.task = {"title": "タスクA", "status": "pending", "branch": "night-run/task-a"}
         self.state = {"tasks": [self.task]}
 
-    def test_invalid_json_marks_failed(self):
-        night_runner.update_state_done(self.task, self.state, "not-json")
+    def test_non_dict_envelope_marks_failed(self):
+        # 呼び出し元(run_task_with_retry)はJSONパースに失敗するとNoneを渡す。
+        night_runner.update_state_done(self.task, self.state, None)
         self.assertEqual(self.task["status"], "failed")
 
     def test_is_error_marks_failed(self):
-        stdout = json.dumps({"is_error": True, "subtype": "error_max_turns", "result": "boom"})
-        night_runner.update_state_done(self.task, self.state, stdout)
+        envelope = {"is_error": True, "subtype": "error_max_turns", "result": "boom"}
+        night_runner.update_state_done(self.task, self.state, envelope)
         self.assertEqual(self.task["status"], "failed")
 
     def test_missing_structured_output_marks_failed(self):
-        stdout = json.dumps({"is_error": False, "result": "plain text, no schema"})
-        night_runner.update_state_done(self.task, self.state, stdout)
+        envelope = {"is_error": False, "result": "plain text, no schema"}
+        night_runner.update_state_done(self.task, self.state, envelope)
         self.assertEqual(self.task["status"], "failed")
 
     def test_self_reported_failed_status_marks_failed(self):
-        stdout = json.dumps({
+        envelope = {
             "is_error": False,
             "structured_output": {
                 "status": "failed", "pr_url": None, "branch": "night-run/task-a",
                 "review_round": 1, "completed_summary": "", "remaining_summary": "無理だった",
             },
-        })
-        night_runner.update_state_done(self.task, self.state, stdout)
+        }
+        night_runner.update_state_done(self.task, self.state, envelope)
         self.assertEqual(self.task["status"], "failed")
 
     def test_unverifiable_pr_marks_failed_even_if_self_reported_success(self):
-        stdout = json.dumps({
+        envelope = {
             "is_error": False,
             "structured_output": {
                 "status": "success", "pr_url": "https://github.com/x/y/pull/1",
                 "branch": "night-run/task-a", "review_round": 1,
                 "completed_summary": "done", "remaining_summary": "なし",
             },
-        })
+        }
         with mock.patch.object(night_runner, "verify_pr", return_value=False):
-            night_runner.update_state_done(self.task, self.state, stdout)
+            night_runner.update_state_done(self.task, self.state, envelope)
         self.assertEqual(self.task["status"], "failed")
 
     def test_verified_success_marks_done(self):
-        stdout = json.dumps({
+        envelope = {
             "is_error": False,
             "structured_output": {
                 "status": "success", "pr_url": "https://github.com/x/y/pull/1",
                 "branch": "night-run/task-a", "review_round": 2,
                 "completed_summary": "done", "remaining_summary": "なし",
             },
-        })
+        }
         with mock.patch.object(night_runner, "verify_pr", return_value=True):
-            night_runner.update_state_done(self.task, self.state, stdout)
+            night_runner.update_state_done(self.task, self.state, envelope)
         self.assertEqual(self.task["status"], "done")
         self.assertEqual(self.task["pr_url"], "https://github.com/x/y/pull/1")
 
-    def test_success_records_cost_and_usage(self):
-        stdout = json.dumps({
+    def test_does_not_record_cost_itself_even_if_envelope_has_it(self):
+        # PR #50レビュー指摘: コスト/usageの記録は呼び出し元(run_task_with_retry)が
+        # _record_cost_and_usage()で既に行う。update_state_done がここでも記録すると
+        # 同じ試行分を二重にカウントしてしまうため、ここでは一切触らないことを
+        # 固定する回帰テスト。
+        envelope = {
             "is_error": False,
             "total_cost_usd": 1.23,
             "usage": {"input_tokens": 100, "output_tokens": 50},
@@ -180,58 +185,78 @@ class UpdateStateDoneTest(unittest.TestCase):
                 "branch": "night-run/task-a", "review_round": 2,
                 "completed_summary": "done", "remaining_summary": "なし",
             },
-        })
+        }
         with mock.patch.object(night_runner, "verify_pr", return_value=True):
-            night_runner.update_state_done(self.task, self.state, stdout)
+            night_runner.update_state_done(self.task, self.state, envelope)
         self.assertEqual(self.task["status"], "done")
-        self.assertEqual(self.task["total_cost_usd"], 1.23)
-        self.assertEqual(self.task["usage"], {"input_tokens": 100, "output_tokens": 50})
-
-    def test_failure_still_records_cost_and_usage(self):
-        # 無駄トークンの実態こそ知りたいのが目的(issue #47)なので、失敗経路でも
-        # envelopeが取れている限りコストを残す。
-        stdout = json.dumps({
-            "is_error": False,
-            "total_cost_usd": 4.56,
-            "usage": {"input_tokens": 999, "output_tokens": 111},
-            "result": "plain text, no schema",
-        })
-        night_runner.update_state_done(self.task, self.state, stdout)
-        self.assertEqual(self.task["status"], "failed")
-        self.assertEqual(self.task["total_cost_usd"], 4.56)
-        self.assertEqual(self.task["usage"], {"input_tokens": 999, "output_tokens": 111})
-
-    def test_missing_cost_fields_does_not_raise(self):
-        stdout = json.dumps({"is_error": False, "result": "plain text, no schema"})
-        night_runner.update_state_done(self.task, self.state, stdout)
-        self.assertEqual(self.task["status"], "failed")
         self.assertNotIn("total_cost_usd", self.task)
         self.assertNotIn("usage", self.task)
 
-    def test_invalid_json_does_not_raise_and_records_no_cost(self):
-        night_runner.update_state_done(self.task, self.state, "not-json")
-        self.assertEqual(self.task["status"], "failed")
-        self.assertNotIn("total_cost_usd", self.task)
+
+class MergeUsageTest(unittest.TestCase):
+    def test_no_existing_returns_copy_of_new(self):
+        new = {"input_tokens": 5}
+        merged = night_runner._merge_usage(None, new)
+        self.assertEqual(merged, {"input_tokens": 5})
+        self.assertIsNot(merged, new)  # 呼び出し元のdictをそのまま共有参照しない
+
+    def test_numeric_keys_are_summed(self):
+        merged = night_runner._merge_usage(
+            {"input_tokens": 10, "output_tokens": 2},
+            {"input_tokens": 5, "output_tokens": 1},
+        )
+        self.assertEqual(merged, {"input_tokens": 15, "output_tokens": 3})
+
+    def test_new_key_not_in_existing_is_added(self):
+        merged = night_runner._merge_usage({"input_tokens": 10}, {"cache_read_input_tokens": 3})
+        self.assertEqual(merged, {"input_tokens": 10, "cache_read_input_tokens": 3})
+
+    def test_non_numeric_value_overwrites_instead_of_summing(self):
+        merged = night_runner._merge_usage({"service_tier": "standard"}, {"service_tier": "priority"})
+        self.assertEqual(merged, {"service_tier": "priority"})
 
 
 class RecordCostAndUsageTest(unittest.TestCase):
-    def test_non_dict_envelope_does_not_raise(self):
-        task = {}
-        night_runner._record_cost_and_usage(task, None)
-        night_runner._record_cost_and_usage(task, "not-a-dict")
-        self.assertEqual(task, {})
+    def setUp(self):
+        self.task = {}
+        self.state = {"tasks": [self.task]}
 
-    def test_extracts_present_fields_only(self):
-        task = {}
-        night_runner._record_cost_and_usage(task, {"total_cost_usd": 0.5})
-        self.assertEqual(task, {"total_cost_usd": 0.5})
+    def test_non_dict_envelope_does_not_raise_or_save(self):
+        with mock.patch.object(night_runner, "save_state") as mock_save:
+            night_runner._record_cost_and_usage(self.task, self.state, None)
+            night_runner._record_cost_and_usage(self.task, self.state, "not-a-dict")
+        self.assertEqual(self.task, {})
+        mock_save.assert_not_called()
 
-    def test_wrong_type_values_are_skipped_not_recorded(self):
-        task = {}
-        night_runner._record_cost_and_usage(
-            task, {"total_cost_usd": "N/A", "usage": "not-a-dict"}
-        )
-        self.assertEqual(task, {})
+    def test_extracts_present_fields_only_and_persists(self):
+        # PR #50レビュー指摘: 記録した時点でsave_state()し、呼び出し元が
+        # リトライへ進んでload_state()し直しても消えないようにする。
+        with mock.patch.object(night_runner, "save_state") as mock_save:
+            night_runner._record_cost_and_usage(self.task, self.state, {"total_cost_usd": 0.5})
+        self.assertEqual(self.task, {"total_cost_usd": 0.5})
+        mock_save.assert_called_once_with(self.state)
+
+    def test_wrong_type_values_are_skipped_and_not_saved(self):
+        with mock.patch.object(night_runner, "save_state") as mock_save:
+            night_runner._record_cost_and_usage(
+                self.task, self.state, {"total_cost_usd": "N/A", "usage": "not-a-dict"}
+            )
+        self.assertEqual(self.task, {})
+        mock_save.assert_not_called()
+
+    def test_repeated_calls_accumulate_cost_and_merge_usage(self):
+        # PR #50レビュー指摘: リトライで複数回呼ばれても上書きではなく累積する。
+        with mock.patch.object(night_runner, "save_state"):
+            night_runner._record_cost_and_usage(
+                self.task, self.state,
+                {"total_cost_usd": 1.0, "usage": {"input_tokens": 10, "output_tokens": 2}},
+            )
+            night_runner._record_cost_and_usage(
+                self.task, self.state,
+                {"total_cost_usd": 2.5, "usage": {"input_tokens": 20, "output_tokens": 3}},
+            )
+        self.assertEqual(self.task["total_cost_usd"], 3.5)
+        self.assertEqual(self.task["usage"], {"input_tokens": 30, "output_tokens": 5})
 
 
 class RateLimitEnvelopeTest(unittest.TestCase):
@@ -320,10 +345,12 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
         final_task = final_state["tasks"][0]
         self.assertEqual(final_task["status"], "failed")
 
-    def test_rate_limited_give_up_still_records_cost_and_usage(self):
+    def test_rate_limited_give_up_still_records_accumulated_cost_and_usage(self):
         # give-up経路(_retry_after_rate_limit_or_give_up内でmark_task_failedを
         # 直接呼ぶ)はupdate_state_doneを経由しないため、記録漏れが起きやすい
-        # (コードレビュー指摘の再現ケース)。
+        # (コードレビュー指摘の再現ケース)。3回とも同じレートリミット応答だが、
+        # 各試行は実際に課金が発生しているため、記録される値は3回分の累積になる
+        # (PR #50レビュー指摘: 最後の1回だけを残す実装だと過小評価になる)。
         rate_limited_stdout = json.dumps({
             "is_error": True, "subtype": "error_during_execution", "result": "429 rate limit",
             "total_cost_usd": 2.5, "usage": {"input_tokens": 10, "output_tokens": 5},
@@ -339,13 +366,12 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
         final_state = night_runner.load_state()
         final_task = final_state["tasks"][0]
         self.assertEqual(final_task["status"], "failed")
-        self.assertEqual(final_task["total_cost_usd"], 2.5)
-        self.assertEqual(final_task["usage"], {"input_tokens": 10, "output_tokens": 5})
+        self.assertEqual(final_task["total_cost_usd"], 7.5)  # 2.5 x 3試行
+        self.assertEqual(final_task["usage"], {"input_tokens": 30, "output_tokens": 15})
 
-    def test_stderr_rate_limit_give_up_records_cost_if_stdout_has_envelope(self):
-        # returncode!=0 でstderrの正規表現マッチによりgive-upする経路
-        # (night_runner.py 539-543行目)でも、stdoutにenvelopeが残っている
-        # 場合はコストを記録する。
+    def test_stderr_rate_limit_give_up_records_accumulated_cost_if_stdout_has_envelope(self):
+        # returncode!=0 でstderrの正規表現マッチによりgive-upする経路でも、
+        # stdoutにenvelopeが残っている場合は各試行のコストを累積して記録する。
         stdout_with_cost = json.dumps({"total_cost_usd": 3.7, "usage": {"input_tokens": 20}})
         responses = [(1, stdout_with_cost, "429 rate limit")] * 3
 
@@ -358,8 +384,71 @@ class RunTaskWithRetryRateLimitTest(unittest.TestCase):
         final_state = night_runner.load_state()
         final_task = final_state["tasks"][0]
         self.assertEqual(final_task["status"], "failed")
-        self.assertEqual(final_task["total_cost_usd"], 3.7)
-        self.assertEqual(final_task["usage"], {"input_tokens": 20})
+        self.assertAlmostEqual(final_task["total_cost_usd"], 11.1)  # 3.7 x 3試行(浮動小数点誤差を許容)
+        self.assertEqual(final_task["usage"], {"input_tokens": 60})
+
+    def test_cost_accumulates_across_retry_then_success(self):
+        # PR #50レビュー指摘: 「リトライを挟んでもコストが累積して記録される」
+        # ことを確認する。1試行目(レートリミットで捨てられる)と2試行目(成功)、
+        # 両方の実コストが合算されて最終的なtotal_cost_usdになる
+        # (最後に完了した試行1回分だけを残す旧実装では、1試行目の2.0が失われ
+        # 3.0のみが記録されていた)。
+        rate_limited_stdout = json.dumps({
+            "is_error": True, "subtype": "error_during_execution", "result": "429 rate limit",
+            "total_cost_usd": 2.0, "usage": {"input_tokens": 10, "output_tokens": 4},
+        })
+        success_stdout = json.dumps({
+            "is_error": False,
+            "total_cost_usd": 3.0,
+            "usage": {"input_tokens": 20, "output_tokens": 8},
+            "structured_output": {
+                "status": "success", "pr_url": "https://github.com/x/y/pull/1",
+                "branch": "night-run/task-a", "review_round": 1,
+                "completed_summary": "done", "remaining_summary": "なし",
+            },
+        })
+        responses = [(0, rate_limited_stdout, ""), (0, success_stdout, "")]
+
+        with mock.patch.object(night_runner, "run_claude_with_timeout", side_effect=responses), \
+             mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
+             mock.patch.object(night_runner.time, "sleep"), \
+             mock.patch.object(night_runner, "verify_pr", return_value=True):
+            night_runner.run_task_with_retry(self.task, self.state)
+
+        final_state = night_runner.load_state()
+        final_task = final_state["tasks"][0]
+        self.assertEqual(final_task["status"], "done")
+        self.assertEqual(final_task["total_cost_usd"], 5.0)  # 2.0 + 3.0
+        self.assertEqual(final_task["usage"], {"input_tokens": 30, "output_tokens": 12})
+
+    def test_retry_cost_persists_even_if_next_attempt_times_out(self):
+        # PR #50レビュー指摘(重要): リトライ試行で記録したコストは、
+        # save_state()されるより前に次のループのload_state()で上書きされて
+        # 失われてはいけない。1試行目はレートリミットで捨てられ、2試行目が
+        # TIMEOUT(hard_limit超過扱い)で打ち切られるケースでも、1試行目で
+        # 実際に発生していたコストがfailedタスクに残ることを確認する。
+        rate_limited_stdout = json.dumps({
+            "is_error": True, "subtype": "error_during_execution", "result": "429 rate limit",
+            "total_cost_usd": 2.0, "usage": {"input_tokens": 10},
+        })
+        responses = [
+            (0, rate_limited_stdout, ""),
+            (None, "", "TIMEOUT"),
+        ]
+
+        with mock.patch.object(night_runner, "run_claude_with_timeout", side_effect=responses), \
+             mock.patch.object(night_runner, "build_prompt", return_value="prompt"), \
+             mock.patch.object(night_runner.time, "sleep"), \
+             mock.patch.object(night_runner, "save_diagnostic_branch", return_value="diagnostic/x"), \
+             mock.patch.object(night_runner, "create_draft_pr_from_branch"):
+            night_runner.run_task_with_retry(self.task, self.state)
+
+        final_state = night_runner.load_state()
+        final_task = final_state["tasks"][0]
+        self.assertEqual(final_task["status"], "failed")
+        self.assertEqual(final_task["failure_reason"], "hard_limit_exceeded")
+        self.assertEqual(final_task["total_cost_usd"], 2.0)
+        self.assertEqual(final_task["usage"], {"input_tokens": 10})
 
 
 class GitCleanupRetryTest(unittest.TestCase):

@@ -234,35 +234,69 @@ def verify_pr(pr_url, expected_branch):
 
 
 # --- タスク状態の更新 ---
-def _record_cost_and_usage(task, envelope):
+def _merge_usage(existing, new):
+    """usageオブジェクトの各キー(input_tokens/output_tokens/
+    cache_creation_input_tokens/cache_read_input_tokens等)を試行間で合算する。
+    値が両方とも数値の場合だけ加算し、どちらかが数値でない場合(将来envelopeに
+    非数値の内訳が増えた場合など)は合算せず新しい方の値で上書きする——壊れた
+    前提で例外を出さないため。"""
+    if not isinstance(existing, dict):
+        return dict(new)
+    merged = dict(existing)
+    for key, value in new.items():
+        prev = merged.get(key)
+        if (
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            and isinstance(prev, (int, float)) and not isinstance(prev, bool)
+        ):
+            merged[key] = prev + value
+        else:
+            merged[key] = value
+    return merged
+
+
+def _record_cost_and_usage(task, state, envelope):
     """total_cost_usd/usageはトークン消費のチューニング判断材料として残すだけの
     任意項目(issue #47)。envelopeが無い・キーが無い・値の型が不正な場合も
-    例外を出さず、単に記録をスキップする。"""
+    例外を出さず、単に記録をスキップする。
+
+    レートリミットでbackoffリトライが発生した場合、各試行のコストは累積して
+    記録する(1試行だけを残す設計だと、打ち切り直前の試行がTIMEOUT/hard_limit
+    で終わった際に、その直前の試行で実際に発生していたコストごと丸ごと失われる
+    ため — PR #50レビュー指摘)。記録が実際に変化したときは、その場でsave_state()
+    して即ディスクへ反映する。呼び出し側(run_task_with_retry)は次のループの
+    先頭で必ずload_state()により状態を再読み込みするため、ここで永続化しないと
+    リトライへ進んだ時点で今回記録した分が失われる。"""
     if not isinstance(envelope, dict):
         return
+    changed = False
     cost = envelope.get("total_cost_usd")
     if isinstance(cost, (int, float)) and not isinstance(cost, bool):
-        task["total_cost_usd"] = cost
+        task["total_cost_usd"] = task.get("total_cost_usd", 0) + cost
+        changed = True
     usage = envelope.get("usage")
     if isinstance(usage, dict):
-        task["usage"] = usage
+        task["usage"] = _merge_usage(task.get("usage"), usage)
+        changed = True
+    if changed:
+        save_state(state)
 
 
-def update_state_done(task, state, claude_stdout):
+def update_state_done(task, state, envelope):
+    """envelopeは呼び出し元(run_task_with_retry)で既にJSONパース済みのdict
+    (パースに失敗していればNone)を受け取る。ここでは再パースしない——
+    claude_stdoutを渡してこの関数がもう一度json.loads()する従来の実装は、
+    成功パスで呼び出し元と合わせてJSONを2回パースする無駄があった(PR #50
+    レビュー指摘)。コスト/usageの記録も呼び出し元がこの関数を呼ぶ前に
+    _record_cost_and_usage()で既に行っている(このタスクの成否を問わず、
+    レートリミットのgive-up経路も含めて1試行につき1回)ため、ここでは行わない。"""
     def fail(reason):
         branch = save_diagnostic_branch(task)
         mark_task_failed(task, state, reason, diagnostic_branch=branch)
 
-    try:
-        envelope = json.loads(claude_stdout)
-    except json.JSONDecodeError as e:
-        fail(f"claude -p の出力がJSONとして解釈できない: {e}")
+    if not isinstance(envelope, dict):
+        fail("claude -p の出力がJSONとして解釈できない")
         return
-
-    # fail()より前に記録する: 以降のどの失敗経路(is_error/structured_output欠落/
-    # 自己申告failed/PR実在確認失敗)を通っても、envelopeが取れている限り
-    # コストを残す(issue #47。無駄トークンの実態こそ知りたいのが目的)。
-    _record_cost_and_usage(task, envelope)
 
     if envelope.get("is_error"):
         fail(f"claude -p がエラー終了(subtype={envelope.get('subtype')}): {str(envelope.get('result'))[:500]}")
@@ -522,11 +556,18 @@ def run_task_with_retry(task, state):
         # を使っている限り起きないはずだが)にコスト記録という任意処理のために
         # night_runner.py全体を落とさないため。JSONDecodeErrorはValueErrorの
         # サブクラスなので、この指定で従来のケースも引き続き含む。
+        #
+        # ここで得たenvelopeはこの後success判定にも使い回す(update_state_done
+        # には既にパース済みのenvelopeを渡し、二重にjson.loads()しない —
+        # PR #50レビュー指摘)。また_record_cost_and_usage()はこの1試行の
+        # コストを直ちにsave_state()で永続化する。以降どの分岐(retry/give-up/
+        # 成功/失敗)へ進んでも、次のloop先頭のload_state()で今回の記録が
+        # 失われることはない(PR #50レビュー指摘)。
         try:
             envelope = json.loads(stdout)
         except (TypeError, ValueError):
             envelope = None
-        _record_cost_and_usage(task, envelope)
+        _record_cost_and_usage(task, state, envelope)
 
         if returncode == 0:
             # claude -pはAPIレベルのレートリミットをexit 0 + JSON封筒内のエラーとして
@@ -538,7 +579,7 @@ def run_task_with_retry(task, state):
                     continue
                 return
 
-            update_state_done(task, state, stdout)
+            update_state_done(task, state, envelope)
             return
 
         if RATE_LIMIT_PATTERN.search(stderr):
