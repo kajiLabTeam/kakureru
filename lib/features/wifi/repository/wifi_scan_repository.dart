@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/core/utils/rtdb_write.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:wifi_scan/wifi_scan.dart';
@@ -29,7 +30,14 @@ class WifiScanRepository {
 
   /// RTDBへ送るAP数の上限。都心部などAPが多い環境で書き込みサイズが
   /// 際限なく膨らむのを防ぐ。
-  static const _maxApCount = 20;
+  ///
+  /// 以前は20件だったが、可視APが20件を超える環境では自分と相手それぞれが
+  /// 独立にRSSI上位20件へ絞り込むため、実際にはほぼ同じ場所にいて元の
+  /// BSSID集合がほぼ一致していても、境界付近(RSSI順位20位前後)のAPが
+  /// 端末ごとのRSSI揺らぎで別々に足切りされ、Jaccard係数・共通AP数が
+  /// 見かけ上大きく下がることがある(「近いのに遠い/検知なし」の一因。
+  /// issue #45調査)。40件に増やして境界付近の食い違いの影響を抑える。
+  static const _maxApCount = 40;
 
   /// 自分のスキャンの実行とRTDBへの書き込みだけを行う
   void startScanning(String roomId) {
@@ -59,7 +67,14 @@ class WifiScanRepository {
 
   Future<void> _triggerScan() async {
     final can = await WiFiScan.instance.canStartScan();
-    if (can != CanStartScan.yes) return;
+    if (can != CanStartScan.yes) {
+      // Androidのスキャンスロットリング(2分に4回)等でスキャンできない場合、
+      // ここで黙ってスキップされるとwifiScanが古いまま更新されなくなる原因が
+      // 実機ログからしか追えない。開発者オプションでのスロットル解除漏れを
+      // 切り分けられるよう、スキップしたことだけは残す(issue #45調査)。
+      debugPrint('[WifiScanRepository] scan skipped: canStartScan=$can');
+      return;
+    }
     await WiFiScan.instance.startScan();
   }
 
