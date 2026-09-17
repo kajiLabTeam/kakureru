@@ -86,12 +86,15 @@ flutter analyze
    {"CARTO_API_KEY": "取得したキー"}
    ```
 
-3. 実行・ビルドには必ず `--dart-define-from-file=dart_defines.json` を付ける（`flutter run` だけでなくリリースビルドも同様）
+3. 実行・ビルドには必ず `--dart-define-from-file=dart_defines.json` を付ける（`flutter run` だけでなくリリースビルドも同様）。ターミナルからの実行は毎回フラグを付ける代わりに `scripts/run.sh` を使うと楽（中身は `flutter run` に `--dart-define-from-file=dart_defines.json` を足すだけのラッパー。`dart_defines.json` が無ければ警告を出して素の `flutter run` にフォールバックする）
 
    ```sh
-   flutter run --dart-define-from-file=dart_defines.json
+   ./scripts/run.sh -d <device>          # flutter run と同じ引数を渡せる
+   flutter run --dart-define-from-file=dart_defines.json   # 素のflutterコマンドを使う場合
    flutter build apk --release --dart-define-from-file=dart_defines.json
    ```
+
+   VS Codeから実行する場合は `.vscode/launch.json` の "kakureru" 構成を使えば、F5でも同じフラグが自動で付く。
 
 キー未設定でもビルド・テスト自体は失敗しない（地図に透かしが出るだけ）。CI・夜間実行など `dart_defines.json` を置いていない環境ではこの状態で動く。
 
