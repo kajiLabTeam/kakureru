@@ -434,10 +434,7 @@ class _AreaMap extends HookWidget {
           ),
         ),
         children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'me.nenex.kakureru',
-          ),
+          buildMapTileLayer(context),
           PolygonLayer(
             polygons: [
               if (gameArea.length >= 3)
@@ -490,6 +487,7 @@ class _AreaMap extends HookWidget {
                 ),
               ],
             ),
+          buildMapAttribution(),
         ],
       ),
     );

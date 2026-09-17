@@ -75,6 +75,26 @@ flutter test
 flutter analyze
 ```
 
+### 地図タイルのAPIキー
+
+地図は CARTO の Voyager タイルを使っている。2026年8月末以降、APIキー無しのリクエストには「API KEY REQUIRED」の透かし入りタイルが返るようになったため、開発・リリースいずれのビルドでもキーが必要。
+
+1. https://carto.com/basemaps/apikey で無料キーを取得する
+2. リポジトリ直下に `dart_defines.example.json` をコピーして `dart_defines.json` を作り、取得したキーを書く（このファイルは `.gitignore` 対象でコミットされない）
+
+   ```json
+   {"CARTO_API_KEY": "取得したキー"}
+   ```
+
+3. 実行・ビルドには必ず `--dart-define-from-file=dart_defines.json` を付ける（`flutter run` だけでなくリリースビルドも同様）
+
+   ```sh
+   flutter run --dart-define-from-file=dart_defines.json
+   flutter build apk --release --dart-define-from-file=dart_defines.json
+   ```
+
+キー未設定でもビルド・テスト自体は失敗しない（地図に透かしが出るだけ）。CI・夜間実行など `dart_defines.json` を置いていない環境ではこの状態で動く。
+
 ## AIエージェントで作業する場合
 
 このリポジトリには AI コーディングエージェント向けの共通指示と安全網が入っている。作業前に [AGENTS.md](AGENTS.md) を読むこと。Claude Code 固有の補足は [CLAUDE.md](CLAUDE.md) にある。

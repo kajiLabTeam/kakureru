@@ -1,4 +1,5 @@
-import 'package:flutter/widgets.dart' show EdgeInsets;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/widgets.dart' show BuildContext, EdgeInsets;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
@@ -8,6 +9,60 @@ import 'package:latlong2/latlong.dart' as latlong;
 /// あくまで「世界地図の原点が出るよりまし」という仮の値。
 /// GamePage・RoomSettingPageの両方で使うのでここに集約する。
 const fallbackMapCenter = latlong.LatLng(35.681236, 139.767125);
+
+/// CARTOのAPIキー。2026年8月末以降、キー無しのリクエストは透かし入りの
+/// タイルが返るようになったため必須(READMEの「地図タイルのAPIキー」参照)。
+/// ソースコードに直書きせず、`--dart-define-from-file=dart_defines.json`
+/// (またはCIでは未設定のまま)で `String.fromEnvironment` から読む。
+const cartoApiKey = String.fromEnvironment('CARTO_API_KEY');
+
+/// 地図タイルのURL(CARTO Voyagerスタイル)。地図データ自体はOSM由来だが、
+/// レンダリングはCARTOのラスタタイルを使う。GamePage・RoomSettingPageの
+/// 両方で使うのでここに集約する(定義を1か所にまとめ、見た目のずれを防ぐ)。
+const mapTileUrlTemplate =
+    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}'
+    '{r}.png?key=$cartoApiKey';
+
+/// [mapTileUrlTemplate] の `{s}` に使うサブドメイン。
+const mapTileSubdomains = ['a', 'b', 'c', 'd'];
+
+/// タイルサーバーへのリクエストで送るアプリ識別子。
+const mapTileUserAgentPackageName = 'me.nenex.kakureru';
+
+/// [cartoApiKey] 未設定の警告を1回だけ出すためのフラグ。
+bool _cartoApiKeyWarned = false;
+
+/// GamePage・RoomSettingPageで共通の地図タイルレイヤー。
+///
+/// `{r}` (高解像度タイル)は端末の画素密度に応じて[RetinaMode.isHighDensity]
+/// で自動判定する。
+TileLayer buildMapTileLayer(BuildContext context) {
+  if (cartoApiKey.isEmpty && kDebugMode && !_cartoApiKeyWarned) {
+    _cartoApiKeyWarned = true;
+    debugPrint(
+      'CARTO_API_KEY が未設定です。地図タイルに透かしが表示されます。'
+      ' READMEの「地図タイルのAPIキー」を参照してください。',
+    );
+  }
+  return TileLayer(
+    urlTemplate: mapTileUrlTemplate,
+    subdomains: mapTileSubdomains,
+    retinaMode: RetinaMode.isHighDensity(context),
+    userAgentPackageName: mapTileUserAgentPackageName,
+  );
+}
+
+/// 地図タイルの著作権表記。CARTO Voyagerの利用条件上、OSMとCARTO両方の
+/// クレジット表示が必須のため、GamePage・RoomSettingPageの両方に載せる。
+/// url_launcherは依存に無いため、タップでのリンク開きはしない。
+RichAttributionWidget buildMapAttribution() {
+  return const RichAttributionWidget(
+    attributions: [
+      TextSourceAttribution('OpenStreetMap contributors'),
+      TextSourceAttribution('CARTO'),
+    ],
+  );
+}
 
 /// プレイエリアとして許すサイズ(対角線の距離、メートル)の下限。
 ///
