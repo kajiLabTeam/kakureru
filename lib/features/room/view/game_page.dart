@@ -734,16 +734,13 @@ class _LocationMap extends HookWidget {
           options: mapOptions,
           children: [
             // Phase 1では手軽さを優先し、追加設定・課金設定が不要な
-            // OpenStreetMapのタイルをそのまま使う(flutter_map採用)。
-            // Google Mapsだと google_maps_flutter 用のAPIキー発行と
-            // 課金設定が要るため、開発初期の身内テスト用途には過剰。
-            // 公開規模が大きくなったら自前タイルサーバや商用プロバイダへの
-            // 切り替えを検討すること(OSMのタイル使用ポリシー上、
-            // 本番の常用には推奨されない)。
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'me.nenex.kakureru',
-            ),
+            // CARTO Voyagerのラスタタイル(データ自体はOSM由来)をそのまま
+            // 使う(flutter_map採用)。Google Mapsだと google_maps_flutter
+            // 用のAPIキー発行と課金設定が要るため、開発初期の身内テスト
+            // 用途には過剰。公開規模が大きくなったら自前タイルサーバや
+            // 商用プロバイダへの切り替えを検討すること(無料タイルの
+            // 利用ポリシー上、本番の常用には推奨されない)。
+            buildMapTileLayer(context),
             if (areaPoints != null)
               PolygonLayer(
                 polygons: [
@@ -755,6 +752,7 @@ class _LocationMap extends HookWidget {
             MarkerLayer(
               markers: [for (final visual in locationVisuals) visual.marker],
             ),
+            buildMapAttribution(),
           ],
         ),
         if (positionTier == 0)
