@@ -65,13 +65,14 @@ night-runの1タスクは`claude -p`のセッションを実装〜レビュー�
 
 方針は「**夜は締切まで使い切ってよい。ただし1タスクが夜を丸ごと食わないようにする**」。タスク数ではなく1タスク単位の上限で抑える。
 
-| プラン | `model` | `effort` | `max_tasks_per_run` | `max_review_rounds` | `max_task_minutes` | `max_budget_usd_per_task` | `max_total_budget_usd` |
-|---|---|---|---|---|---|---|---|
-| **Claude Pro** | `sonnet` | `medium` | `0`(無制限) | `2` | `60` | `8` | `50` |
-| **Claude Max** | `sonnet` | `high` | `0`(無制限) | `3` | `90` | `15` | `100` |
-| **APIキー(従量課金)** | `sonnet` | `high` | `0`(無制限) | `3` | `90` | `15` | ユーザーに金額を聞く |
+| プラン | `model` | `effort` | `autocompact` | `max_tasks_per_run` | `max_review_rounds` | `max_task_minutes` | `max_budget_usd_per_task` | `max_total_budget_usd` |
+|---|---|---|---|---|---|---|---|---|
+| **Claude Pro** | `sonnet` | `medium` | `150k` | `0`(無制限) | `2` | `60` | `8` | `50` |
+| **Claude Max** | `sonnet` | `high` | `150k` | `0`(無制限) | `3` | `90` | `15` | `100` |
+| **APIキー(従量課金)** | `sonnet` | `high` | `150k` | `0`(無制限) | `3` | `90` | `15` | ユーザーに金額を聞く |
 
 - **ProにOpusは含まれない**。`model`を`opus`にしたいと言われたら、Proでは使えないことを伝える
+- **`autocompact`はどのプランでも`150k`**。1タスクは最大60〜90分走るので、放っておくと文脈が伸び続け、その全部を毎リクエスト読み直すことになる。sonnetの文脈上限は200kなので、`200k`以上を指定すると上限と同じで実質無効になる
 - **APIキーの場合だけ実費が発生する**。`max_total_budget_usd`(その回の実行で使ってよい上限)を必ず本人に確認して決める
 - **サブスクリプションでは金額が報告されないことがあり、その場合`max_budget_usd_per_task`も`max_total_budget_usd`も効かない**。実効的に効くのは`max_task_minutes`(1タスクの実行時間上限)だと伝える
 - タスク数に上限は置かないので、**挙がったissueは締切まで順に消化される**。多すぎる場合でも勝手に削らず、締切内に終わらなかった分は`pending`のまま翌日へ回ることを説明する
@@ -103,6 +104,7 @@ Step 0で選んだエンジンに応じて、以下のどちらかを行う。
   "limits": {
     "model": "sonnet",
     "effort": "medium",
+    "autocompact": "150k",
     "max_tasks_per_run": 0,
     "max_review_rounds": 2,
     "max_task_minutes": 60,
