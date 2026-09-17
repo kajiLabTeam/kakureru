@@ -692,6 +692,7 @@ class ResolveLimitsTest(unittest.TestCase):
             limits = night_runner.resolve_limits({})
         self.assertEqual(limits["model"], "sonnet")   # ProにOpusは含まれない
         self.assertEqual(limits["effort"], "medium")
+        self.assertEqual(limits["autocompact"], "150k")     # 1タスクが長引いても文脈を頭打ちに
         self.assertEqual(limits["max_tasks_per_run"], 0)    # 無制限
         self.assertEqual(limits["max_review_rounds"], 2)
         self.assertEqual(limits["max_task_minutes"], 60)
@@ -743,6 +744,31 @@ class ResolveLimitsTest(unittest.TestCase):
         self.assertEqual(limits["effort"], "medium")
         self.notify.assert_called()
 
+    def test_autocompact_can_be_overridden(self):
+        with clean_limit_env(NIGHT_RUN_AUTOCOMPACT="auto"):
+            limits = night_runner.resolve_limits({"limits": {"autocompact": "200k"}})
+        self.assertEqual(limits["autocompact"], "auto")
+
+    def test_out_of_range_autocompact_falls_back_to_default(self):
+        # CLIが受け付けるのは100k〜1M。範囲外をそのまま渡すと引数エラーで
+        # claude -pが起動直後に落ち、その夜のタスクが1件も進まない。
+        for bad in ("50k", "2000k", "だいたい"):
+            with self.subTest(bad=bad):
+                self.notify.reset_mock()
+                with clean_limit_env(NIGHT_RUN_AUTOCOMPACT=bad):
+                    limits = night_runner.resolve_limits({})
+                self.assertEqual(limits["autocompact"], "150k")
+                self.notify.assert_called()
+
+    def test_autocompact_accepts_auto_and_plain_token_counts(self):
+        for good in ("auto", "100k", "1000000", "150000"):
+            with self.subTest(good=good):
+                self.notify.reset_mock()
+                with clean_limit_env(NIGHT_RUN_AUTOCOMPACT=good):
+                    limits = night_runner.resolve_limits({})
+                self.assertEqual(limits["autocompact"], good)
+                self.notify.assert_not_called()
+
     def test_zero_means_unlimited_and_is_preserved(self):
         with clean_limit_env():
             limits = night_runner.resolve_limits(
@@ -768,6 +794,7 @@ class BuildClaudeArgvTest(unittest.TestCase):
             argv = night_runner.build_claude_argv("p", self._limits())
         self.assertEqual(argv[argv.index("--model") + 1], "sonnet")
         self.assertEqual(argv[argv.index("--effort") + 1], "medium")
+        self.assertEqual(argv[argv.index("--autocompact") + 1], "150k")
         self.assertEqual(argv[argv.index("--max-budget-usd") + 1], "8.0")
 
     def test_unsupported_flags_are_dropped_instead_of_crashing_the_cli(self):
@@ -789,6 +816,19 @@ class BuildClaudeArgvTest(unittest.TestCase):
         with mock.patch.object(night_runner, "claude_supported_flags", return_value=None):
             argv = night_runner.build_claude_argv("p", self._limits(model=""))
         self.assertNotIn("--model", argv)
+
+    def test_empty_autocompact_is_omitted(self):
+        with mock.patch.object(night_runner, "claude_supported_flags", return_value=None):
+            argv = night_runner.build_claude_argv("p", self._limits(autocompact=""))
+        self.assertNotIn("--autocompact", argv)
+
+    def test_unsupported_autocompact_flag_is_dropped(self):
+        supported = frozenset({"--model", "--effort", "--output-format"})
+        with mock.patch.object(night_runner, "claude_supported_flags", return_value=supported):
+            argv = night_runner.build_claude_argv("p", self._limits())
+        self.assertIn("--effort", argv)
+        self.assertNotIn("--autocompact", argv)
+        self.notify.assert_called()
 
     def test_reviewer_model_is_only_set_when_configured(self):
         without = json.loads(night_runner.reviewer_agents_json(self._limits()))

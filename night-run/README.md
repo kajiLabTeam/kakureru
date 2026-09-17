@@ -104,6 +104,7 @@ night-runの1タスクは、`claude -p`のセッションを実装〜レビュ�
 |---|---|---|
 | `model` | `sonnet` | 使用モデル。**ProにOpusは含まれない**。CLIの既定任せにすると契約・CLIバージョンによって変わるため明示する |
 | `effort` | `medium` | 1リクエストあたりの思考量(`low`/`medium`/`high`/`xhigh`/`max`) |
+| `autocompact` | `150k` | 文脈がこの大きさを超えたら要約へ置き換える(`auto`、または100k〜1M。空で指定しない)。1タスクは最大60分走るので、放っておくと文脈が伸び続け、その全部を毎リクエスト読み直すことになる |
 | `reviewer_model` | (空) | reviewerサブエージェントのモデル。空なら実装と同じモデルを継承する |
 | `max_tasks_per_run` | `0`(無制限) | 1回の実行で着手するタスク数。締切(`deadline`)まで回し続ける。件数で抑えたい場合だけ指定する |
 | `max_review_rounds` | `2` | reviewerサイクルの最大ラウンド数。ここに到達したらdraft PRで打ち切る |
@@ -123,14 +124,15 @@ night-runの1タスクは、`claude -p`のセッションを実装〜レビュ�
 {
   "deadline": "2026-09-16T06:00:00+09:00",
   "hard_limit": "2026-09-16T07:30:00+09:00",
-  "limits": { "model": "sonnet", "effort": "medium", "max_tasks_per_run": 0,
+  "limits": { "model": "sonnet", "effort": "medium", "autocompact": "150k",
+              "max_tasks_per_run": 0,
               "max_review_rounds": 2, "max_task_minutes": 60,
               "max_budget_usd_per_task": 8, "max_total_budget_usd": 50 },
   "tasks": [ ... ]
 }
 ```
 
-その場限りで上書きしたいときだけ環境変数を使う(`NIGHT_RUN_MODEL` / `NIGHT_RUN_EFFORT` / `NIGHT_RUN_REVIEWER_MODEL` / `NIGHT_RUN_MAX_TASKS` / `NIGHT_RUN_MAX_REVIEW_ROUNDS` / `NIGHT_RUN_MAX_TASK_MINUTES` / `NIGHT_RUN_MAX_BUDGET_USD` / `NIGHT_RUN_MAX_TOTAL_BUDGET_USD`)。例:
+その場限りで上書きしたいときだけ環境変数を使う(`NIGHT_RUN_MODEL` / `NIGHT_RUN_EFFORT` / `NIGHT_RUN_AUTOCOMPACT` / `NIGHT_RUN_REVIEWER_MODEL` / `NIGHT_RUN_MAX_TASKS` / `NIGHT_RUN_MAX_REVIEW_ROUNDS` / `NIGHT_RUN_MAX_TASK_MINUTES` / `NIGHT_RUN_MAX_BUDGET_USD` / `NIGHT_RUN_MAX_TOTAL_BUDGET_USD`)。例:
 
 ```sh
 source ~/.night-run-secrets.env && NIGHT_RUN_MAX_TASKS=1 night-run/run.sh start

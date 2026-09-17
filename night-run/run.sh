@@ -34,6 +34,7 @@
 # exportされているときだけコンテナへ渡され、stateの設定より優先される):
 #   NIGHT_RUN_MODEL                  使用モデル(既定 sonnet。ProにOpusは含まれない)
 #   NIGHT_RUN_EFFORT                 low|medium|high|xhigh|max(既定 medium)
+#   NIGHT_RUN_AUTOCOMPACT            文脈の自動圧縮しきい値(既定 150k、auto可、空で指定しない)
 #   NIGHT_RUN_REVIEWER_MODEL         reviewerサブエージェントのモデル(未指定なら実装と同じ)
 #   NIGHT_RUN_MAX_TASKS              1回の実行で着手するタスク数(既定 0=無制限。締切まで回す)
 #   NIGHT_RUN_MAX_REVIEW_ROUNDS      レビューの最大ラウンド数(既定 2)
@@ -140,7 +141,7 @@ PYEOF
         # exportされているときだけ渡す。ここで既定値を埋めてしまうと、
         # night_runner.pyの優先順位(環境変数 > stateの"limits" > 既定値)により
         # 環境変数が常に勝ち、ヒアリングSkillがstateに書いた設定が黙って無視される。
-        for name in NIGHT_RUN_MODEL NIGHT_RUN_EFFORT NIGHT_RUN_REVIEWER_MODEL \
+        for name in NIGHT_RUN_MODEL NIGHT_RUN_EFFORT NIGHT_RUN_AUTOCOMPACT NIGHT_RUN_REVIEWER_MODEL \
                     NIGHT_RUN_MAX_TASKS NIGHT_RUN_MAX_REVIEW_ROUNDS NIGHT_RUN_MAX_TASK_MINUTES \
                     NIGHT_RUN_MAX_BUDGET_USD NIGHT_RUN_MAX_TOTAL_BUDGET_USD; do
             if [ -n "${!name:-}" ]; then

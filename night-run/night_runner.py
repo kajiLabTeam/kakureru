@@ -52,6 +52,7 @@ MAX_BACKOFF_SECONDS = 1800      # 9.10節: 1回あたりの待機を最大30分�
 DEFAULT_LIMITS = {
     "model": "sonnet",              # Proでは Opus は使えない。CLI既定任せにしない
     "effort": "medium",             # 1リクエストあたりの思考量
+    "autocompact": "150k",          # 文脈がこの大きさを超えたら要約に置き換える(空で指定しない)
     "reviewer_model": "",           # 空ならセッションのモデルを継承する
     "max_tasks_per_run": 0,         # 1回の実行で着手するタスク数(0で無制限=締切まで回す)
     "max_review_rounds": 2,         # reviewerサイクルの最大ラウンド数
@@ -63,6 +64,7 @@ DEFAULT_LIMITS = {
 LIMIT_ENV_VARS = {
     "model": "NIGHT_RUN_MODEL",
     "effort": "NIGHT_RUN_EFFORT",
+    "autocompact": "NIGHT_RUN_AUTOCOMPACT",
     "reviewer_model": "NIGHT_RUN_REVIEWER_MODEL",
     "max_tasks_per_run": "NIGHT_RUN_MAX_TASKS",
     "max_review_rounds": "NIGHT_RUN_MAX_REVIEW_ROUNDS",
@@ -72,6 +74,12 @@ LIMIT_ENV_VARS = {
 }
 
 VALID_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+# claude --autocompact が受け付ける範囲。1タスク最大60分のあいだ1セッションが
+# 伸び続けると、文脈の読み直しだけで枠を食う(対話側の実測では1往復あたり約1.3k
+# ずつ増え、700往復で767kに達していた)。ここで頭打ちにする。
+AUTOCOMPACT_MIN_TOKENS = 100_000
+AUTOCOMPACT_MAX_TOKENS = 1_000_000
 
 REVIEWER_AGENT_DEFINITION = {
     "reviewer": {
@@ -160,6 +168,23 @@ def _slug(text):
 
 
 # --- 消費量の設定解決(環境変数 > state["limits"] > DEFAULT_LIMITS) ---
+def _valid_autocompact(value):
+    """claude --autocompact に渡せる値かどうか。'auto' か 100k〜1M のトークン数
+    (末尾のk表記も可)だけを通す。CLIが弾く値をそのまま渡すと、人が見ていない
+    夜間にclaude -pが起動直後に落ちて1タスク丸ごと無駄になる。"""
+    text = str(value).strip().lower()
+    if text == "auto":
+        return True
+    scale = 1
+    if text.endswith("k"):
+        text, scale = text[:-1], 1000
+    try:
+        tokens = int(text) * scale
+    except ValueError:
+        return False
+    return AUTOCOMPACT_MIN_TOKENS <= tokens <= AUTOCOMPACT_MAX_TOKENS
+
+
 def _coerce_limit(key, raw, source):
     """設定値をDEFAULT_LIMITSと同じ型へ寄せる。
 
@@ -173,6 +198,13 @@ def _coerce_limit(key, raw, source):
             notify_human(
                 f"設定 effort の値 '{value}'({source})は未知の値のため既定値 '{default}' を使います"
                 f"(有効な値: {', '.join(VALID_EFFORTS)})。"
+            )
+            return default
+        if key == "autocompact" and value and not _valid_autocompact(value):
+            notify_human(
+                f"設定 autocompact の値 '{value}'({source})は解釈できないため既定値 '{default}' を使います"
+                f"(有効な値: auto、または{AUTOCOMPACT_MIN_TOKENS:,}〜{AUTOCOMPACT_MAX_TOKENS:,}トークン。"
+                f"'150k' の表記も可)。"
             )
             return default
         return value
@@ -212,6 +244,7 @@ def describe_limits(limits):
     reviewer = limits.get("reviewer_model") or "実装と同じモデル"
     return (
         f"model={limits['model']} / effort={limits['effort']} / "
+        f"autocompact={limits['autocompact'] or '指定しない'} / "
         f"reviewer={reviewer} / "
         f"1回のタスク数上限={limits['max_tasks_per_run'] or '無制限'} / "
         f"1タスク{limits['max_task_minutes'] or '無制限'}分 / "
@@ -800,6 +833,7 @@ def build_claude_argv(prompt, limits):
     optional = [
         ("--model", str(limits.get("model") or "").strip()),
         ("--effort", str(limits.get("effort") or "").strip()),
+        ("--autocompact", str(limits.get("autocompact") or "").strip()),
         ("--max-budget-usd", _format_optional_number(limits.get("max_budget_usd_per_task"))),
     ]
     supported = claude_supported_flags()
