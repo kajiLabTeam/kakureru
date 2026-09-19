@@ -163,9 +163,16 @@ class GameResultPage extends HookConsumerWidget {
                         ),
                       const SizedBox(height: 8),
                       OutlinedButton(
-                        onPressed: () => Navigator.of(
-                          context,
-                        ).popUntil((route) => route.isFirst),
+                        onPressed: () {
+                          debugPrint(
+                            '[GameResultPage] home button pressed '
+                            'canPop=${Navigator.of(context).canPop()}',
+                          );
+                          Navigator.of(
+                            context,
+                          ).popUntil((route) => route.isFirst);
+                          debugPrint('[GameResultPage] popUntil called');
+                        },
                         child: const Text('ホームに戻る'),
                       ),
                     ],

@@ -184,11 +184,18 @@ class GamePage extends HookConsumerWidget {
       );
       if (!gameOver) return null;
       hasNavigatedToResult.value = true;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => GameResultPage(roomId: roomId),
-        ),
-      );
+      // useEffectはビルド直後に同期実行されるため、ここで即座にNavigatorを
+      // 操作すると「ビルド中にNavigator操作をした」というエラーになり、
+      // Navigatorが以降ずっと操作不能になる(useRestartRecoveryと同じ理由。
+      // restart_recovery.dartのコメント参照)。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => GameResultPage(roomId: roomId),
+          ),
+        );
+      });
       return null;
     }, [room?.status, room?.endsAt, tick.value, showCaughtTransition.value]);
 
