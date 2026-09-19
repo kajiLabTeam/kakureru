@@ -51,10 +51,15 @@ void useRestartRecovery(
   // しないため、そこでWAITINGを観測するのは巻き戻し以外にあり得ず、
   // 状態ベースにしても誤検知しない(再入はhasHandledで防ぐ)。
   useEffect(() {
+    debugPrint(
+      '[useRestartRecovery] effect run roomId=$roomId '
+      'hasHandled=${hasHandled.value} status=${roomAsync.value?.status}',
+    );
     if (hasHandled.value) return null;
     final room = roomAsync.value;
     if (room == null || room.status != RoomStatus.waiting) return null;
     hasHandled.value = true;
+    debugPrint('[useRestartRecovery] waiting detected, will navigate');
 
     final myUid = ref.read(myUidProvider);
     final myself = myUid == null ? null : _findUser(room.users, myUid);
@@ -71,10 +76,14 @@ void useRestartRecovery(
     // useEffectはビルド直後に同期実行されるため、ここで即座にNavigatorを
     // 操作すると「ビルド中にNavigator操作をした」というエラーになる。
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint(
+        '[useRestartRecovery] postFrameCallback fired mounted=${context.mounted}',
+      );
       if (!context.mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => RoomWaitingPage(roomId: roomId)),
       );
+      debugPrint('[useRestartRecovery] pushReplacement called');
     });
     return null;
   }, [roomAsync.value]);
