@@ -26,7 +26,10 @@ void main() {
     });
 
     test('トリム後11文字はtooLong', () {
-      expect(validatePlayerName('a' * (playerNameMaxLength + 1)), PlayerNameError.tooLong);
+      expect(
+        validatePlayerName('a' * (playerNameMaxLength + 1)),
+        PlayerNameError.tooLong,
+      );
     });
 
     test('前後の空白を含めると超過するがトリム後は有効なら有効', () {

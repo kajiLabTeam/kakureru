@@ -20,7 +20,8 @@ abstract class UserLocation with _$UserLocation {
 
   const UserLocation._();
 
-  factory UserLocation.fromJson(Map<String, dynamic> json) => _$UserLocationFromJson(json);
+  factory UserLocation.fromJson(Map<String, dynamic> json) =>
+      _$UserLocationFromJson(json);
 
   /// RTDBの locations/{uid} は uid がパスのキーであり値の中には無いため、
   /// 呼び出し側から uid を別途渡して合成する(RoomUser.fromMapと同じ理由)。
