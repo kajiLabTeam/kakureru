@@ -142,11 +142,16 @@ class LocationViewModel extends Notifier<LocationState> {
     }
   }
 
-  /// ゲーム画面を離れた時に呼ぶ。送信・購読を止める。
+  /// ゲーム画面を離れた時に呼ぶ。送信・購読を止め、前のルームの位置を捨てる。
+  ///
+  /// このproviderはアプリの生存期間ずっと生きているため、locationsを残すと
+  /// 次のルームに入った直後、まだ購読が始まっていない間に「別の公園にいた
+  /// ときの自分の最後の位置」が新しいルームのエリアと突き合わされ、開始
+  /// 直後にエリア外アラートが誤報を出す。
   void stop() {
     _epoch++;
     _disposeSubscriptions();
-    state = state.copyWith(isSending: false);
+    state = state.copyWith(isSending: false, locations: const []);
   }
 
   void _disposeSubscriptions() {
