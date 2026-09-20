@@ -7,7 +7,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
-import 'package:kakureru/core/utils/duration_format.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
@@ -32,6 +31,7 @@ import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
 import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/game/become_demon_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_confirm_dialog.dart';
+import 'package:kakureru/features/room/view/game/game_header_bar.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
 import 'package:kakureru/features/room/view/game/game_status_cards.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
@@ -273,37 +273,12 @@ class GamePage extends HookConsumerWidget {
       child: Stack(
         children: [
           Scaffold(
-            // UI改修モック(2a-03/2a-04)はヘッダーの帯1本に役割文言と
-            // タイマーを左右に並べて同居させている。以前はAppBarのtitleに
-            // 役割文言だけを出し、タイマーは本文側の別行に分けていたが、
-            // 本文側は毎秒rebuildされるため、そのつどAppBarのtitleだけ
-            // 文言色が上書きされない不具合が起きていた経緯もあり、ここで
-            // 1つのRowにまとめて明示的に色を指定する。
-            appBar: AppBar(
-              automaticallyImplyLeading: false,
-              backgroundColor: headerRoleTheme?.color,
-              foregroundColor: headerRoleTheme != null ? Colors.white : null,
-              title: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    headerRoleTheme?.label ?? 'ゲーム中',
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
-                  ),
-                  if (headerRoleTheme != null)
-                    Text(
-                      countdownSec == null
-                          ? '--:--'
-                          : formatCountdown(countdownSec),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.w700,
-                        fontSize: 19,
-                      ),
-                    ),
-                ],
-              ),
+            // 役割文言と残り時間の帯。文字サイズなど見た目の細部は
+            // GameHeaderBar側にある(widgetテストを書けるようにするため
+            // 切り出している)。
+            appBar: GameHeaderBar(
+              roleTheme: headerRoleTheme,
+              countdownSec: countdownSec,
               // デバッグビルド限定の、偽プレイヤーの表示/非表示トグル
               // (issue #67)。RTDBには一切書かず、この端末の画面にだけ
               // 偽の相手を足す。kDebugModeがfalseのリリースビルドでは
@@ -583,6 +558,7 @@ class GamePage extends HookConsumerWidget {
                         child: OpponentSelectorChips(
                           roster: opponentRoster,
                           entries: visibleWifiEntries,
+                          verticalPositions: visibleVerticalPositions,
                           selectedUid: effectiveSelectedUid,
                           onSelect: (uid) => selectedOpponentUid.value = uid,
                         ),

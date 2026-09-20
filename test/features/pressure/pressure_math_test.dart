@@ -115,4 +115,65 @@ void main() {
       expect(verticalDotFraction(-5, rangeMeters: 5), closeTo(0, 1e-9));
     });
   });
+
+  group('relativeHeightOf', () {
+    test('差が閾値を超えて正なら、相手が上', () {
+      expect(relativeHeightOf(8), RelativeHeight.above);
+    });
+
+    test('差が閾値を超えて負なら、相手が下', () {
+      expect(relativeHeightOf(-8), RelativeHeight.below);
+    });
+
+    test('差が小さければ「同じ高さ」', () {
+      expect(relativeHeightOf(0), RelativeHeight.same);
+      expect(relativeHeightOf(1.5), RelativeHeight.same);
+      expect(relativeHeightOf(-1.5), RelativeHeight.same);
+    });
+
+    test('境界(ちょうど閾値)は「同じ高さ」に倒す', () {
+      // 境界で方向を言い切らない、という意図を固定する。
+      expect(relativeHeightOf(sameHeightThresholdMeters), RelativeHeight.same);
+      expect(relativeHeightOf(-sameHeightThresholdMeters), RelativeHeight.same);
+      // わずかでも超えたら方向が付く。
+      expect(
+        relativeHeightOf(sameHeightThresholdMeters + 0.01),
+        RelativeHeight.above,
+      );
+    });
+
+    test('閾値は呼び出し側で変えられる', () {
+      expect(relativeHeightOf(3, sameThresholdMeters: 5), RelativeHeight.same);
+      expect(relativeHeightOf(3, sameThresholdMeters: 1), RelativeHeight.above);
+    });
+  });
+
+  group('hectoPascalDiffOf', () {
+    test('calculateRelativeHeightMetersで作った差を、元のhPa差へ割り戻せる', () {
+      // 画面に出すhPaの数値はこの往復で作る。データ層にhPa差を持たせずに
+      // 済んでいる根拠なので、往復で戻ることをテストで固定しておく。
+      const selfPressure = 1013.25;
+      const targetPressure = 1012.90;
+      final meters = calculateRelativeHeightMeters(
+        selfPressureHPa: selfPressure,
+        selfOffsetHPa: 0,
+        targetPressureHPa: targetPressure,
+        targetOffsetHPa: 0,
+      );
+
+      expect(
+        hectoPascalDiffOf(meters),
+        closeTo(selfPressure - targetPressure, 1e-9),
+      );
+    });
+
+    test('符号は落として大きさだけを返す(向きはrelativeHeightOfが持つ)', () {
+      expect(hectoPascalDiffOf(metersPerHectoPascal), closeTo(1, 1e-9));
+      expect(hectoPascalDiffOf(-metersPerHectoPascal), closeTo(1, 1e-9));
+    });
+
+    test('差が無ければ0', () {
+      expect(hectoPascalDiffOf(0), 0);
+    });
+  });
 }
