@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
@@ -27,6 +28,9 @@ void useGameSession(
     return () => ref.read(locationViewModelProvider.notifier).stop();
   }, [roomId]);
 
+  // 位置送信に失敗していたら、アプリへ戻ってきたタイミングで貼り直す。
+  useLocationRetryOnResume(ref, roomId: roomId);
+
   // 気圧の送信。センサー購読自体は待機画面のキャリブレーションで既に
   // 始まっている想定(PressureViewModel.initは判定済みなら再判定しない)。
   useEffect(() {
@@ -53,4 +57,26 @@ void useGameSession(
     ref.read(bleViewModelProvider.notifier).start(myUid);
     return () => ref.read(bleViewModelProvider.notifier).stop();
   }, [myUid]);
+}
+
+/// 位置送信に失敗した状態のままアプリを離れ、設定で許可して戻ってきたときに
+/// 送信を貼り直すフック。
+///
+/// 「常に許可」を必須ゲートにしていた頃は初回だけ必ずここで詰まっていたが
+/// (issue #66)、ゲートを外した後も、最初のダイアログで拒否した人・端末の
+/// 位置情報がOFFだった人は同じ状態になる。[useGameSession]の位置のeffectは
+/// 依存配列が[roomId]だけなので、同じ部屋に居る限り二度とstart()されない。
+/// ゲームを抜けて入り直さないと直せないのでは対戦中に実質直せないため、
+/// 復帰(resumed)を拾って1回だけ呼び直す。
+///
+/// 成功している間(permissionDenied / sendingFailed がどちらもfalse)は何も
+/// しない。start()を無駄に呼ぶとForeground Serviceを止めて起動し直すことに
+/// なり、送信が一瞬途切れるため。
+void useLocationRetryOnResume(WidgetRef ref, {required String roomId}) {
+  useOnAppLifecycleStateChange((previous, current) {
+    if (current != AppLifecycleState.resumed) return;
+    final location = ref.read(locationViewModelProvider);
+    if (!location.permissionDenied && !location.sendingFailed) return;
+    ref.read(locationViewModelProvider.notifier).start(roomId);
+  });
 }
