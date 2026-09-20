@@ -44,7 +44,7 @@ dependencies:
   # HookConsumerWidget で hooks と Riverpod を同じウィジェットで使える。
   hooks_riverpod: ^3.4.2
   json_annotation: ^4.9.0
-  permission_handler: ^11.3.1
+  permission_handler: ^13.0.2
   shared_preferences: ^2.5.5
   sensors_plus: ^6.1.1
   wifi_scan: ^0.4.1
