@@ -16,9 +16,6 @@ import 'package:latlong2/latlong.dart' as latlong;
 /// 表示は「約◯m」なので丸めで困らず、猶予距離(数十m)の判定にも影響しない。
 const _distance = latlong.Distance();
 
-/// 8方位の日本語ラベル。北から時計回りに45度刻み。
-const _compassLabels = ['北', '北東', '東', '南東', '南', '南西', '西', '北西'];
-
 /// 座標が完全に一致しなくても「辺の上」「頂点の上」とみなす許容誤差(度)。
 ///
 /// 1e-12度は赤道上で約0.1マイクロメートルに相当し、GPSの精度から見れば
@@ -62,8 +59,8 @@ bool isInsideArea({required List<LatLng> area, required LatLng point}) {
 /// 「戻る先」は多角形の各辺への最短点。頂点の外側にいる場合は自動的に
 /// その頂点が最短点になる(線分への射影をクランプしているため)。
 ///
-/// `bearingDegrees`は北=0・東=90の時計回り0〜360度。そのまま[compassLabel]に
-/// 渡せば8方位の日本語になる。
+/// `bearingDegrees`は北=0・東=90の時計回り0〜360度。エリア外アラートの
+/// 矢印(`OutsideAreaMapOverlay`)が、そのまま回転角として使う。
 ({double meters, double bearingDegrees})? describeReturnToArea({
   required List<LatLng> area,
   required LatLng point,
@@ -77,25 +74,6 @@ bool isInsideArea({required List<LatLng> area, required LatLng point}) {
     meters: _distance.distance(from, to),
     bearingDegrees: latlong.normalizeBearing(_distance.bearing(from, to)),
   );
-}
-
-/// 方位角(度)を8方位の日本語ラベルへ変換する。0→「北」、315→「北西」。
-///
-/// 45度ごとの境界は四捨五入で決める(22.5度未満は「北」、22.5度以上は
-/// 「北東」)。0〜360の範囲外の値が来ても正規化して扱う。
-String compassLabel(double bearingDegrees) {
-  final normalized = latlong.normalizeBearing(bearingDegrees);
-  return _compassLabels[(normalized / 45).round() % _compassLabels.length];
-}
-
-/// 「エリアまで約◯m」に出す距離の文字列。
-///
-/// 数十メートル単位でしか意味を持たない情報なので、小数は出さない。
-/// 1km以上離れている場合(ゲーム中には起きにくいが、エリアを離れたまま
-/// 移動した場合など)だけkm表記に切り替える。
-String formatReturnDistance(double meters) {
-  if (meters >= 1000) return '${(meters / 1000).toStringAsFixed(1)}km';
-  return '${meters.round()}m';
 }
 
 /// 境界からこの距離(m)以上はみ出して初めて警告を出す(猶予距離)。

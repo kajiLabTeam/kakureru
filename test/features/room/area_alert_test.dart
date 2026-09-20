@@ -144,7 +144,6 @@ void main() {
       // 北緯35度で経度0.001度は約91m。
       expect(result.meters, closeTo(91, 3));
       expect(result.bearingDegrees, closeTo(270, 0.5));
-      expect(compassLabel(result.bearingDegrees), '西');
     });
 
     test('北へはみ出したら、南向き・北辺までの距離を返す', () {
@@ -155,7 +154,6 @@ void main() {
       // 緯度0.001度は約111m。
       expect(result.meters, closeTo(111, 3));
       expect(result.bearingDegrees, closeTo(180, 0.5));
-      expect(compassLabel(result.bearingDegrees), '南');
     });
 
     test('角の外側では、最も近い頂点へ戻る向きになる', () {
@@ -165,7 +163,9 @@ void main() {
       )!;
       // 北東の頂点(35.002, 135.002)へ戻るので、南西向き・約144m。
       expect(result.meters, closeTo(144, 4));
-      expect(compassLabel(result.bearingDegrees), '南西');
+      // 南西の方角(202.5〜247.5度)。北緯35度では経度1度の方が短いので、
+      // 対角はちょうど225度にはならない。
+      expect(result.bearingDegrees, inInclusiveRange(202.5, 247.5));
     });
 
     test('遠ざかるほど距離が伸びる', () {
@@ -177,50 +177,6 @@ void main() {
     });
   });
 
-  group('compassLabel', () {
-    test('8方位の代表値', () {
-      expect(compassLabel(0), '北');
-      expect(compassLabel(45), '北東');
-      expect(compassLabel(90), '東');
-      expect(compassLabel(135), '南東');
-      expect(compassLabel(180), '南');
-      expect(compassLabel(225), '南西');
-      expect(compassLabel(270), '西');
-      expect(compassLabel(315), '北西');
-    });
-
-    test('45度の境目は四捨五入で決まる', () {
-      expect(compassLabel(22.4), '北');
-      expect(compassLabel(22.5), '北東');
-      expect(compassLabel(67.4), '北東');
-      expect(compassLabel(67.5), '東');
-    });
-
-    test('360度付近は「北」に回り込む', () {
-      expect(compassLabel(337.5), '北');
-      expect(compassLabel(359.9), '北');
-      expect(compassLabel(360), '北');
-    });
-
-    test('0〜360の範囲外でも正規化して扱う', () {
-      expect(compassLabel(-45), '北西');
-      expect(compassLabel(-90), '西');
-    });
-  });
-
-  group('formatReturnDistance', () {
-    test('1km未満はm表記で小数を出さない', () {
-      expect(formatReturnDistance(40), '40m');
-      expect(formatReturnDistance(40.4), '40m');
-      expect(formatReturnDistance(40.6), '41m');
-      expect(formatReturnDistance(999.4), '999m');
-    });
-
-    test('1km以上はkm表記に切り替わる', () {
-      expect(formatReturnDistance(1000), '1.0km');
-      expect(formatReturnDistance(1540), '1.5km');
-    });
-  });
   group('observeOutsideArea', () {
     // サーバー時刻のつもりの固定値(実際の値に意味は無い)。
     const nowMillis = 1800000000000;
@@ -256,7 +212,7 @@ void main() {
       );
       expect(observation.status, OutsideAreaStatus.outside);
       expect(observation.outsideMeters, closeTo(111, 1));
-      expect(compassLabel(observation.bearingDegrees), '南');
+      expect(observation.bearingDegrees, closeTo(180, 0.5));
       expect(observation.accuracyMeters, 7);
       expect(observation.updatedAt, nowMillis);
     });

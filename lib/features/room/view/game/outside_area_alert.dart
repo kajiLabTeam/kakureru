@@ -146,49 +146,12 @@ class OutsideAreaMapOverlay extends StatelessWidget {
   }
 }
 
-/// 地図の下部に重ねる「エリアまで約◯m ・ ◯へ戻ってください」のカード
-/// (UI改修モック2a-07)。
-///
-/// 位置(地図のどこに重ねるか)は呼び出し側が決める。カード自体は幅いっぱいに
-/// 広がるただの帯なので、[Positioned]でも[Align]でも置ける。
-class ReturnToAreaCard extends StatelessWidget {
-  /// [meters]と[bearingDegrees]は`describeReturnToArea`の戻り値をそのまま渡す。
-  const ReturnToAreaCard({
-    super.key,
-    required this.meters,
-    required this.bearingDegrees,
-  });
-
-  /// エリアの境界までの距離(m)。
-  final double meters;
-
-  /// エリアへ戻る方位(度)。8方位の日本語に直して出す。
-  final double bearingDegrees;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: Text(
-        'エリアまで約 ${formatReturnDistance(meters)} ・ '
-        '${compassLabel(bearingDegrees)}へ戻ってください',
-        style: const TextStyle(fontSize: 11, color: Color(0xFF555555)),
-      ),
-    );
-  }
-}
-
 /// 画面に出すエリア外アラートの中身。警告していないときはnullを使う。
 ///
 /// `meters`と`bearingDegrees`は「いま判定に使える新しい位置がある」ときだけ
 /// 入る。古い位置は判定に使わない(`observeOutsideArea`)ため、警告を保った
 /// まま距離と方位だけ分からなくなる瞬間があり、そのときは両方nullになる。
-typedef OutsideAreaAlert = ({double? meters, double? bearingDegrees});
+typedef OutsideAreaAlert = ({double? bearingDegrees});
 
 /// 猶予判定の結果と観測から、画面に出すアラートの中身を決める。
 ///
@@ -196,7 +159,7 @@ typedef OutsideAreaAlert = ({double? meters, double? bearingDegrees});
 /// 渡すこと。GamePageは「判定が警告」かつ「本文がroomのdataを描いている」
 /// ときだけtrueにしており、同じ値を振動・通知の条件にも使っている。
 ///
-/// 警告中でも、判定に使える新しい位置が無ければ距離と方位はnullにする
+/// 警告中でも、判定に使える新しい位置が無ければ方位はnullにする
 /// (古い位置のまま矢印を出すと、違う方向へ歩かせることになるため)。
 OutsideAreaAlert? outsideAreaAlertOf({
   required bool isWarning,
@@ -204,29 +167,18 @@ OutsideAreaAlert? outsideAreaAlertOf({
 }) {
   if (!isWarning) return null;
   if (observation.status != OutsideAreaStatus.outside) {
-    return (meters: null, bearingDegrees: null);
+    return (bearingDegrees: null);
   }
-  return (
-    meters: observation.outsideMeters,
-    bearingDegrees: observation.bearingDegrees,
-  );
+  return (bearingDegrees: observation.bearingDegrees);
 }
-
-/// 地図の下端から、戻り方カードを浮かせる高さ。
-///
-/// 地図タイルの帰属表示(`buildMapAttribution`)は右下に出ており、常設部分は
-/// 48pxのアイコンボタン+上下4pxの余白で約56px分の高さを占める。カードを
-/// 下端に置くとこのボタンを覆ってしまい、OSMとCARTOのクレジットを開けなく
-/// なる(利用条件上どちらの表示も必須。game_map_options.dart参照)。
-const _returnCardBottomInset = 58.0;
 
 /// 地図とエリア外アラートを重ねた、ゲーム画面の地図領域。
 ///
 /// **アラートは地図の上に重ねるだけで、レイアウトの高さを取らない。**
-/// 赤帯をbodyのColumnに足すと、その60px分だけ地図と下のカードが押し出され、
-/// 小さい画面や大きいフォント設定では`Expanded`が0になって、肝心の矢印と
-/// 「エリアまで約◯m」のカードごと画面外へ消える。表示/非表示でレイアウトを
-/// 動かさない、という考え方はissue #43(become_demon_button)と同じ。
+/// 赤帯をbodyのColumnに足すと、その60px分だけ地図と下の相手選択カードが
+/// 押し出され、小さい画面や大きいフォント設定では`Expanded`が0になって
+/// 地図ごと潰れる。表示/非表示でレイアウトを動かさない、という考え方は
+/// issue #43(become_demon_button)と同じ。
 ///
 /// [alert]がnullなら地図だけを返す。「出す/出さない」の分岐をここに
 /// 閉じ込めているので、呼び出し側(GamePage)もテストも同じ配線を通る。
@@ -247,14 +199,15 @@ class OutsideAreaAlertMap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final alert = this.alert;
-    final meters = alert?.meters;
     final bearingDegrees = alert?.bearingDegrees;
     return Stack(
       children: [
         map,
         // エリアの破線境界と外側の暗転はGameLocationMapが既に描いている。
         // ここに重ねるのは、エリア外のときだけ出す赤かぶせ・方向矢印・
-        // 赤帯・戻り方カード(UI改修モック2a-07)。
+        // 赤帯(UI改修モック2a-07)。モックにある「エリアまで約◯m・◯へ
+        // 戻ってください」のカードは、方向が矢印で分かり文字が重複する
+        // ため入れていない。
         if (alert != null) ...[
           Positioned.fill(
             child: OutsideAreaMapOverlay(bearingDegrees: bearingDegrees),
@@ -265,20 +218,6 @@ class OutsideAreaAlertMap extends StatelessWidget {
             right: 0,
             child: OutsideAreaBanner(),
           ),
-          if (meters != null && bearingDegrees != null)
-            Positioned(
-              left: 14,
-              right: 14,
-              bottom: _returnCardBottomInset,
-              // 地図のパン・ズームを邪魔しないよう、カードもタップを
-              // 素通りさせる。
-              child: IgnorePointer(
-                child: ReturnToAreaCard(
-                  meters: meters,
-                  bearingDegrees: bearingDegrees,
-                ),
-              ),
-            ),
         ],
       ],
     );

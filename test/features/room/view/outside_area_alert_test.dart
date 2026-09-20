@@ -144,16 +144,6 @@ void main() {
     expect(border.top.color, isNot(outsideAreaAlertColor));
   });
 
-  testWidgets('カードに「エリアまで約◯m ・ ◯へ戻ってください」が出る', (tester) async {
-    await tester.pumpWidget(
-      host(
-        const Center(child: ReturnToAreaCard(meters: 40, bearingDegrees: 315)),
-      ),
-    );
-
-    expect(find.text('エリアまで約 40m ・ 北西へ戻ってください'), findsOneWidget);
-  });
-
   testWidgets('地図オーバーレイは赤の半透明を敷き、方位ぶん矢印を回す', (tester) async {
     await tester.pumpWidget(
       host(
@@ -199,16 +189,15 @@ void main() {
     );
   });
 
-  testWidgets('位置が古くて方位が出せないときは、矢印とカードを出さない', (tester) async {
+  testWidgets('位置が古くて方位が出せないときは、矢印を出さない', (tester) async {
     await pumpMapArea(
       tester,
-      alert: const (meters: null, bearingDegrees: null),
+      alert: const (bearingDegrees: null),
     );
 
     expect(find.byType(OutsideAreaBanner), findsOneWidget);
     expect(find.byType(OutsideAreaMapOverlay), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward), findsNothing);
-    expect(find.byType(ReturnToAreaCard), findsNothing);
   });
 
   testWidgets('エリアの内側なら、配線を通してもアラートは何も出ない', (tester) async {
@@ -219,20 +208,20 @@ void main() {
 
     expect(find.byType(OutsideAreaBanner), findsNothing);
     expect(find.byType(OutsideAreaMapOverlay), findsNothing);
-    expect(find.byType(ReturnToAreaCard), findsNothing);
     expect(find.textContaining('プレイエリアの外です'), findsNothing);
     expect(find.textContaining('戻ってください'), findsNothing);
   });
 
-  testWidgets('エリアの外なら、配線を通して赤帯・赤かぶせ・カードが揃って出る', (tester) async {
+  testWidgets('エリアの外なら、配線を通して赤帯・赤かぶせ・矢印が揃って出る', (tester) async {
     // 北へ約111mはみ出した位置。南へ戻る。
     final alert = alertFor(lat: 35.003, lng: 135.001, accuracy: 5);
     await pumpMapArea(tester, alert: alert);
 
     expect(find.byType(OutsideAreaBanner), findsOneWidget);
     expect(find.byType(OutsideAreaMapOverlay), findsOneWidget);
-    expect(find.textContaining('南へ戻ってください'), findsOneWidget);
-    expect(find.textContaining('エリアまで約 111m'), findsOneWidget);
+    // 戻る方向は矢印だけで示す(距離と方角の文言は出さない)。
+    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
+    expect(find.textContaining('戻ってください'), findsNothing);
   });
 
   testWidgets('アラートを出しても、地図と下のカードのレイアウトが動かない', (tester) async {
@@ -248,9 +237,7 @@ void main() {
             children: [
               Expanded(
                 child: buildGameMapAreaForTest(
-                  alert: withAlert
-                      ? const (meters: 111, bearingDegrees: 180)
-                      : null,
+                  alert: withAlert ? const (bearingDegrees: 180) : null,
                   myUid: myUid,
                   users: users,
                   gameArea: area,
@@ -271,21 +258,6 @@ void main() {
     expect(withAlert, withoutAlert);
     expect(tester.takeException(), isNull);
     // アラートを出している状態でも、地図の上の表示が画面内に収まっている。
-    expect(find.byType(ReturnToAreaCard), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
-  });
-
-  testWidgets('戻り方カードは地図の帰属表示(OSM/CARTO)のボタンを覆わない', (tester) async {
-    await pumpMapArea(
-      tester,
-      alert: const (meters: 111, bearingDegrees: 180),
-    );
-
-    final card = tester.getRect(find.byType(ReturnToAreaCard));
-    // 帰属表示の常設ボタン(タップでOSMとCARTOのクレジットが開く)。
-    final attributionButton = tester.getRect(
-      find.byIcon(Icons.info_outlined),
-    );
-    expect(card.overlaps(attributionButton), isFalse);
   });
 }
