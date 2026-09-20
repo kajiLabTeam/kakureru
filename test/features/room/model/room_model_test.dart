@@ -5,29 +5,26 @@ import 'package:kakureru/features/room/model/room_user.dart';
 
 void main() {
   group('RoomSetting', () {
-    test(
-      'fromMap parses RTDB-shaped Map<dynamic, dynamic> including gameArea',
-      () {
-        final Map<dynamic, dynamic> raw = {
-          'gameArea': [
-            {'lat': 35.0, 'lng': 139.0},
-            {'lat': 35.1, 'lng': 139.1},
-          ],
-          'releaseWaitSec': 30,
-          'gameDurationSec': 900,
-          'photoIntervalSec': 120,
-          'fugitiveInfoDelaySec': 45,
-          'senseDistanceRadiusM': 80,
-        };
+    test('fromMap parses RTDB-shaped Map<dynamic, dynamic> including gameArea', () {
+      final Map<dynamic, dynamic> raw = {
+        'gameArea': [
+          {'lat': 35.0, 'lng': 139.0},
+          {'lat': 35.1, 'lng': 139.1},
+        ],
+        'releaseWaitSec': 30,
+        'gameDurationSec': 900,
+        'photoIntervalSec': 120,
+        'fugitiveInfoDelaySec': 45,
+        'senseDistanceRadiusM': 80,
+      };
 
-        final setting = RoomSetting.fromMap(raw);
+      final setting = RoomSetting.fromMap(raw);
 
-        expect(setting.gameArea.length, 2);
-        expect(setting.gameArea.first.lat, 35.0);
-        expect(setting.releaseWaitSec, 30);
-        expect(setting.gameDurationSec, 900);
-      },
-    );
+      expect(setting.gameArea.length, 2);
+      expect(setting.gameArea.first.lat, 35.0);
+      expect(setting.releaseWaitSec, 30);
+      expect(setting.gameDurationSec, 900);
+    });
 
     test('fromMap falls back to defaults for missing fields', () {
       final setting = RoomSetting.fromMap({});
@@ -41,30 +38,24 @@ void main() {
       expect(setting.toMap().containsKey('updatedAt'), isFalse);
     });
 
-    test(
-      'toMap serializes gameArea as plain Maps, not raw LatLng instances',
-      () {
-        // 回帰テスト: json_serializableのデフォルト(explicitToJson: false)だと
-        // ネストしたLatLngがtoJson()されず生のオブジェクトのまま入ってしまい、
-        // Firebaseへの書き込みが「invalid argument: instance of '_LatLng'」で
-        // 失敗した(build.yamlでexplicit_to_json: trueにして修正)。
-        const setting = RoomSetting(
-          gameArea: [
-            LatLng(lat: 35.0, lng: 139.0),
-            LatLng(lat: 35.1, lng: 139.1),
-          ],
-        );
+    test('toMap serializes gameArea as plain Maps, not raw LatLng instances', () {
+      // 回帰テスト: json_serializableのデフォルト(explicitToJson: false)だと
+      // ネストしたLatLngがtoJson()されず生のオブジェクトのまま入ってしまい、
+      // Firebaseへの書き込みが「invalid argument: instance of '_LatLng'」で
+      // 失敗した(build.yamlでexplicit_to_json: trueにして修正)。
+      const setting = RoomSetting(
+        gameArea: [LatLng(lat: 35.0, lng: 139.0), LatLng(lat: 35.1, lng: 139.1)],
+      );
 
-        final map = setting.toMap();
-        final gameArea = map['gameArea'] as List;
+      final map = setting.toMap();
+      final gameArea = map['gameArea'] as List;
 
-        expect(gameArea, isNot(isA<List<LatLng>>()));
-        for (final entry in gameArea) {
-          expect(entry, isA<Map<String, dynamic>>());
-        }
-        expect(gameArea.first, {'lat': 35.0, 'lng': 139.0});
-      },
-    );
+      expect(gameArea, isNot(isA<List<LatLng>>()));
+      for (final entry in gameArea) {
+        expect(entry, isA<Map<String, dynamic>>());
+      }
+      expect(gameArea.first, {'lat': 35.0, 'lng': 139.0});
+    });
   });
 
   group('RoomUser', () {
@@ -86,10 +77,7 @@ void main() {
 
     test('fromMap defaults role to fugitive when missing or unrecognized', () {
       expect(RoomUser.fromMap('u', {}).role, UserRole.fugitive);
-      expect(
-        RoomUser.fromMap('u', {'role': 'UNKNOWN'}).role,
-        UserRole.fugitive,
-      );
+      expect(RoomUser.fromMap('u', {'role': 'UNKNOWN'}).role, UserRole.fugitive);
     });
 
     test('toMap excludes id', () {
@@ -121,10 +109,7 @@ void main() {
       expect(room.hostUserId, 'host-uid');
       expect(room.roomCode, '1234');
       expect(room.setting.gameDurationSec, 1800);
-      expect(
-        room.users.map((u) => u.id),
-        containsAll(['host-uid', 'guest-uid']),
-      );
+      expect(room.users.map((u) => u.id), containsAll(['host-uid', 'guest-uid']));
     });
 
     test('fromMap parses PLAYING status correctly', () {
@@ -138,14 +123,8 @@ void main() {
     });
 
     test('fromMap defaults to waiting for null/unrecognized status', () {
-      expect(
-        Room.fromMap('r', buildRoomMap(status: 'WAITING')).status,
-        RoomStatus.waiting,
-      );
-      expect(
-        Room.fromMap('r', buildRoomMap(status: 'GARBAGE')).status,
-        RoomStatus.waiting,
-      );
+      expect(Room.fromMap('r', buildRoomMap(status: 'WAITING')).status, RoomStatus.waiting);
+      expect(Room.fromMap('r', buildRoomMap(status: 'GARBAGE')).status, RoomStatus.waiting);
     });
   });
 }

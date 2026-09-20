@@ -116,10 +116,7 @@ void main() {
       // 弱いAPしか無い場合は足切り後に共通0個でnotDetected
       final onlyWeakSelf = {'apWeak': -85};
       final onlyWeakTarget = {'apWeak': -88};
-      expect(
-        calculateProximity(onlyWeakSelf, onlyWeakTarget),
-        ProximityLevel.notDetected,
-      );
+      expect(calculateProximity(onlyWeakSelf, onlyWeakTarget), ProximityLevel.notDetected);
     });
   });
 

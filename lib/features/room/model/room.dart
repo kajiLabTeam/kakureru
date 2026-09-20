@@ -46,12 +46,7 @@ abstract class Room with _$Room {
       demonRevokeUid: meta['demonRevokeUid'] as String?,
       setting: RoomSetting.fromMap(settingRaw),
       users: usersRaw.entries
-          .map(
-            (e) => RoomUser.fromMap(
-              e.key.toString(),
-              e.value as Map<dynamic, dynamic>,
-            ),
-          )
+          .map((e) => RoomUser.fromMap(e.key.toString(), e.value as Map<dynamic, dynamic>))
           .toList(),
     );
   }

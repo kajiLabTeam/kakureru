@@ -13,8 +13,7 @@ abstract class WifiScanResult with _$WifiScanResult {
 
   const WifiScanResult._();
 
-  factory WifiScanResult.fromJson(Map<String, dynamic> json) =>
-      _$WifiScanResultFromJson(json);
+  factory WifiScanResult.fromJson(Map<String, dynamic> json) => _$WifiScanResultFromJson(json);
 
   factory WifiScanResult.fromMap(Map<dynamic, dynamic> raw) =>
       WifiScanResult.fromJson(rtdbMapToJson(raw));

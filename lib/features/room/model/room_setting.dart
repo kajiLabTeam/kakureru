@@ -25,8 +25,7 @@ abstract class RoomSetting with _$RoomSetting {
 
   const RoomSetting._();
 
-  factory RoomSetting.fromJson(Map<String, dynamic> json) =>
-      _$RoomSettingFromJson(json);
+  factory RoomSetting.fromJson(Map<String, dynamic> json) => _$RoomSettingFromJson(json);
 
   factory RoomSetting.fromMap(Map<dynamic, dynamic> raw) =>
       RoomSetting.fromJson(rtdbMapToJson(raw));

@@ -51,7 +51,7 @@ void useGameOverNavigation(
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
+        MaterialPageRoute(
           builder: (_) => GameResultPage(roomId: roomId),
         ),
       );
