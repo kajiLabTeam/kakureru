@@ -18,9 +18,15 @@ final locationPermissionServiceProvider = Provider(
 
 @freezed
 abstract class LocationState with _$LocationState {
+  /// [permissionDenied]と[sendingFailed]は「自分の位置が送れていない」点では
+  /// 同じでも、原因も対処も違うため別のフラグとして持つ(issue #66)。
+  /// 前者は端末の設定で位置情報を許可してもらう必要があり、後者は権限は
+  /// あるのにForeground Serviceを起動できなかった状態(通知が無効、
+  /// 起動制限など)を指す。画面の警告文はこの2つを出し分ける。
   const factory LocationState({
     @Default([]) List<UserLocation> locations,
     @Default(false) bool permissionDenied,
+    @Default(false) bool sendingFailed,
     @Default(false) bool isSending,
   }) = _LocationState;
 }
@@ -101,7 +107,12 @@ class LocationViewModel extends Notifier<LocationState> {
 
   /// ゲーム画面に入った時に呼ぶ。権限を確認し、位置送信を開始して
   /// 他ユーザーの位置の購読を始める。権限が無ければ送信は行わず、
-  /// permissionDenied を立てるだけにとどめる。
+  /// permissionDenied を立てるだけにとどめる。送信の開始自体に失敗した
+  /// ときは sendingFailed を立てる(画面の警告文を出し分けるため)。
+  ///
+  /// 失敗した状態のままでも、設定で許可してアプリへ戻れば
+  /// useGameSession が resume を拾って呼び直す。何度呼んでも安全なように
+  /// (_epochで世代管理しているため)作ってある。
   Future<void> start(String roomId) async {
     final epoch = ++_epoch;
     try {
@@ -114,13 +125,13 @@ class LocationViewModel extends Notifier<LocationState> {
 
       if (!serviceEnabled || !await ensurePermission()) {
         if (epoch == _epoch) {
-          state = state.copyWith(permissionDenied: true);
+          state = state.copyWith(permissionDenied: true, sendingFailed: false);
         }
         return;
       }
       if (epoch != _epoch) return;
 
-      await _repo.startSendingLocation(roomId);
+      final started = await _repo.startSendingLocation(roomId);
       if (epoch != _epoch) {
         // 送信開始が完了する前に離脱されていた。stop()側は「まだ何も
         // 始まっていない」時点で素通りしているので、ここで止めないと
@@ -128,16 +139,34 @@ class LocationViewModel extends Notifier<LocationState> {
         await _repo.stopSendingLocation();
         return;
       }
-      state = state.copyWith(permissionDenied: false, isSending: true);
+      if (!started) {
+        // 権限はあるのにForeground Serviceを起動できなかった。以前はこの
+        // 失敗を無視してisSending:trueにしていたため、画面には「送信中」と
+        // 出たまま1件も送られない無音の失敗になっていた(issue #66)。
+        state = state.copyWith(
+          permissionDenied: false,
+          sendingFailed: true,
+          isSending: false,
+        );
+        return;
+      }
+      state = state.copyWith(
+        permissionDenied: false,
+        sendingFailed: false,
+        isSending: true,
+      );
 
       await _locationsSub?.cancel();
       _locationsSub = _repo.watchLocations(roomId).listen((locations) {
         state = state.copyWith(locations: locations);
       });
     } on Object catch (e) {
+      // ここへ来るのは測位サービスの確認・送信開始・購読の失敗。権限の確認
+      // 自体の失敗はensurePermission()が内部でpermissionDeniedへ落とすので、
+      // ここでpermissionDeniedを立てると原因を取り違えた文言が出てしまう。
       debugPrint('[LocationViewModel] 位置送信の開始に失敗: $e');
       if (epoch == _epoch) {
-        state = state.copyWith(permissionDenied: true, isSending: false);
+        state = state.copyWith(sendingFailed: true, isSending: false);
       }
     }
   }

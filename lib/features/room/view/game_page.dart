@@ -33,6 +33,25 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
+/// 位置が送れていないときに画面上部へ出す赤い警告文。問題なければnull。
+///
+/// 「権限が無い」と「送信の開始に失敗した」は、同じ「自分の位置が出ない」
+/// でも直し方が違う(前者は端末の設定で許可する、後者は通知の確認と入り直し)。
+/// 以前は両方まとめて「権限(常に許可)がない」と出していたため、権限は
+/// あるのにForeground Serviceが起動できていないケースで、設定を見に行っても
+/// 何も直らない案内になっていた(issue #66)。
+String? locationWarningMessage(LocationState state) {
+  if (state.permissionDenied) {
+    return '位置情報を利用できないため、自分の位置を送信できません。'
+        '端末の位置情報をONにし、このアプリへの位置情報の許可を確認してから戻ってください';
+  }
+  if (state.sendingFailed) {
+    return '位置情報の送信を開始できませんでした。'
+        '通知が許可されているか確認し、ゲーム画面に入り直してください';
+  }
+  return null;
+}
+
 /// ゲーム中の画面。ゲーム内容自体はまだ無く、残り時間と参加者の位置表示のみ行う仮実装。
 class GamePage extends HookConsumerWidget {
   const GamePage({super.key, required this.roomId});
@@ -345,12 +364,15 @@ class GamePage extends HookConsumerWidget {
                     if (myRole == UserRole.fugitive &&
                         phase == GamePhase.beforeRelease)
                       PreReleaseBanner(countdownSec: countdownSec),
-                    if (locationState.permissionDenied)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
+                    // 位置が送れていないときの警告。原因によって直し方が
+                    // 違う(設定で許可する/入り直す)ため文言を出し分ける。
+                    if (locationWarningMessage(locationState)
+                        case final message?)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Text(
-                          '位置情報の権限(常に許可)がないため、自分の位置を送信できません',
-                          style: TextStyle(color: Color(0xFFE5484D)),
+                          message,
+                          style: const TextStyle(color: Color(0xFFE5484D)),
                         ),
                       ),
                     // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた
