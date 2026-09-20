@@ -12,6 +12,7 @@ import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/game_notifications.dart';
 import 'package:kakureru/features/room/game_over_navigation.dart';
 import 'package:kakureru/features/room/game_session.dart';
@@ -83,7 +84,7 @@ class GamePage extends HookConsumerWidget {
     // 「捕まった」ボタンのフィードバック用状態(issue #15)。押してから
     // RTDBへの書き込みが終わるまではボタンをローディング表示にし、
     // 成功したら全画面演出(CaughtTransitionOverlay)を出す。
-    final isSubmittingCaught = useState(false);
+    final becomeDemon = useAsyncAction(context);
     final showCaughtTransition = useState(false);
 
     // 詳細カードで選択中の相手(UI改修モック2a-03「逃走者を選んで詳細を見る」)。
@@ -144,21 +145,26 @@ class GamePage extends HookConsumerWidget {
 
     // 「鬼になる」ボタンの確定処理。onPressed直下に書くとネストが深くなり
     // すぎるため、独立した関数として切り出している(挙動は従来通り)。
+    //
+    // 失敗はuseAsyncActionのerrorにも入るが、この画面では地図が主役で
+    // エラー行を置く場所が無いためSnackBarで出す。
     Future<void> handleBecomeDemonPressed() async {
       if (!await showBecomeDemonConfirmDialog(context)) return;
 
-      isSubmittingCaught.value = true;
-      try {
-        await ref.read(roomRepositoryProvider).reportCaught(roomId);
-        showCaughtTransition.value = true;
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('送信に失敗しました: $e')));
-        }
-      } finally {
-        isSubmittingCaught.value = false;
+      final result = await becomeDemon.run(
+        () => ref.read(roomRepositoryProvider).reportCaught(roomId),
+      );
+      if (!context.mounted) return;
+      switch (result.status) {
+        case AsyncActionStatus.succeeded:
+          showCaughtTransition.value = true;
+        case AsyncActionStatus.failed:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('送信に失敗しました: ${result.error}')),
+          );
+        case AsyncActionStatus.skipped:
+          // 前の送信がまだ終わっていないだけなので、何も出さない。
+          break;
       }
     }
 
@@ -365,7 +371,7 @@ class GamePage extends HookConsumerWidget {
                     if (shouldShowBecomeDemonButton(role: myRole, phase: phase))
                       BecomeDemonButton(
                         isDetected: bleBecomeDemonDetected,
-                        isSubmitting: isSubmittingCaught.value,
+                        isSubmitting: becomeDemon.isRunning,
                         onPressed: handleBecomeDemonPressed,
                       ),
                     Expanded(

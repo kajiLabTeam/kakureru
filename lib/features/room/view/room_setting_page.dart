@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
+import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
@@ -111,8 +112,7 @@ class RoomSettingPage extends HookConsumerWidget {
     // 直近のドラッグがエリアとして小さすぎ/大きすぎて弾かれた理由。
     // 弾かれた場合gameAreaは更新しない(直前の有効なエリアを保つ)。
     final areaSizeError = useState<String?>(null);
-    final isSaving = useState(false);
-    final saveError = useState<Object?>(null);
+    final save = useAsyncAction(context);
 
     final isValid = gameDurationMin.value * 60 > releaseWaitMin.value * 60;
 
@@ -257,31 +257,22 @@ class RoomSettingPage extends HookConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: FilledButton(
-                    onPressed: isValid && !isSaving.value
-                        ? () async {
-                            isSaving.value = true;
-                            saveError.value = null;
-                            try {
-                              await ref
-                                  .read(roomRepositoryProvider)
-                                  .updateSetting(
-                                    roomId,
-                                    room.setting.copyWith(
-                                      releaseWaitSec: releaseWaitMin.value * 60,
-                                      gameDurationSec:
-                                          gameDurationMin.value * 60,
-                                      gameArea: gameArea.value,
-                                    ),
-                                  );
-                              if (context.mounted) Navigator.of(context).pop();
-                            } on Object catch (e) {
-                              saveError.value = e;
-                            } finally {
-                              isSaving.value = false;
-                            }
-                          }
+                    onPressed: isValid && !save.isRunning
+                        ? () => save.run(() async {
+                            await ref
+                                .read(roomRepositoryProvider)
+                                .updateSetting(
+                                  roomId,
+                                  room.setting.copyWith(
+                                    releaseWaitSec: releaseWaitMin.value * 60,
+                                    gameDurationSec: gameDurationMin.value * 60,
+                                    gameArea: gameArea.value,
+                                  ),
+                                );
+                            if (context.mounted) Navigator.of(context).pop();
+                          })
                         : null,
-                    child: isSaving.value
+                    child: save.isRunning
                         ? const SizedBox(
                             width: 20,
                             height: 20,
@@ -290,11 +281,11 @@ class RoomSettingPage extends HookConsumerWidget {
                         : const Text('保存'),
                   ),
                 ),
-                if (saveError.value != null)
+                if (save.error != null)
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text(
-                      '${saveError.value}',
+                      '${save.error}',
                       style: const TextStyle(color: Colors.red),
                     ),
                   ),
