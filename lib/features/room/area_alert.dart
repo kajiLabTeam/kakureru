@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/location/repository/location_smoothing.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:latlong2/latlong.dart' as latlong;
 
@@ -107,49 +109,244 @@ const outsideAreaGraceDistanceMeters = 15.0;
 /// GPSが一瞬だけ大きく飛ぶ(マルチパス等)ケースを、距離だけでは弾けないため。
 const outsideAreaGraceDuration = Duration(seconds: 10);
 
+/// `rooms/{roomId}/locations/{uid}` の位置がこれより古ければ、判定に使わず
+/// 「分からない」([OutsideAreaStatus.unknown])として扱う。
+///
+/// 位置送信は4秒間隔で、精度足切りが続いても
+/// [LocationFilterThresholds.forceAcceptAfterElapsed](30秒)で必ず1件は
+/// 書き込まれる。つまり送信が生きていれば`updatedAt`は最長でも30秒ごとに
+/// 進む。書き込みとRTDBの伝搬の遅れを見込んで、その1.5倍をここでの
+/// 「古い」の境目にする。
+///
+/// この足切りが無いと、位置送信が死んだ端末の座標が最後の値で固まり、
+/// 本人がエリア内に戻っても永久に警告が解除されない。BLEの
+/// `BleProximityThresholds.staleAfterMillis`(`isDetectionFresh`)と同じ
+/// 考え方で、古い観測を「今の状況」として扱わない。
+const outsideAreaLocationStaleAfter = Duration(seconds: 45);
+
+/// 判定に使える位置が無い([OutsideAreaStatus.unknown])間、直前の判定を
+/// 保ち続ける時間。
+///
+/// 一瞬の欠け(自分の位置がまだ届いていない・ルーム情報が一時的に
+/// 取れない)で警告や猶予の計測がリセットされないようにするための保持。
+/// ただし無期限に保つと、位置が分からないまま永久に振動し続けることに
+/// なるため、これを過ぎたら判定を手放して警告も解除する。
+const outsideAreaUnknownHoldDuration = Duration(seconds: 30);
+
+/// 1回ぶんの観測([OutsideAreaObservation])が示す状態。
+///
+/// 「エリア内」と「分からない」を同じ値で表すと、位置が届いていないだけの
+/// 状態がエリア内と同じ扱いになり、猶予の計測がリセットされたり、機内モードで
+/// 警告を回避できたりする。3状態に分けてそれを防ぐ。
+enum OutsideAreaStatus {
+  /// 判定に使える新しい位置があり、エリアの内側にいる。
+  inside,
+
+  /// 判定に使える新しい位置があり、エリアの外にはみ出している。
+  outside,
+
+  /// 判定に使える位置が無い(まだ届いていない/古すぎる/ルーム情報が無い)。
+  unknown,
+}
+
+/// 猶予判定([applyOutsideAreaHysteresis])へ渡す1回ぶんの観測。
+///
+/// `outsideMeters`・`bearingDegrees`・`accuracyMeters`は
+/// [OutsideAreaStatus.outside]のときだけ意味を持つ。`updatedAt`は観測に
+/// 使った測位の時刻(サーバー時刻のエポックミリ秒)で、
+/// [OutsideAreaStatus.unknown]のときは0。
+typedef OutsideAreaObservation = ({
+  OutsideAreaStatus status,
+  double outsideMeters,
+  double bearingDegrees,
+  double accuracyMeters,
+  int updatedAt,
+});
+
+/// 判定に使える位置が無いときの観測。
+const OutsideAreaObservation unknownOutsideAreaObservation = (
+  status: OutsideAreaStatus.unknown,
+  outsideMeters: 0,
+  bearingDegrees: 0,
+  accuracyMeters: 0,
+  updatedAt: 0,
+);
+
+/// [applyOutsideAreaHysteresis]が持ち越す状態。
+///
+/// - `isWarning`: いま警告を出しているか
+/// - `outsideSince`: 猶予時間の計測を始めた時刻(計測していなければnull)
+/// - `outsideSinceUpdatedAt`: 計測を始めた時点の測位の時刻。猶予のあいだに
+///   新しい測位が来たかを見るために持つ
+/// - `lastKnownAt`: 最後に判定できた(unknownでなかった)時刻。分からない
+///   状態がどれだけ続いているかを測るために持つ
+typedef OutsideAreaWarningState = ({
+  bool isWarning,
+  DateTime? outsideSince,
+  int outsideSinceUpdatedAt,
+  DateTime? lastKnownAt,
+});
+
+/// 警告も計測もしていない初期状態。
+const OutsideAreaWarningState initialOutsideAreaWarningState = (
+  isWarning: false,
+  outsideSince: null,
+  outsideSinceUpdatedAt: 0,
+  lastKnownAt: null,
+);
+
+/// 自分の位置とプレイエリアから、猶予判定へ渡す観測を作る。
+///
+/// - [area]: プレイエリアの頂点。ルーム情報がまだ取れていなければnullを
+///   渡すこと(「エリア未設定のルーム」= 3点未満 とは区別する。未設定なら
+///   常に[OutsideAreaStatus.inside]になり、アラートは何も出ない)
+/// - [location]: 自分の位置。まだ届いていなければnull
+/// - [nowMillis]: 現在のサーバー時刻(`serverNowMillis`)。`updatedAt`は
+///   `ServerValue.timestamp`で書かれるので、端末時刻と比べてはいけない
+///
+/// 位置が無い・古い・ルーム情報が無い場合は[OutsideAreaStatus.unknown]を
+/// 返す。呼び出し側(猶予判定)はその間、直前の判定を保つ。
+OutsideAreaObservation observeOutsideArea({
+  required List<LatLng>? area,
+  required UserLocation? location,
+  required int nowMillis,
+  Duration staleAfter = outsideAreaLocationStaleAfter,
+}) {
+  if (area == null || location == null) return unknownOutsideAreaObservation;
+  // updatedAtが0なのは、書き込み途中などで時刻が入っていないエントリ。
+  // いつの位置か分からない以上、判定には使わない。
+  if (location.updatedAt <= 0) return unknownOutsideAreaObservation;
+  if (nowMillis - location.updatedAt > staleAfter.inMilliseconds) {
+    return unknownOutsideAreaObservation;
+  }
+
+  final returnToArea = describeReturnToArea(
+    area: area,
+    point: LatLng(lat: location.latitude, lng: location.longitude),
+  );
+  if (returnToArea == null) {
+    return (
+      status: OutsideAreaStatus.inside,
+      outsideMeters: 0,
+      bearingDegrees: 0,
+      accuracyMeters: 0,
+      updatedAt: location.updatedAt,
+    );
+  }
+  return (
+    status: OutsideAreaStatus.outside,
+    outsideMeters: returnToArea.meters,
+    bearingDegrees: returnToArea.bearingDegrees,
+    accuracyMeters: location.accuracy ?? 0,
+    updatedAt: location.updatedAt,
+  );
+}
+
+/// 報告された測位精度[accuracyMeters]のぶん、猶予距離をどれだけ広げるか。
+///
+/// 猶予距離15mに対し、採用される測位のaccuracyは
+/// [LocationFilterThresholds.maxAcceptableAccuracyM](30m)まで許している。
+/// 精度を無視すると、誤差25mの測位でエリア内10mに立っている人が警告を
+/// 受けてしまうため、報告された誤差ぶんは猶予を広げる。
+///
+/// - accuracyが0以下は**精度不明**(geolocatorは精度を報告できない端末で
+///   0.0を返す。location_smoothing.dartのコメント参照)。どれだけずれて
+///   いるか分からないので、足切りの上限を最悪値として使う
+/// - 報告があっても上限でクランプする。強制採用
+///   ([LocationUpdateDecision.acceptedByFallback])では足切りを超えた測位も
+///   通るため、基地局測位のaccuracy=2000mのような値をそのまま足すと
+///   猶予距離が実質無限になり、アラートが機能しなくなる
+double outsideAreaAccuracyAllowanceMeters(double accuracyMeters) {
+  const maxAllowance = LocationFilterThresholds.maxAcceptableAccuracyM;
+  if (accuracyMeters <= 0) return maxAllowance;
+  return math.min(accuracyMeters, maxAllowance);
+}
+
 /// エリア外警告を出すかどうかを、猶予距離・猶予時間を通して決める。
 ///
 /// 考え方は`proximity_calculator.dart`の`applyProximityHysteresis`と同じで、
 /// 「生の判定をそのまま表示に使わず、直前の表示状態と時刻を持ち越して
-/// ならす」もの。判定そのものは呼び出し側が[describeReturnToArea]で出し、
-/// ここには外にいる距離だけを渡す。
-///
-/// - [outsideMeters]: エリア外なら境界までの距離(m)、内側ならnull
-/// - [wasWarning]: 前回この関数が返した`isWarning`
-/// - [outsideSince]: 前回この関数が返した`outsideSince`(持ち越し用)
+/// ならす」もの。判定そのものは[observeOutsideArea]が出し、ここはその
+/// 観測([observation])と前回の状態([previous])から次の状態を決める。
 ///
 /// 遷移のルール:
 /// 1. **エリア内に戻ったら即座に解除する**。振動と通知を止める方向は
 ///    遅らせる理由が無いので、安全側(すぐ止める)に倒す
 /// 2. 一度警告に入ったら、エリア内に戻るまで解除しない。境界のすぐ外で
 ///    解除すると、猶予距離の境目で今度は警告が点滅するため
-/// 3. 警告していないときは、[outsideMeters]が猶予距離以上の状態が
-///    [graceDuration]続いたときだけ警告に切り替える。途中で猶予距離の
-///    内側に戻ったら計測をやり直す(「連続して外」の判定)
+/// 3. 警告していないときは、はみ出し距離が「猶予距離 + 測位精度ぶんの
+///    上乗せ」以上の状態が[graceDuration]続き、**かつその間に新しい測位が
+///    届いた**ときだけ警告に切り替える。時間だけで満了させると、マルチパスで
+///    飛んだ1点が採用されたあと後続が精度足切りで棄却され続けた場合に、
+///    その1点だけで警告が成立してしまう(最大20秒固まる:
+///    [LocationFilterThresholds.forceAcceptAfterRejections]×4秒間隔)
+/// 4. 判定に使える位置が無い間([OutsideAreaStatus.unknown])は直前の判定を
+///    そのまま保つ。一瞬の欠けで猶予の計測がリセットされたり、警告が
+///    消えたりしないようにするため。ただし[unknownHold]を過ぎても分から
+///    ないままなら、判定を手放して警告を解除する(位置が分からない相手を
+///    永久に振動させ続けないため)
 ///
 /// 境界値は「以上・以下」で警告側に倒す(距離が猶予距離ちょうど、経過時間が
 /// 猶予時間ちょうどなら警告する)。
-({bool isWarning, DateTime? outsideSince}) applyOutsideAreaHysteresis({
-  required double? outsideMeters,
-  required bool wasWarning,
-  required DateTime? outsideSince,
+OutsideAreaWarningState applyOutsideAreaHysteresis({
+  required OutsideAreaObservation observation,
+  required OutsideAreaWarningState previous,
   required DateTime now,
   double graceDistanceMeters = outsideAreaGraceDistanceMeters,
   Duration graceDuration = outsideAreaGraceDuration,
+  Duration unknownHold = outsideAreaUnknownHoldDuration,
 }) {
-  if (outsideMeters == null) return (isWarning: false, outsideSince: null);
-  if (wasWarning) {
-    return (isWarning: true, outsideSince: outsideSince ?? now);
-  }
-  if (outsideMeters < graceDistanceMeters) {
-    return (isWarning: false, outsideSince: null);
-  }
+  switch (observation.status) {
+    case OutsideAreaStatus.unknown:
+      final lastKnownAt = previous.lastKnownAt;
+      // 一度も判定できていなければ、保持する判定自体が無い。
+      if (lastKnownAt == null) return previous;
+      if (now.difference(lastKnownAt) < unknownHold) return previous;
+      return initialOutsideAreaWarningState;
 
-  final since = outsideSince ?? now;
-  return (
-    isWarning: now.difference(since) >= graceDuration,
-    outsideSince: since,
-  );
+    case OutsideAreaStatus.inside:
+      return (
+        isWarning: false,
+        outsideSince: null,
+        outsideSinceUpdatedAt: 0,
+        lastKnownAt: now,
+      );
+
+    case OutsideAreaStatus.outside:
+      if (previous.isWarning) {
+        return (
+          isWarning: true,
+          outsideSince: previous.outsideSince ?? now,
+          outsideSinceUpdatedAt: previous.outsideSinceUpdatedAt,
+          lastKnownAt: now,
+        );
+      }
+
+      final grace =
+          graceDistanceMeters +
+          outsideAreaAccuracyAllowanceMeters(observation.accuracyMeters);
+      if (observation.outsideMeters < grace) {
+        return (
+          isWarning: false,
+          outsideSince: null,
+          outsideSinceUpdatedAt: 0,
+          lastKnownAt: now,
+        );
+      }
+
+      final since = previous.outsideSince ?? now;
+      final sinceUpdatedAt = previous.outsideSince == null
+          ? observation.updatedAt
+          : previous.outsideSinceUpdatedAt;
+      // 猶予を始めた測位より新しいものが届いているか(ルール3)。
+      final hasNewerFix = observation.updatedAt > sinceUpdatedAt;
+      return (
+        isWarning: hasNewerFix && now.difference(since) >= graceDuration,
+        outsideSince: since,
+        outsideSinceUpdatedAt: sinceUpdatedAt,
+        lastKnownAt: now,
+      );
+  }
 }
 
 /// 多角形の各辺への最短点のうち、[point]に一番近いものを返す。

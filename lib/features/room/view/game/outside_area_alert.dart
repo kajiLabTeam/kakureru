@@ -1,17 +1,45 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/room/area_alert.dart';
+import 'package:kakureru/features/room/model/room_setting.dart';
+import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/view/game/game_location_map.dart';
 
 /// エリア外警告に使う赤。docs/ui-mockup-2a.html の 2a-07 と同じ #E5484D。
 ///
 /// 配色ルール(赤=鬼/青=自分/緑=逃走者)上の赤は本来「鬼」だが、2a-07は
 /// 警告帯・地図の赤かぶせ・矢印をすべてこの赤で描いている。危険を示す色を
 /// ここだけ別に増やすより、モックに合わせる方を優先する。
+///
+/// ただし鬼のプレイヤーはヘッダーもこれと同じ赤(role_theme.dartの
+/// 鬼の色は同じ値)なので、帯だけを出すとヘッダーが伸びただけに見えて
+/// 気づかれない。[OutsideAreaBanner]は上下に境界線を入れて区切る。
 const outsideAreaAlertColor = Color(0xFFE5484D);
+
+/// 警告帯の区切り線の色。ヘッダー(鬼なら同じ赤)や地図との境目を出すため、
+/// 帯の上下に細く入れる。
+const _bannerBorderColor = Color(0xFF7F1D20);
 
 /// 地図に重ねる赤の濃さ。モックの rgba(229,72,77,.16) と同じ。
 const _mapOverlayAlpha = 0.16;
+
+/// 帯の補足行の不透明度。モック2a-07の `opacity:.85` と同じ。
+///
+/// `Colors.white70` だとこの赤の上で10pxのコントラスト比が約2.8:1しか
+/// 出ず(WCAG AAは4.5:1)、「振動は仕様であって不具合ではない」と伝える
+/// 唯一の行が読み取りにくい。
+const _bannerSubtitleOpacity = 0.85;
+
+/// 「戻るまで◯◯が続きます」の補足文。
+///
+/// 判定はGamePageの毎秒の再描画で回っているため、画面を消している間は
+/// 振動も通知も止まる(画面を消しても検知を続ける件は別issueで扱う)。
+/// モック2a-07の「戻るまで振動と通知が続きます」をそのままにすると、
+/// 実際には果たせない約束になるので、画面を開いている間の話だと分かる
+/// 文言にしている。
+const outsideAreaBannerSubtitle = 'アプリを開いている間、戻るまで振動と通知が続きます';
 
 /// 画面上部に出すエリア外の警告帯(UI改修モック2a-07)。
 ///
@@ -20,15 +48,22 @@ const _mapOverlayAlpha = 0.16;
 /// エリア外はルール違反なのでペナルティとして意図的に継続する)。
 class OutsideAreaBanner extends StatelessWidget {
   /// 表示内容は固定なので引数を取らない。出す/出さないの判断は
-  /// 呼び出し側(GamePage)が持つ。
+  /// 呼び出し側([OutsideAreaAlertMap])が持つ。
   const OutsideAreaBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: outsideAreaAlertColor,
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+      decoration: const BoxDecoration(
+        color: outsideAreaAlertColor,
+        // 鬼のヘッダーと同じ赤なので、境目が無いと「ヘッダーが伸びた」と
+        // しか見えない。上下に濃い赤の線を入れて別の帯だと分かるようにする。
+        border: Border.symmetric(
+          horizontal: BorderSide(color: _bannerBorderColor, width: 2),
+        ),
+      ),
       child: const Row(
         children: [
           Text('🚨', style: TextStyle(fontSize: 19)),
@@ -44,8 +79,16 @@ class OutsideAreaBanner extends StatelessWidget {
                 ),
                 SizedBox(height: 2),
                 Text(
-                  '戻るまで振動と通知が続きます',
-                  style: TextStyle(color: Colors.white70, fontSize: 10),
+                  outsideAreaBannerSubtitle,
+                  style: TextStyle(
+                    color: Color.fromRGBO(
+                      255,
+                      255,
+                      255,
+                      _bannerSubtitleOpacity,
+                    ),
+                    fontSize: 10,
+                  ),
                 ),
               ],
             ),
@@ -67,31 +110,37 @@ class OutsideAreaBanner extends StatelessWidget {
 /// 地図のパン・ズームを邪魔しないよう[IgnorePointer]でタップを素通りさせる。
 class OutsideAreaMapOverlay extends StatelessWidget {
   /// [bearingDegrees]はエリアへ戻る方位(北=0・東=90の時計回り)。
-  /// `describeReturnToArea`の戻り値をそのまま渡す。
+  /// `describeReturnToArea`の戻り値をそのまま渡す。判定に使える新しい位置が
+  /// 無くて方位が出せないときはnullを渡すと、赤かぶせだけになる
+  /// (古い位置のまま矢印を出すと、違う方向へ歩かせることになるため)。
   const OutsideAreaMapOverlay({super.key, required this.bearingDegrees});
 
-  /// エリアへ戻る方位(度)。矢印の回転角に使う。
-  final double bearingDegrees;
+  /// エリアへ戻る方位(度)。矢印の回転角に使う。nullなら矢印を出さない。
+  final double? bearingDegrees;
 
   @override
   Widget build(BuildContext context) {
+    final bearing = bearingDegrees;
     return IgnorePointer(
       child: Container(
         color: outsideAreaAlertColor.withValues(alpha: _mapOverlayAlpha),
         alignment: Alignment.center,
-        // 地図は常に北が上(回転させていない)ので、方位角をそのまま
-        // 時計回りの回転角として使える。上向きの矢印が北を指す。
-        child: Transform.rotate(
-          angle: bearingDegrees * math.pi / 180,
-          child: const Icon(
-            Icons.arrow_upward,
-            size: 72,
-            color: outsideAreaAlertColor,
-            // 赤い地図タイルの上でも輪郭が沈まないよう、白いにじみを敷く
-            // (地図ピンの白フチと同じ狙い)。
-            shadows: [Shadow(color: Colors.white, blurRadius: 10)],
-          ),
-        ),
+        // 地図は回転させない(game_map_options.dartでInteractiveFlag.rotateを
+        // 外している)ので、方位角をそのまま時計回りの回転角として使える。
+        // 上向きの矢印が北を指す。
+        child: bearing == null
+            ? null
+            : Transform.rotate(
+                angle: bearing * math.pi / 180,
+                child: const Icon(
+                  Icons.arrow_upward,
+                  size: 72,
+                  color: outsideAreaAlertColor,
+                  // 赤い地図タイルの上でも輪郭が沈まないよう、白いにじみを
+                  // 敷く(地図ピンの白フチと同じ狙い)。
+                  shadows: [Shadow(color: Colors.white, blurRadius: 10)],
+                ),
+              ),
       ),
     );
   }
@@ -132,4 +181,133 @@ class ReturnToAreaCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 画面に出すエリア外アラートの中身。警告していないときはnullを使う。
+///
+/// `meters`と`bearingDegrees`は「いま判定に使える新しい位置がある」ときだけ
+/// 入る。古い位置は判定に使わない(`observeOutsideArea`)ため、警告を保った
+/// まま距離と方位だけ分からなくなる瞬間があり、そのときは両方nullになる。
+typedef OutsideAreaAlert = ({double? meters, double? bearingDegrees});
+
+/// 猶予判定の結果と観測から、画面に出すアラートの中身を決める。
+///
+/// [isWarning]がfalseならnull(何も出さない)。ここには**表示と同じ条件**を
+/// 渡すこと。GamePageは「判定が警告」かつ「本文がroomのdataを描いている」
+/// ときだけtrueにしており、同じ値を振動・通知の条件にも使っている。
+///
+/// 警告中でも、判定に使える新しい位置が無ければ距離と方位はnullにする
+/// (古い位置のまま矢印を出すと、違う方向へ歩かせることになるため)。
+OutsideAreaAlert? outsideAreaAlertOf({
+  required bool isWarning,
+  required OutsideAreaObservation observation,
+}) {
+  if (!isWarning) return null;
+  if (observation.status != OutsideAreaStatus.outside) {
+    return (meters: null, bearingDegrees: null);
+  }
+  return (
+    meters: observation.outsideMeters,
+    bearingDegrees: observation.bearingDegrees,
+  );
+}
+
+/// 地図の下端から、戻り方カードを浮かせる高さ。
+///
+/// 地図タイルの帰属表示(`buildMapAttribution`)は右下に出ており、常設部分は
+/// 48pxのアイコンボタン+上下4pxの余白で約56px分の高さを占める。カードを
+/// 下端に置くとこのボタンを覆ってしまい、OSMとCARTOのクレジットを開けなく
+/// なる(利用条件上どちらの表示も必須。game_map_options.dart参照)。
+const _returnCardBottomInset = 58.0;
+
+/// 地図とエリア外アラートを重ねた、ゲーム画面の地図領域。
+///
+/// **アラートは地図の上に重ねるだけで、レイアウトの高さを取らない。**
+/// 赤帯をbodyのColumnに足すと、その60px分だけ地図と下のカードが押し出され、
+/// 小さい画面や大きいフォント設定では`Expanded`が0になって、肝心の矢印と
+/// 「エリアまで約◯m」のカードごと画面外へ消える。表示/非表示でレイアウトを
+/// 動かさない、という考え方はissue #43(become_demon_button)と同じ。
+///
+/// [alert]がnullなら地図だけを返す。「出す/出さない」の分岐をここに
+/// 閉じ込めているので、呼び出し側(GamePage)もテストも同じ配線を通る。
+class OutsideAreaAlertMap extends StatelessWidget {
+  /// [map]には`GameLocationMap`を渡す。[alert]は警告中の内容(なければnull)。
+  const OutsideAreaAlertMap({
+    super.key,
+    required this.map,
+    required this.alert,
+  });
+
+  /// 下敷きになる地図。
+  final Widget map;
+
+  /// 出すアラートの中身。警告していないならnull。
+  final OutsideAreaAlert? alert;
+
+  @override
+  Widget build(BuildContext context) {
+    final alert = this.alert;
+    final meters = alert?.meters;
+    final bearingDegrees = alert?.bearingDegrees;
+    return Stack(
+      children: [
+        map,
+        // エリアの破線境界と外側の暗転はGameLocationMapが既に描いている。
+        // ここに重ねるのは、エリア外のときだけ出す赤かぶせ・方向矢印・
+        // 赤帯・戻り方カード(UI改修モック2a-07)。
+        if (alert != null) ...[
+          Positioned.fill(
+            child: OutsideAreaMapOverlay(bearingDegrees: bearingDegrees),
+          ),
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: OutsideAreaBanner(),
+          ),
+          if (meters != null && bearingDegrees != null)
+            Positioned(
+              left: 14,
+              right: 14,
+              bottom: _returnCardBottomInset,
+              // 地図のパン・ズームを邪魔しないよう、カードもタップを
+              // 素通りさせる。
+              child: IgnorePointer(
+                child: ReturnToAreaCard(
+                  meters: meters,
+                  bearingDegrees: bearingDegrees,
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+/// GamePageの地図領域(地図+エリア外アラート)をwidgetテストから組み立てる入口。
+///
+/// GamePage全体はFirebase・センサー系のproviderを丸ごと差し替えないと
+/// 立ち上がらないため、地図領域だけをGamePageと同じ配線で組む
+/// (`buildLocationMapForTest`と同じ考え方)。アラートを出す/出さないの
+/// 分岐は[outsideAreaAlertOf]と[OutsideAreaAlertMap]の中にあるので、
+/// テスト側で配線を組み直さずに本番と同じ経路を通せる。
+@visibleForTesting
+Widget buildGameMapAreaForTest({
+  required OutsideAreaAlert? alert,
+  List<UserLocation> locations = const [],
+  List<RoomUser> users = const [],
+  String? myUid,
+  List<LatLng> gameArea = const [],
+}) {
+  return OutsideAreaAlertMap(
+    alert: alert,
+    map: GameLocationMap(
+      locations: locations,
+      users: users,
+      myUid: myUid,
+      cachedPosition: null,
+      gameArea: gameArea,
+    ),
+  );
 }

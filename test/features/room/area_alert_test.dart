@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/location/repository/location_smoothing.dart';
 import 'package:kakureru/features/room/area_alert.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 
@@ -219,15 +221,164 @@ void main() {
       expect(formatReturnDistance(1540), '1.5km');
     });
   });
+  group('observeOutsideArea', () {
+    // サーバー時刻のつもりの固定値(実際の値に意味は無い)。
+    const nowMillis = 1800000000000;
+
+    UserLocation locationAt({
+      required double lat,
+      required double lng,
+      double? accuracy,
+      int? updatedAt,
+    }) => UserLocation(
+      uid: 'me',
+      latitude: lat,
+      longitude: lng,
+      accuracy: accuracy,
+      updatedAt: updatedAt ?? nowMillis,
+    );
+
+    test('新しい位置がエリア内ならinside', () {
+      final observation = observeOutsideArea(
+        area: area,
+        location: locationAt(lat: 35.001, lng: 135.001),
+        nowMillis: nowMillis,
+      );
+      expect(observation.status, OutsideAreaStatus.inside);
+    });
+
+    test('新しい位置がエリア外なら、距離・方位・精度を載せてoutside', () {
+      final observation = observeOutsideArea(
+        area: area,
+        // 北へ約111mはみ出した位置。南へ戻る。
+        location: locationAt(lat: 35.003, lng: 135.001, accuracy: 7),
+        nowMillis: nowMillis,
+      );
+      expect(observation.status, OutsideAreaStatus.outside);
+      expect(observation.outsideMeters, closeTo(111, 1));
+      expect(compassLabel(observation.bearingDegrees), '南');
+      expect(observation.accuracyMeters, 7);
+      expect(observation.updatedAt, nowMillis);
+    });
+
+    test('自分の位置がまだ届いていなければunknown(エリア内と同一視しない)', () {
+      final observation = observeOutsideArea(
+        area: area,
+        location: null,
+        nowMillis: nowMillis,
+      );
+      expect(observation.status, OutsideAreaStatus.unknown);
+    });
+
+    test('ルーム情報が取れていなければunknown', () {
+      final observation = observeOutsideArea(
+        area: null,
+        location: locationAt(lat: 35.003, lng: 135.001),
+        nowMillis: nowMillis,
+      );
+      expect(observation.status, OutsideAreaStatus.unknown);
+    });
+
+    test('古い位置は判定に使わずunknown(送信が止まった端末の座標で固定されない)', () {
+      final justFresh = observeOutsideArea(
+        area: area,
+        location: locationAt(
+          lat: 35.003,
+          lng: 135.001,
+          updatedAt: nowMillis - outsideAreaLocationStaleAfter.inMilliseconds,
+        ),
+        nowMillis: nowMillis,
+      );
+      expect(justFresh.status, OutsideAreaStatus.outside);
+
+      final stale = observeOutsideArea(
+        area: area,
+        location: locationAt(
+          lat: 35.003,
+          lng: 135.001,
+          updatedAt:
+              nowMillis - outsideAreaLocationStaleAfter.inMilliseconds - 1,
+        ),
+        nowMillis: nowMillis,
+      );
+      expect(stale.status, OutsideAreaStatus.unknown);
+    });
+
+    test('updatedAtが入っていない位置はunknown', () {
+      final observation = observeOutsideArea(
+        area: area,
+        location: locationAt(lat: 35.003, lng: 135.001, updatedAt: 0),
+        nowMillis: nowMillis,
+      );
+      expect(observation.status, OutsideAreaStatus.unknown);
+    });
+
+    test('エリア未設定のルームでは、どこにいてもinside', () {
+      final observation = observeOutsideArea(
+        area: const [],
+        location: locationAt(lat: 0, lng: 0),
+        nowMillis: nowMillis,
+      );
+      expect(observation.status, OutsideAreaStatus.inside);
+    });
+  });
+
+  group('outsideAreaAccuracyAllowanceMeters', () {
+    test('報告された精度ぶん猶予を広げる', () {
+      expect(outsideAreaAccuracyAllowanceMeters(12), 12);
+    });
+
+    test('精度不明(0.0)は足切りの上限を最悪値として使う', () {
+      expect(
+        outsideAreaAccuracyAllowanceMeters(0),
+        LocationFilterThresholds.maxAcceptableAccuracyM,
+      );
+    });
+
+    test('強制採用で通った極端な精度は上限でクランプする', () {
+      expect(
+        outsideAreaAccuracyAllowanceMeters(2000),
+        LocationFilterThresholds.maxAcceptableAccuracyM,
+      );
+    });
+  });
 
   group('applyOutsideAreaHysteresis', () {
     final t0 = DateTime.utc(2026, 9, 20, 12);
 
-    test('エリア内(null)なら警告せず、経過時間の計測もリセットする', () {
+    // 観測の組み立て。updatedAtは「何番目の測位か」が分かればよいので
+    // 小さい連番で表す(判定は大小関係しか見ない)。
+    OutsideAreaObservation outside({
+      required double meters,
+      double accuracy = 5,
+      int fix = 1,
+    }) => (
+      status: OutsideAreaStatus.outside,
+      outsideMeters: meters,
+      bearingDegrees: 180,
+      accuracyMeters: accuracy,
+      updatedAt: fix,
+    );
+    OutsideAreaObservation inside({int fix = 1}) => (
+      status: OutsideAreaStatus.inside,
+      outsideMeters: 0,
+      bearingDegrees: 0,
+      accuracyMeters: 0,
+      updatedAt: fix,
+    );
+
+    // 猶予距離(15m)に精度5m分を足した実効の猶予距離。
+    const grace = outsideAreaGraceDistanceMeters + 5;
+
+    test('エリア内なら警告せず、経過時間の計測もリセットする', () {
       final result = applyOutsideAreaHysteresis(
-        outsideMeters: null,
-        wasWarning: false,
-        outsideSince: t0,
+        observation: inside(),
+        previous: (
+          isWarning: false,
+          outsideSince: t0,
+          outsideSinceUpdatedAt: 1,
+          lastKnownAt: t0,
+        ),
         now: t0.add(const Duration(minutes: 1)),
       );
       expect(result.isWarning, isFalse);
@@ -236,9 +387,13 @@ void main() {
 
     test('警告中でもエリア内に戻ったら即座に解除する', () {
       final result = applyOutsideAreaHysteresis(
-        outsideMeters: null,
-        wasWarning: true,
-        outsideSince: t0,
+        observation: inside(),
+        previous: (
+          isWarning: true,
+          outsideSince: t0,
+          outsideSinceUpdatedAt: 1,
+          lastKnownAt: t0,
+        ),
         now: t0.add(const Duration(minutes: 5)),
       );
       expect(result.isWarning, isFalse);
@@ -246,66 +401,135 @@ void main() {
     });
 
     test('猶予距離未満のはみ出しは、どれだけ続いても警告しない', () {
-      DateTime? since;
-      var isWarning = false;
+      var state = initialOutsideAreaWarningState;
       for (var i = 0; i < 60; i++) {
-        final result = applyOutsideAreaHysteresis(
-          outsideMeters: outsideAreaGraceDistanceMeters - 0.1,
-          wasWarning: isWarning,
-          outsideSince: since,
+        state = applyOutsideAreaHysteresis(
+          observation: outside(meters: grace - 0.1, fix: i),
+          previous: state,
           now: t0.add(Duration(seconds: i)),
         );
-        since = result.outsideSince;
-        isWarning = result.isWarning;
       }
-      expect(isWarning, isFalse);
-      expect(since, isNull);
+      expect(state.isWarning, isFalse);
+      expect(state.outsideSince, isNull);
     });
 
     test('猶予距離ちょうどは「外」として計測を始める', () {
       final result = applyOutsideAreaHysteresis(
-        outsideMeters: outsideAreaGraceDistanceMeters,
-        wasWarning: false,
-        outsideSince: null,
+        observation: outside(meters: grace),
+        previous: initialOutsideAreaWarningState,
         now: t0,
       );
       expect(result.isWarning, isFalse);
       expect(result.outsideSince, t0);
     });
 
-    test('猶予時間の直前は警告せず、ちょうど経過したら警告する', () {
+    test('報告された精度のぶん猶予距離が広がる(誤差25mでエリア内10mの人を警告しない)', () {
+      // 精度25mの測位で、境界から30mはみ出して見えている状態。
+      // 15m + 25m = 40m に届かないので、計測すら始めない。
+      final blurred = applyOutsideAreaHysteresis(
+        observation: outside(meters: 30, accuracy: 25),
+        previous: initialOutsideAreaWarningState,
+        now: t0,
+      );
+      expect(blurred.outsideSince, isNull);
+
+      // 同じ30mでも、精度が良ければ(誤差5m)計測を始める。
+      final sharp = applyOutsideAreaHysteresis(
+        observation: outside(meters: 30),
+        previous: initialOutsideAreaWarningState,
+        now: t0,
+      );
+      expect(sharp.outsideSince, t0);
+    });
+
+    test('精度不明(0.0)は最悪値として扱い、猶予距離を上限ぶん広げる', () {
+      final justUnder = applyOutsideAreaHysteresis(
+        observation: outside(
+          meters:
+              outsideAreaGraceDistanceMeters +
+              LocationFilterThresholds.maxAcceptableAccuracyM -
+              0.1,
+          accuracy: 0,
+        ),
+        previous: initialOutsideAreaWarningState,
+        now: t0,
+      );
+      expect(justUnder.outsideSince, isNull);
+
+      final over = applyOutsideAreaHysteresis(
+        observation: outside(
+          meters:
+              outsideAreaGraceDistanceMeters +
+              LocationFilterThresholds.maxAcceptableAccuracyM,
+          accuracy: 0,
+        ),
+        previous: initialOutsideAreaWarningState,
+        now: t0,
+      );
+      expect(over.outsideSince, t0);
+    });
+
+    test('猶予時間の直前は警告せず、新しい測位つきでちょうど経過したら警告する', () {
+      final started = applyOutsideAreaHysteresis(
+        observation: outside(meters: 50),
+        previous: initialOutsideAreaWarningState,
+        now: t0,
+      );
+
       final justBefore = applyOutsideAreaHysteresis(
-        outsideMeters: 50,
-        wasWarning: false,
-        outsideSince: t0,
+        observation: outside(meters: 50, fix: 2),
+        previous: started,
         now: t0.add(outsideAreaGraceDuration - const Duration(milliseconds: 1)),
       );
       expect(justBefore.isWarning, isFalse);
       expect(justBefore.outsideSince, t0);
 
       final exactly = applyOutsideAreaHysteresis(
-        outsideMeters: 50,
-        wasWarning: false,
-        outsideSince: t0,
+        observation: outside(meters: 50, fix: 2),
+        previous: started,
         now: t0.add(outsideAreaGraceDuration),
       );
       expect(exactly.isWarning, isTrue);
     });
 
+    test('猶予のあいだ新しい測位が来ていなければ、時間が経っても警告しない', () {
+      // マルチパスで飛んだ1点(fix: 1)が採用されたあと、後続が精度足切りで
+      // 棄却され続けてRTDBのupdatedAtが進まないケース。
+      var state = applyOutsideAreaHysteresis(
+        observation: outside(meters: 50),
+        previous: initialOutsideAreaWarningState,
+        now: t0,
+      );
+      for (var i = 1; i <= 30; i++) {
+        state = applyOutsideAreaHysteresis(
+          observation: outside(meters: 50),
+          previous: state,
+          now: t0.add(Duration(seconds: i)),
+        );
+      }
+      expect(state.isWarning, isFalse);
+      expect(state.outsideSince, t0);
+
+      // 新しい測位が届いた時点で、初めて警告になる。
+      final withNewFix = applyOutsideAreaHysteresis(
+        observation: outside(meters: 50, fix: 2),
+        previous: state,
+        now: t0.add(const Duration(seconds: 31)),
+      );
+      expect(withNewFix.isWarning, isTrue);
+    });
+
     test('途中で猶予距離の内側に戻ると、経過時間の計測をやり直す', () {
       final started = applyOutsideAreaHysteresis(
-        outsideMeters: 50,
-        wasWarning: false,
-        outsideSince: null,
+        observation: outside(meters: 50),
+        previous: initialOutsideAreaWarningState,
         now: t0,
       );
       expect(started.outsideSince, t0);
 
-      // 猶予時間が経つ前に、いったん猶予距離の内側へ戻る。
       final interrupted = applyOutsideAreaHysteresis(
-        outsideMeters: 1,
-        wasWarning: false,
-        outsideSince: started.outsideSince,
+        observation: outside(meters: 1, fix: 2),
+        previous: started,
         now: t0.add(const Duration(seconds: 5)),
       );
       expect(interrupted.isWarning, isFalse);
@@ -314,9 +538,8 @@ void main() {
       // 再び外へ出た時点から数え直すので、最初の t0 から猶予時間が
       // 経っていても、まだ警告にはならない。
       final restarted = applyOutsideAreaHysteresis(
-        outsideMeters: 50,
-        wasWarning: false,
-        outsideSince: interrupted.outsideSince,
+        observation: outside(meters: 50, fix: 3),
+        previous: interrupted,
         now: t0.add(const Duration(seconds: 6)),
       );
       expect(restarted.isWarning, isFalse);
@@ -325,30 +548,97 @@ void main() {
 
     test('一度警告に入ったら、猶予距離の内側に戻っただけでは解除しない', () {
       final result = applyOutsideAreaHysteresis(
-        outsideMeters: 1,
-        wasWarning: true,
-        outsideSince: t0,
+        observation: outside(meters: 1, fix: 9),
+        previous: (
+          isWarning: true,
+          outsideSince: t0,
+          outsideSinceUpdatedAt: 1,
+          lastKnownAt: t0,
+        ),
         now: t0.add(const Duration(seconds: 30)),
       );
       expect(result.isWarning, isTrue);
     });
 
-    test('猶予距離を超えたまま毎秒呼ばれると、猶予時間ちょうどで警告に変わる', () {
-      DateTime? since;
-      var isWarning = false;
+    test('測位が毎秒届いていれば、猶予時間ちょうどで警告に変わる', () {
+      var state = initialOutsideAreaWarningState;
       final switchedAt = <int>[];
       for (var i = 0; i <= outsideAreaGraceDuration.inSeconds + 2; i++) {
-        final result = applyOutsideAreaHysteresis(
-          outsideMeters: 30,
-          wasWarning: isWarning,
-          outsideSince: since,
+        final next = applyOutsideAreaHysteresis(
+          observation: outside(meters: 30, fix: i + 1),
+          previous: state,
           now: t0.add(Duration(seconds: i)),
         );
-        if (!isWarning && result.isWarning) switchedAt.add(i);
-        since = result.outsideSince;
-        isWarning = result.isWarning;
+        if (!state.isWarning && next.isWarning) switchedAt.add(i);
+        state = next;
       }
       expect(switchedAt, [outsideAreaGraceDuration.inSeconds]);
+    });
+
+    test('判定に使える位置が無い間は、警告も猶予の計測もそのまま保つ', () {
+      // 猶予の計測中にデータが一瞬欠けても、0から数え直さない。
+      final started = applyOutsideAreaHysteresis(
+        observation: outside(meters: 50),
+        previous: initialOutsideAreaWarningState,
+        now: t0,
+      );
+      final gapped = applyOutsideAreaHysteresis(
+        observation: unknownOutsideAreaObservation,
+        previous: started,
+        now: t0.add(const Duration(seconds: 3)),
+      );
+      expect(gapped.outsideSince, t0);
+
+      // 警告中に欠けても、警告は消えない(機内モードで逃げられない)。
+      final warning = applyOutsideAreaHysteresis(
+        observation: unknownOutsideAreaObservation,
+        previous: (
+          isWarning: true,
+          outsideSince: t0,
+          outsideSinceUpdatedAt: 1,
+          lastKnownAt: t0,
+        ),
+        now: t0.add(const Duration(seconds: 3)),
+      );
+      expect(warning.isWarning, isTrue);
+    });
+
+    test('欠けが続いて保持時間を超えたら、警告を解除する(永久に振動させない)', () {
+      final previous = (
+        isWarning: true,
+        outsideSince: t0,
+        outsideSinceUpdatedAt: 1,
+        lastKnownAt: t0,
+      );
+
+      final held = applyOutsideAreaHysteresis(
+        observation: unknownOutsideAreaObservation,
+        previous: previous,
+        now: t0.add(
+          outsideAreaUnknownHoldDuration - const Duration(seconds: 1),
+        ),
+      );
+      expect(held.isWarning, isTrue);
+
+      final released = applyOutsideAreaHysteresis(
+        observation: unknownOutsideAreaObservation,
+        previous: previous,
+        now: t0.add(outsideAreaUnknownHoldDuration),
+      );
+      expect(released.isWarning, isFalse);
+      expect(released.outsideSince, isNull);
+    });
+
+    test('一度も判定できていなければ、欠けが続いても警告しない', () {
+      var state = initialOutsideAreaWarningState;
+      for (var i = 0; i < 120; i++) {
+        state = applyOutsideAreaHysteresis(
+          observation: unknownOutsideAreaObservation,
+          previous: state,
+          now: t0.add(Duration(seconds: i)),
+        );
+      }
+      expect(state.isWarning, isFalse);
     });
   });
 }

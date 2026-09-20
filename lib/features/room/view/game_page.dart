@@ -19,7 +19,6 @@ import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/game_notifications.dart';
 import 'package:kakureru/features/room/game_over_navigation.dart';
 import 'package:kakureru/features/room/game_session.dart';
-import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/opponent_roster_status.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
@@ -151,30 +150,43 @@ class GamePage extends HookConsumerWidget {
     // roomがdataのときしか実行されず、呼ぶと順序が崩れる)ため、判定と
     // 状態の持ち越しはここで済ませ、表示だけをdata:側でぶら下げる。
     //
-    // エリア未設定のルームではgameAreaが空なのでdescribeReturnToAreaが
-    // 常にnullを返し、以下すべてが自動的に無効になる。
+    // 本文(roomAsync.when)がdataを描いていないときはroomを渡さない。
+    // 渡してしまうと、RTDBが一瞬こけてスピナーやエラーが出ている間も
+    // 判定だけが進み、バナーが無いまま振動と通知だけが続く。観測は
+    // 「分からない」になり、フック側が直前の判定を保つので、dataに戻れば
+    // 猶予を数え直さずに警告が復帰する。
+    //
+    // エリア未設定のルームではgameAreaが空なのでobserveOutsideAreaが
+    // 常に「内側」を返し、以下すべてが自動的に無効になる。
+    //
+    // 「dataを描いているか」は本文と同じ`when`で判定する。ローディング/
+    // エラーの細かい扱い(skipLoadingOnRefresh等)を書き写すと、いつか
+    // 本文とずれるため。
+    final isShowingRoomData = roomAsync.when(
+      data: (_) => true,
+      loading: () => false,
+      error: (_, _) => false,
+    );
     final myLocation = _findLocation(locationState.locations, myUid);
-    final returnToArea = room == null || myLocation == null
-        ? null
-        : describeReturnToArea(
-            area: room.setting.gameArea,
-            point: LatLng(
-              lat: myLocation.latitude,
-              lng: myLocation.longitude,
-            ),
-          );
-    // 猶予距離・猶予時間を通したあとの「いま警告を出すか」。警告中でない
-    // 間はnullになるので、これ1つで赤帯・地図の赤かぶせ・戻り方カードの
-    // 3つをまとめて出し入れできる。
-    final outsideAreaReturn =
-        useOutsideAreaWarning(
-          outsideMeters: returnToArea?.meters,
-          tick: tick.value,
-        )
-        ? returnToArea
-        : null;
+    final outsideAreaObservation = observeOutsideArea(
+      area: isShowingRoomData ? room?.setting.gameArea : null,
+      location: myLocation,
+      // updatedAtはServerValue.timestampで書かれるのでサーバー時刻で比べる。
+      nowMillis: now,
+    );
+    // 猶予距離・猶予時間を通したあとの「いま警告を出すか」。
+    final isOutsideAreaWarning = useOutsideAreaWarning(
+      observation: outsideAreaObservation,
+      tick: tick.value,
+    );
+    // 表示と発火の条件を揃える。これ1つで赤帯・地図の赤かぶせ・戻り方
+    // カード・振動・通知がまとめて出入りする。
+    final outsideAreaAlert = outsideAreaAlertOf(
+      isWarning: isOutsideAreaWarning && isShowingRoomData,
+      observation: outsideAreaObservation,
+    );
     // 外にいる間だけ振動と通知を続ける(戻ったら通知も消す)。
-    useOutsideAreaNotifications(isOutside: outsideAreaReturn != null);
+    useOutsideAreaNotifications(isOutside: outsideAreaAlert != null);
 
     final pressureState = ref.watch(pressureViewModelProvider);
     final bleDetections = ref.watch(bleViewModelProvider);
@@ -375,20 +387,22 @@ class GamePage extends HookConsumerWidget {
 
                 return Column(
                   children: [
-                    // エリア外の赤帯(UI改修モック2a-07)。安全に関わる警告
-                    // なので、他のバナーより上(ヘッダーの真下)に出す。
-                    if (outsideAreaReturn != null) const OutsideAreaBanner(),
                     // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
                     // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
                     // なので逃走者のみに出す。
                     if (myRole == UserRole.fugitive &&
                         phase == GamePhase.beforeRelease)
                       PreReleaseBanner(countdownSec: countdownSec),
+                    // 位置が無いと、自分の位置が送れないだけでなくエリア外
+                    // 判定もできない(一番エリアの外に出そうな人=GPSが無く
+                    // 鬼からも見えない人が、警告も受けない状態になる)。
+                    // 送信だけの話だと読めると気づけないので併記する。
                     if (locationState.permissionDenied)
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 16),
                         child: Text(
-                          '位置情報の権限(常に許可)がないため、自分の位置を送信できません',
+                          '位置情報の権限(常に許可)がないため、自分の位置を送信できません。'
+                          'エリア外アラートも出ません',
                           style: TextStyle(color: Color(0xFFE5484D)),
                         ),
                       ),
@@ -413,43 +427,20 @@ class GamePage extends HookConsumerWidget {
                         isSubmitting: becomeDemon.isRunning,
                         onPressed: handleBecomeDemonPressed,
                       ),
+                    // エリア外アラート(赤帯・赤かぶせ・矢印・戻り方カード)は
+                    // 地図の上に重ねる。Columnに足すと、その分だけ地図と
+                    // 下のカードが押し出されて画面外へ消えるため
+                    // (OutsideAreaAlertMapのコメント参照)。
                     Expanded(
-                      child: Stack(
-                        children: [
-                          GameLocationMap(
-                            locations: visibleLocations,
-                            users: room.users,
-                            myUid: myUid,
-                            cachedPosition: cachedPosition.value,
-                            gameArea: room.setting.gameArea,
-                          ),
-                          // エリアの破線境界と外側の暗転はGameLocationMapが
-                          // 既に描いている。ここに重ねるのは、エリア外の
-                          // ときだけ出す赤かぶせ・方向矢印・戻り方カードの
-                          // 3つ(UI改修モック2a-07)。
-                          if (outsideAreaReturn != null) ...[
-                            Positioned.fill(
-                              child: OutsideAreaMapOverlay(
-                                bearingDegrees:
-                                    outsideAreaReturn.bearingDegrees,
-                              ),
-                            ),
-                            Positioned(
-                              left: 14,
-                              right: 14,
-                              bottom: 14,
-                              // 地図のパン・ズームを邪魔しないよう、
-                              // カードもタップを素通りさせる。
-                              child: IgnorePointer(
-                                child: ReturnToAreaCard(
-                                  meters: outsideAreaReturn.meters,
-                                  bearingDegrees:
-                                      outsideAreaReturn.bearingDegrees,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                      child: OutsideAreaAlertMap(
+                        alert: outsideAreaAlert,
+                        map: GameLocationMap(
+                          locations: visibleLocations,
+                          users: room.users,
+                          myUid: myUid,
+                          cachedPosition: cachedPosition.value,
+                          gameArea: room.setting.gameArea,
+                        ),
                       ),
                     ),
                     // マップの下は、対象役割の相手をタップで選べるチップ一覧と、
