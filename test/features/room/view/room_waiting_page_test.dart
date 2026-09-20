@@ -482,6 +482,34 @@ void main() {
       expect(roomRepo.revokedUids, isEmpty);
     });
 
+    // calibrationStatusesはroom.usersだけで作っているので、補わないと
+    // 偽プレイヤーが既定のpendingに落ちて未完了アイコンが出る。
+    // pressureSensorAvailable: false として作っているのと食い違う。
+    testWidgets('偽プレイヤーには未完了ではなく「非対応」を出す', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+      );
+
+      final pendingBefore = find
+          .byIcon(Icons.radio_button_unchecked)
+          .evaluate()
+          .length;
+      await tester.tap(find.byType(DebugMockPlayersToggle));
+      await tester.pump();
+
+      // 偽プレイヤーが増えても「未完了」は増えず、その数だけ「非対応」が出る。
+      expect(
+        find.byIcon(Icons.radio_button_unchecked),
+        findsNWidgets(pendingBefore),
+      );
+      expect(
+        find.byIcon(Icons.sensors_off),
+        findsNWidgets(debugMockPlayerCount),
+      );
+    });
+
     testWidgets('1人でもゲーム開始が押せるようになる', (tester) async {
       await _pumpWaitingPage(
         tester,

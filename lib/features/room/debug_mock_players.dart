@@ -28,8 +28,15 @@ import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
 
 /// 偽プレイヤーの人数。実機1台で「チップが均等割りに収まらなくなる」
-/// 状態まで持っていける程度の人数として5人にしている。
-const debugMockPlayerCount = 5;
+/// 状態まで持っていける人数にしてある。
+///
+/// 6人にしているのは、360dp幅の端末だと5人目から横スクロールに切り替わる
+/// ため、切り替わった後の見え方(スクロールできること、各チップの幅が
+/// 48dpを下回らないこと)まで確認したいから。
+///
+/// **増やすときは、下の各定数リストも同じ数だけ伸ばすこと。**
+/// 数が合わないと[_mockUsers]のassertで落ちる。
+const debugMockPlayerCount = 6;
 
 /// 乱数の固定シード。issueの番号をそのまま使っているだけで、値自体に
 /// 意味はない(毎回同じ並びになることだけが重要)。
@@ -43,11 +50,19 @@ const debugMockPlayerUids = [
   'debug-mock-2',
   'debug-mock-3',
   'debug-mock-4',
+  'debug-mock-5',
 ];
 
 /// 偽プレイヤーの表示名。UI改修モック2a-03に出てくる名前
 /// (ゆい/たくみ/そら)を含む、短い日本語の名前にしてある。
-const _debugMockPlayerNames = ['ゆい', 'たくみ', 'そら', 'あおい', 'はると'];
+const _debugMockPlayerNames = [
+  'ゆい',
+  'たくみ',
+  'そら',
+  'あおい',
+  'はると',
+  'みなと',
+];
 
 /// Wi-Fiの3段階判定。「近い/遠い/検知なし」が必ず混ざるよう、乱数ではなく
 /// 固定の並びで持つ(混ざっていないと表示の作り分けを確認できないため)。
@@ -57,12 +72,13 @@ const List<ProximityLevel> _debugMockWifiLevels = [
   ProximityLevel.notDetected,
   ProximityLevel.close,
   ProximityLevel.far,
+  ProximityLevel.notDetected,
 ];
 
 /// 上下バーの基準になる高さの差(メートル)。上(正)・下(負)・ほぼ同じ高さ(0)
 /// が必ず混ざるようにしてある。バーの表示範囲は±20m
 /// (pressure_math.dartの`verticalDotFraction`)なので、その中に収まる値。
-const _debugMockVerticalBaseMeters = [8.0, -6.0, 0.0, 14.0, -12.0];
+const _debugMockVerticalBaseMeters = [8.0, -6.0, 0.0, 14.0, -12.0, 3.0];
 
 /// 高さの差に乗せる揺らぎの幅(メートル)。±[_debugMockVerticalJitterMeters]/2
 /// の範囲で揺らす。「ほぼ同じ高さ」の1人が上下どちらかに振り切れない程度の
@@ -119,6 +135,7 @@ const List<UserRole> _debugMockWaitingRoles = [
   UserRole.demon,
   UserRole.fugitive,
   UserRole.demon,
+  UserRole.fugitive,
   UserRole.fugitive,
   UserRole.fugitive,
 ];

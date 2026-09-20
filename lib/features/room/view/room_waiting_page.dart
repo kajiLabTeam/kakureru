@@ -309,8 +309,20 @@ class RoomWaitingPage extends HookConsumerWidget {
                     vertical: 4,
                   ),
                   children: displayUsers.map((u) {
+                    // showMocksで短絡させる。無条件に呼ぶと、リリース
+                    // ビルドでも判定と偽プレイヤーのuid一覧が参照され、
+                    // 「偽プレイヤーのコードを配布物に含めない」という
+                    // 前提が崩れる。1行に1回だけ計算して使い回す。
+                    final isMock = showMocks && isDebugMockPlayer(u.id);
+                    // calibrationStatusesはroom.usersだけで作っているので、
+                    // 偽プレイヤーは既定のpendingに落ちる。センサー非対応
+                    // (pressureSensorAvailable: false)として作っているのに
+                    // 未完了アイコンが出てしまうため、ここで補う。
                     final status =
-                        calibrationStatuses[u.id] ?? CalibrationStatus.pending;
+                        calibrationStatuses[u.id] ??
+                        (isMock
+                            ? CalibrationStatus.unavailable
+                            : CalibrationStatus.pending);
                     final isPending =
                         room.pendingDemonUid == u.id &&
                         u.role != UserRole.demon;
@@ -332,7 +344,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                     // 区別が付かないと、トグルを入れたままの部屋を「6人
                     // 集まっている」と読み違えたまま開始してしまう。
                     return Opacity(
-                      opacity: isDebugMockPlayer(u.id) ? 0.45 : 1,
+                      opacity: isMock ? 0.45 : 1,
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.symmetric(
@@ -397,7 +409,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                             // 受諾できないまま残って**部屋が鬼を指名できなく
                             // なる**(取り消しボタンも偽プレイヤーの行にしか
                             // 出ないので、トグルを戻すと復旧できない)。
-                            if (isHost && !isDebugMockPlayer(u.id))
+                            if (isHost && !isMock)
                               Padding(
                                 padding: const EdgeInsets.only(left: 8),
                                 child: u.role == UserRole.demon

@@ -33,9 +33,11 @@ void main() {
   List<RoomUser> usersFor(UserRole myRole) => debugMockUsers(myRole: myRole);
 
   group('debugMockUsers', () {
-    test('5人ぶん生成される', () {
+    test('人数ぶん生成される', () {
       expect(usersFor(UserRole.demon).length, debugMockPlayerCount);
-      expect(debugMockPlayerCount, 5);
+      // 360dp幅の端末では5人目からチップが横スクロールに切り替わる。
+      // 切り替わった後の見え方まで確認したいので、それを超える人数にする。
+      expect(debugMockPlayerCount, greaterThanOrEqualTo(6));
     });
 
     test('役割は自分の逆になる', () {
@@ -57,10 +59,14 @@ void main() {
     });
   });
 
-  test('4種類の偽データが同じ5人ぶん揃っている', () {
+  // debugMockPlayerCountを増やしたときに、どれか1つのリストだけ伸ばし
+  // 忘れるとRangeErrorで落ちる。ここで人数ぶん揃っていることを固定する。
+  test('偽データが全種類、同じ人数ぶん揃っている', () {
     final uids = usersFor(UserRole.demon).map((u) => u.id).toList();
 
     expect(uids, debugMockPlayerUids);
+    expect(uids, hasLength(debugMockPlayerCount));
+    expect(debugMockWaitingUsers(), hasLength(debugMockPlayerCount));
     expect(debugMockWifiEntries().map((e) => e.uid).toList(), uids);
     expect(debugMockVerticalPositions().map((p) => p.uid).toList(), uids);
     expect(
@@ -175,7 +181,7 @@ void main() {
   // 満たせずゲーム画面まで到達できない。待機画面用の偽プレイヤーは、それを
   // 1台で通せるようにするためのもの。
   group('debugMockWaitingUsers(待機画面用)', () {
-    test('5人ぶん作る', () {
+    test('人数ぶん作る', () {
       expect(debugMockWaitingUsers(), hasLength(debugMockPlayerCount));
     });
 
