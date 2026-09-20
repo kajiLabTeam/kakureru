@@ -18,6 +18,7 @@ rooms/
       endsAt              startedAt + gameDurationSec
       endedAt
       pendingDemonUid     ホストが指名した、鬼になる予定の人のuid（本人が受諾したらnullに戻す）
+      demonRevokeUid      ホストが取り消した、鬼を辞めさせる予定の人のuid（本人が受諾したらnullに戻す）
     setting/
       gameArea            [{lat, lng}, ...] 3点以上
       releaseWaitSec
@@ -141,11 +142,19 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 **既知のトレードオフ**: 指名された本人のアプリがその瞬間バックグラウンド等で `meta` の変化を受け取れないと、`pendingDemonUid` が一時的に残ったままになる(セキュリティ上の問題ではなく、単なる反映待ちの遅延)。
 
+**取り消しと受諾のレース対策**: ホストの `cancelDemonNomination`(`pendingDemonUid` への素の `set(null)`)と、本人の `acceptDemonNomination` は別々のリクエストなので、素の読み取り→書き込みだと「本人が受諾処理を始めた直後にホストが取り消す」と、取り消しは `pendingDemonUid` に反映されても `role` が `DEMON` のまま取り残されるレースがあった。`acceptDemonNomination` は `pendingDemonUid` への `runTransaction` で「読んだ時点の値が依然自分のuidであるときだけ `null` に書き換える」を原子的に行い、それが成立した(=取り消しや指名し直しに割り込まれていない)場合だけ `role` を書くことでこれを防いでいる。この経路はRTDBのトランザクション機構自体に依存するため、リポジトリ内にエミュレータ/モック環境が無く自動テストでは検証できない(手動確認方法は実装コメント参照)。
+
+### 鬼の取り消し: `meta/demonRevokeUid` 経由の自己申告方式(issue #60)
+
+指名を受諾済み(`role == "DEMON"`)になった後で、ホストがその指名を取り消したい(逃走者へ戻したい)場合も、`users/{uid}` を本人以外書けない制約は変わらないため、`pendingDemonUid` と対になる同じ自己申告方式を使う: ホストは `meta/demonRevokeUid` に対象者のuidを書くだけにし(`RoomRepository.revokeDemon`)、対象者本人が自分で `role` を `"FUGITIVE"` に戻し `becameDemonAt` をクリアして `demonRevokeUid` をクリアする(`RoomRepository.acceptDemonRevoke`。`RoomWaitingPage` の該当 `useEffect` 参照)。
+
+`pendingDemonUid`(受諾前の指名の取り消し)と `demonRevokeUid`(受諾後の取り消し)はフィールドも操作も別なので、`RoomWaitingPage` のホスト向けチップは対象者の `role` で経路を分けている: まだ `DEMON` になっていなければ `pendingDemonUid` 側の「取り消す」(`cancelDemonNomination`)、既に `DEMON` なら `demonRevokeUid` 側の「取り消す」(`revokeDemon`)。
+
 ### 「同じメンバーでもう一回」(`RoomRepository.restartRoom`)
 
 ゲーム終了画面のホストが同じ部屋で再戦するときの巻き戻し。新規ノードは追加せず、既存フィールドを次のように書き戻す:
 
-- `meta/status` を `WAITING` に戻し、`startedAt` / `releasedAt` / `endsAt` / `endedAt` / `pendingDemonUid` をクリアする(すべて `restartRoom` が `rooms/{roomId}/meta` への1回の `update` でまとめて書く)
+- `meta/status` を `WAITING` に戻し、`startedAt` / `releasedAt` / `endsAt` / `endedAt` / `pendingDemonUid` / `demonRevokeUid` をクリアする(すべて `restartRoom` が `rooms/{roomId}/meta` への1回の `update` でまとめて書く)
 - 各参加者の `role` を `FUGITIVE` に、`becameDemonAt` をクリアする
 
 保持する(書き換えない)のは `setting` 配下すべてと、各参加者の `pressureOffset` / `pressureSensorAvailable`。参加者自体も退室させない。
@@ -163,10 +172,10 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 - 鬼決定の取りこぼし → `pendingDemonUid` が残るだけで `role` は変わらない。待機画面に「鬼が1人も指名されていません」(`room_waiting_page.dart`)が出て、ホストが「取り消す」「鬼にする」で指名し直せる。つまり**異常が見えるし直せる**。
 - 巻き戻しの取りこぼし → 参加者Pが `DEMON` のまま残る。このとき:
   - `demonCount == 1` になるため `hasStartableRoleComposition(demonCount: 1, totalUserCount: n) == true` となり、「ゲーム開始」が**警告も出ないまま押せてしまう**。キャリブレーション結果(`basePressure` / `pressureOffset`)は仕様どおり保持されるので `allCalibrated` も真になり、**部屋は完全に正常に見える**。その状態で次戦が始まり、鬼役のPは自分が鬼だと知らない(そもそもアプリを開いていない)。
-  - ホスト向けの操作チップは `if (isHost && u.role != UserRole.demon)` という条件で出しているため、**既に `DEMON` の参加者には「取り消す」も「鬼にする」も表示されず、ホストに修正手段が一切ない**。
-  - ホストが気付いて別の人を「鬼にする」と、鬼が2人の状態で始まる。
+  - ホスト向けの操作チップは、既に `DEMON` の参加者にも `demonRevokeUid` 経由の「取り消す」を表示するようになった(issue #60。上記「鬼の取り消し」参照)ため、ホストがこの状態に気付けば手動で逃走者へ戻せる。ただし**「正当に指名された鬼」と「前ラウンドの残骸」をUI側が自動で見分けているわけではない**(見分ける手段が無い問題自体は次段落で述べる通り未解決)。参加者一覧が「鬼が1人だけ・警告なし」に見えている以上、ホストが疑わなければこの取り消しボタンを押す理由もなく、気付かなければ従来通り取りこぼされる。
+  - ホストが気付かずに別の人を「鬼にする」と、鬼が2人の状態で始まる。
 
-つまり「部屋が正常に見えたまま壊れた状態で次戦が始まり、ホストにはそれを直す導線が無い」という実害になる。
+つまり「部屋が正常に見えたまま壊れた状態で次戦が始まり、ホストが気付けば直せるが、気付く手がかりが無い」という実害になる(issue #60でホスト側の修正手段自体は解消したが、検知手段が無い問題は残る)。
 
 `RoomWaitingPage` 側で「巻き戻し後に自分が `DEMON` のまま残っている」ケースを自己修復させる案も検討したが、現状は**「正当に指名された鬼」と「前ラウンドの残骸」を区別する手段が無い**ため見送った: `acceptDemonNomination` の直後も `status == WAITING` かつ `role == DEMON` かつ `pendingDemonUid == null` で、残骸と全く同じ状態になる。無条件に自分を `FUGITIVE` へ戻す実装は、正当に指名された鬼を毎回逃走者へ戻してしまい取りこぼしより有害。区別するには `meta/roundId`(または `restartRoom` が書く `meta/restartedAt` + `acceptDemonNomination` が書く `becameDemonAt` の突き合わせ。現状 `acceptDemonNomination` は `becameDemonAt` を書いていないので初期鬼を取りこぼす)の導入が必要で、これはスキーマ追加になる。
 

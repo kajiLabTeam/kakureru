@@ -23,9 +23,11 @@ const _myUid = 'host';
 /// 暗黙の`super()`を通っても`.instance`は解決されない(Firebase未初期化でも
 /// インスタンス化できる)。
 class _FakeRoomRepository extends RoomRepository {
-  /// 直近の`nominateDemon`/`cancelDemonNomination`の完了を制御するCompleter。
+  /// 直近の`nominateDemon`/`cancelDemonNomination`/`revokeDemon`の完了を
+  /// 制御するCompleter。
   Completer<void>? pendingAction;
   final List<String> nominatedUids = [];
+  final List<String> revokedUids = [];
   int cancelCalls = 0;
   int leaveRoomCalls = 0;
 
@@ -46,7 +48,18 @@ class _FakeRoomRepository extends RoomRepository {
   }
 
   @override
+  Future<void> revokeDemon(String roomId, String uid) {
+    revokedUids.add(uid);
+    final completer = Completer<void>();
+    pendingAction = completer;
+    return completer.future;
+  }
+
+  @override
   Future<void> acceptDemonNomination(String roomId, String uid) async {}
+
+  @override
+  Future<void> acceptDemonRevoke(String roomId, String uid) async {}
 
   // 待機画面はdispose時に必ずleaveRoomを呼ぶので、ここで吸収する。
   @override
@@ -86,19 +99,46 @@ class _FakePressureViewModel extends PressureViewModel {
 }
 
 /// 気圧を取得済み・キャリブレーション未実施のホスト1人だけのルーム。
-Room _room({String? pendingDemonUid, int createdAt = 0}) => Room(
+Room _room({
+  String? pendingDemonUid,
+  String? demonRevokeUid,
+  int createdAt = 0,
+  List<RoomUser>? users,
+}) => Room(
   id: _roomId,
   roomCode: '1234',
   hostUserId: _myUid,
   status: RoomStatus.waiting,
   createdAt: createdAt,
   pendingDemonUid: pendingDemonUid,
+  demonRevokeUid: demonRevokeUid,
   setting: const RoomSetting(),
+  users:
+      users ??
+      const [
+        RoomUser(
+          id: _myUid,
+          displayName: 'ホスト',
+          isHost: true,
+          pressureSensorAvailable: true,
+        ),
+      ],
+);
+
+/// ホストと、既に鬼(DEMON)になっている参加者1人のルーム。
+Room _roomWithDemon({String? demonRevokeUid}) => _room(
+  demonRevokeUid: demonRevokeUid,
   users: const [
     RoomUser(
       id: _myUid,
       displayName: 'ホスト',
       isHost: true,
+      pressureSensorAvailable: true,
+    ),
+    RoomUser(
+      id: 'demon',
+      displayName: '鬼役',
+      role: UserRole.demon,
       pressureSensorAvailable: true,
     ),
   ],
@@ -237,6 +277,63 @@ void main() {
         tester.widget<ActionChip>(find.byType(ActionChip)).onPressed,
         isNull,
       );
+    });
+  });
+
+  group('鬼の取り消し(受諾済みのDEMONを戻す「取り消す」)', () {
+    testWidgets('DEMONの行にも「取り消す」チップが出て、押すとrevokeDemonが飛ぶ', (tester) async {
+      final roomRepo = _FakeRoomRepository();
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: roomRepo,
+        pressureViewModel: _FakePressureViewModel(),
+        initialRoom: _roomWithDemon(),
+      );
+
+      expect(_chipWithText(tester, '取り消す').onPressed, isNotNull);
+
+      await tester.tap(find.widgetWithText(ActionChip, '取り消す'));
+      await tester.pump();
+
+      expect(roomRepo.revokedUids, ['demon']);
+    });
+
+    testWidgets('送信中はスピナーになり、押せなくなる', (tester) async {
+      final roomRepo = _FakeRoomRepository();
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: roomRepo,
+        pressureViewModel: _FakePressureViewModel(),
+        initialRoom: _roomWithDemon(),
+      );
+
+      await tester.tap(find.widgetWithText(ActionChip, '取り消す'));
+      await tester.pump();
+
+      expect(find.widgetWithText(ActionChip, '取り消す'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(ActionChip),
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+
+      roomRepo.pendingAction!.complete();
+      await tester.pump();
+
+      expect(find.widgetWithText(ActionChip, '取り消す'), findsOneWidget);
+    });
+
+    testWidgets('demonRevokeUidが立っている間は行に「解除中...」と出る', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        initialRoom: _roomWithDemon(demonRevokeUid: 'demon'),
+      );
+
+      expect(find.textContaining('鬼(解除中...)'), findsOneWidget);
     });
   });
 

@@ -21,6 +21,7 @@ abstract class Room with _$Room {
     int? endsAt,
     int? endedAt,
     String? pendingDemonUid,
+    String? demonRevokeUid,
     required RoomSetting setting,
     required List<RoomUser> users,
   }) = _Room;
@@ -42,6 +43,7 @@ abstract class Room with _$Room {
       endsAt: meta['endsAt'] as int?,
       endedAt: meta['endedAt'] as int?,
       pendingDemonUid: meta['pendingDemonUid'] as String?,
+      demonRevokeUid: meta['demonRevokeUid'] as String?,
       setting: RoomSetting.fromMap(settingRaw),
       users: usersRaw.entries
           .map((e) => RoomUser.fromMap(e.key.toString(), e.value as Map<dynamic, dynamic>))

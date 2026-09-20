@@ -14,7 +14,11 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$GridCellBounds {
 
- double get south; double get north; double get west; double get east;
+/// セル南端の緯度。
+ double get south;/// セル北端の緯度。
+ double get north;/// セル西端の経度。
+ double get west;/// セル東端の経度。
+ double get east;
 /// Create a copy of GridCellBounds
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -212,9 +216,13 @@ class _GridCellBounds extends GridCellBounds {
   const _GridCellBounds({required this.south, required this.north, required this.west, required this.east}): super._();
   
 
+/// セル南端の緯度。
 @override final  double south;
+/// セル北端の緯度。
 @override final  double north;
+/// セル西端の経度。
 @override final  double west;
+/// セル東端の経度。
 @override final  double east;
 
 /// Create a copy of GridCellBounds

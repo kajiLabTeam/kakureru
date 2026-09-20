@@ -14,7 +14,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$Room {
 
- String get id; String get roomCode; String get hostUserId; RoomStatus get status; double? get basePressure; int get createdAt; int? get startedAt; int? get releasedAt; int? get endsAt; int? get endedAt; String? get pendingDemonUid; RoomSetting get setting; List<RoomUser> get users;
+ String get id; String get roomCode; String get hostUserId; RoomStatus get status; double? get basePressure; int get createdAt; int? get startedAt; int? get releasedAt; int? get endsAt; int? get endedAt; String? get pendingDemonUid; String? get demonRevokeUid; RoomSetting get setting; List<RoomUser> get users;
 /// Create a copy of Room
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -25,16 +25,16 @@ $RoomCopyWith<Room> get copyWith => _$RoomCopyWithImpl<Room>(this as Room, _$ide
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Room&&(identical(other.id, id) || other.id == id)&&(identical(other.roomCode, roomCode) || other.roomCode == roomCode)&&(identical(other.hostUserId, hostUserId) || other.hostUserId == hostUserId)&&(identical(other.status, status) || other.status == status)&&(identical(other.basePressure, basePressure) || other.basePressure == basePressure)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.releasedAt, releasedAt) || other.releasedAt == releasedAt)&&(identical(other.endsAt, endsAt) || other.endsAt == endsAt)&&(identical(other.endedAt, endedAt) || other.endedAt == endedAt)&&(identical(other.pendingDemonUid, pendingDemonUid) || other.pendingDemonUid == pendingDemonUid)&&(identical(other.setting, setting) || other.setting == setting)&&const DeepCollectionEquality().equals(other.users, users));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Room&&(identical(other.id, id) || other.id == id)&&(identical(other.roomCode, roomCode) || other.roomCode == roomCode)&&(identical(other.hostUserId, hostUserId) || other.hostUserId == hostUserId)&&(identical(other.status, status) || other.status == status)&&(identical(other.basePressure, basePressure) || other.basePressure == basePressure)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.releasedAt, releasedAt) || other.releasedAt == releasedAt)&&(identical(other.endsAt, endsAt) || other.endsAt == endsAt)&&(identical(other.endedAt, endedAt) || other.endedAt == endedAt)&&(identical(other.pendingDemonUid, pendingDemonUid) || other.pendingDemonUid == pendingDemonUid)&&(identical(other.demonRevokeUid, demonRevokeUid) || other.demonRevokeUid == demonRevokeUid)&&(identical(other.setting, setting) || other.setting == setting)&&const DeepCollectionEquality().equals(other.users, users));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,roomCode,hostUserId,status,basePressure,createdAt,startedAt,releasedAt,endsAt,endedAt,pendingDemonUid,setting,const DeepCollectionEquality().hash(users));
+int get hashCode => Object.hash(runtimeType,id,roomCode,hostUserId,status,basePressure,createdAt,startedAt,releasedAt,endsAt,endedAt,pendingDemonUid,demonRevokeUid,setting,const DeepCollectionEquality().hash(users));
 
 @override
 String toString() {
-  return 'Room(id: $id, roomCode: $roomCode, hostUserId: $hostUserId, status: $status, basePressure: $basePressure, createdAt: $createdAt, startedAt: $startedAt, releasedAt: $releasedAt, endsAt: $endsAt, endedAt: $endedAt, pendingDemonUid: $pendingDemonUid, setting: $setting, users: $users)';
+  return 'Room(id: $id, roomCode: $roomCode, hostUserId: $hostUserId, status: $status, basePressure: $basePressure, createdAt: $createdAt, startedAt: $startedAt, releasedAt: $releasedAt, endsAt: $endsAt, endedAt: $endedAt, pendingDemonUid: $pendingDemonUid, demonRevokeUid: $demonRevokeUid, setting: $setting, users: $users)';
 }
 
 
@@ -45,7 +45,7 @@ abstract mixin class $RoomCopyWith<$Res>  {
   factory $RoomCopyWith(Room value, $Res Function(Room) _then) = _$RoomCopyWithImpl;
 @useResult
 $Res call({
- String id, String roomCode, String hostUserId, RoomStatus status, double? basePressure, int createdAt, int? startedAt, int? releasedAt, int? endsAt, int? endedAt, String? pendingDemonUid, RoomSetting setting, List<RoomUser> users
+ String id, String roomCode, String hostUserId, RoomStatus status, double? basePressure, int createdAt, int? startedAt, int? releasedAt, int? endsAt, int? endedAt, String? pendingDemonUid, String? demonRevokeUid, RoomSetting setting, List<RoomUser> users
 });
 
 
@@ -62,7 +62,7 @@ class _$RoomCopyWithImpl<$Res>
 
 /// Create a copy of Room
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? roomCode = null,Object? hostUserId = null,Object? status = null,Object? basePressure = freezed,Object? createdAt = null,Object? startedAt = freezed,Object? releasedAt = freezed,Object? endsAt = freezed,Object? endedAt = freezed,Object? pendingDemonUid = freezed,Object? setting = null,Object? users = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? roomCode = null,Object? hostUserId = null,Object? status = null,Object? basePressure = freezed,Object? createdAt = null,Object? startedAt = freezed,Object? releasedAt = freezed,Object? endsAt = freezed,Object? endedAt = freezed,Object? pendingDemonUid = freezed,Object? demonRevokeUid = freezed,Object? setting = null,Object? users = null,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,roomCode: null == roomCode ? _self.roomCode : roomCode // ignore: cast_nullable_to_non_nullable
@@ -75,6 +75,7 @@ as int?,releasedAt: freezed == releasedAt ? _self.releasedAt : releasedAt // ign
 as int?,endsAt: freezed == endsAt ? _self.endsAt : endsAt // ignore: cast_nullable_to_non_nullable
 as int?,endedAt: freezed == endedAt ? _self.endedAt : endedAt // ignore: cast_nullable_to_non_nullable
 as int?,pendingDemonUid: freezed == pendingDemonUid ? _self.pendingDemonUid : pendingDemonUid // ignore: cast_nullable_to_non_nullable
+as String?,demonRevokeUid: freezed == demonRevokeUid ? _self.demonRevokeUid : demonRevokeUid // ignore: cast_nullable_to_non_nullable
 as String?,setting: null == setting ? _self.setting : setting // ignore: cast_nullable_to_non_nullable
 as RoomSetting,users: null == users ? _self.users : users // ignore: cast_nullable_to_non_nullable
 as List<RoomUser>,
@@ -171,10 +172,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String roomCode,  String hostUserId,  RoomStatus status,  double? basePressure,  int createdAt,  int? startedAt,  int? releasedAt,  int? endsAt,  int? endedAt,  String? pendingDemonUid,  RoomSetting setting,  List<RoomUser> users)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String roomCode,  String hostUserId,  RoomStatus status,  double? basePressure,  int createdAt,  int? startedAt,  int? releasedAt,  int? endsAt,  int? endedAt,  String? pendingDemonUid,  String? demonRevokeUid,  RoomSetting setting,  List<RoomUser> users)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _Room() when $default != null:
-return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.basePressure,_that.createdAt,_that.startedAt,_that.releasedAt,_that.endsAt,_that.endedAt,_that.pendingDemonUid,_that.setting,_that.users);case _:
+return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.basePressure,_that.createdAt,_that.startedAt,_that.releasedAt,_that.endsAt,_that.endedAt,_that.pendingDemonUid,_that.demonRevokeUid,_that.setting,_that.users);case _:
   return orElse();
 
 }
@@ -192,10 +193,10 @@ return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.base
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String roomCode,  String hostUserId,  RoomStatus status,  double? basePressure,  int createdAt,  int? startedAt,  int? releasedAt,  int? endsAt,  int? endedAt,  String? pendingDemonUid,  RoomSetting setting,  List<RoomUser> users)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String roomCode,  String hostUserId,  RoomStatus status,  double? basePressure,  int createdAt,  int? startedAt,  int? releasedAt,  int? endsAt,  int? endedAt,  String? pendingDemonUid,  String? demonRevokeUid,  RoomSetting setting,  List<RoomUser> users)  $default,) {final _that = this;
 switch (_that) {
 case _Room():
-return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.basePressure,_that.createdAt,_that.startedAt,_that.releasedAt,_that.endsAt,_that.endedAt,_that.pendingDemonUid,_that.setting,_that.users);case _:
+return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.basePressure,_that.createdAt,_that.startedAt,_that.releasedAt,_that.endsAt,_that.endedAt,_that.pendingDemonUid,_that.demonRevokeUid,_that.setting,_that.users);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -212,10 +213,10 @@ return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.base
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String roomCode,  String hostUserId,  RoomStatus status,  double? basePressure,  int createdAt,  int? startedAt,  int? releasedAt,  int? endsAt,  int? endedAt,  String? pendingDemonUid,  RoomSetting setting,  List<RoomUser> users)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String roomCode,  String hostUserId,  RoomStatus status,  double? basePressure,  int createdAt,  int? startedAt,  int? releasedAt,  int? endsAt,  int? endedAt,  String? pendingDemonUid,  String? demonRevokeUid,  RoomSetting setting,  List<RoomUser> users)?  $default,) {final _that = this;
 switch (_that) {
 case _Room() when $default != null:
-return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.basePressure,_that.createdAt,_that.startedAt,_that.releasedAt,_that.endsAt,_that.endedAt,_that.pendingDemonUid,_that.setting,_that.users);case _:
+return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.basePressure,_that.createdAt,_that.startedAt,_that.releasedAt,_that.endsAt,_that.endedAt,_that.pendingDemonUid,_that.demonRevokeUid,_that.setting,_that.users);case _:
   return null;
 
 }
@@ -227,7 +228,7 @@ return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.base
 
 
 class _Room implements Room {
-  const _Room({required this.id, required this.roomCode, required this.hostUserId, required this.status, this.basePressure, required this.createdAt, this.startedAt, this.releasedAt, this.endsAt, this.endedAt, this.pendingDemonUid, required this.setting, required final  List<RoomUser> users}): _users = users;
+  const _Room({required this.id, required this.roomCode, required this.hostUserId, required this.status, this.basePressure, required this.createdAt, this.startedAt, this.releasedAt, this.endsAt, this.endedAt, this.pendingDemonUid, this.demonRevokeUid, required this.setting, required final  List<RoomUser> users}): _users = users;
   
 
 @override final  String id;
@@ -241,6 +242,7 @@ class _Room implements Room {
 @override final  int? endsAt;
 @override final  int? endedAt;
 @override final  String? pendingDemonUid;
+@override final  String? demonRevokeUid;
 @override final  RoomSetting setting;
  final  List<RoomUser> _users;
 @override List<RoomUser> get users {
@@ -260,16 +262,16 @@ _$RoomCopyWith<_Room> get copyWith => __$RoomCopyWithImpl<_Room>(this, _$identit
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Room&&(identical(other.id, id) || other.id == id)&&(identical(other.roomCode, roomCode) || other.roomCode == roomCode)&&(identical(other.hostUserId, hostUserId) || other.hostUserId == hostUserId)&&(identical(other.status, status) || other.status == status)&&(identical(other.basePressure, basePressure) || other.basePressure == basePressure)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.releasedAt, releasedAt) || other.releasedAt == releasedAt)&&(identical(other.endsAt, endsAt) || other.endsAt == endsAt)&&(identical(other.endedAt, endedAt) || other.endedAt == endedAt)&&(identical(other.pendingDemonUid, pendingDemonUid) || other.pendingDemonUid == pendingDemonUid)&&(identical(other.setting, setting) || other.setting == setting)&&const DeepCollectionEquality().equals(other._users, _users));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Room&&(identical(other.id, id) || other.id == id)&&(identical(other.roomCode, roomCode) || other.roomCode == roomCode)&&(identical(other.hostUserId, hostUserId) || other.hostUserId == hostUserId)&&(identical(other.status, status) || other.status == status)&&(identical(other.basePressure, basePressure) || other.basePressure == basePressure)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.releasedAt, releasedAt) || other.releasedAt == releasedAt)&&(identical(other.endsAt, endsAt) || other.endsAt == endsAt)&&(identical(other.endedAt, endedAt) || other.endedAt == endedAt)&&(identical(other.pendingDemonUid, pendingDemonUid) || other.pendingDemonUid == pendingDemonUid)&&(identical(other.demonRevokeUid, demonRevokeUid) || other.demonRevokeUid == demonRevokeUid)&&(identical(other.setting, setting) || other.setting == setting)&&const DeepCollectionEquality().equals(other._users, _users));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,roomCode,hostUserId,status,basePressure,createdAt,startedAt,releasedAt,endsAt,endedAt,pendingDemonUid,setting,const DeepCollectionEquality().hash(_users));
+int get hashCode => Object.hash(runtimeType,id,roomCode,hostUserId,status,basePressure,createdAt,startedAt,releasedAt,endsAt,endedAt,pendingDemonUid,demonRevokeUid,setting,const DeepCollectionEquality().hash(_users));
 
 @override
 String toString() {
-  return 'Room(id: $id, roomCode: $roomCode, hostUserId: $hostUserId, status: $status, basePressure: $basePressure, createdAt: $createdAt, startedAt: $startedAt, releasedAt: $releasedAt, endsAt: $endsAt, endedAt: $endedAt, pendingDemonUid: $pendingDemonUid, setting: $setting, users: $users)';
+  return 'Room(id: $id, roomCode: $roomCode, hostUserId: $hostUserId, status: $status, basePressure: $basePressure, createdAt: $createdAt, startedAt: $startedAt, releasedAt: $releasedAt, endsAt: $endsAt, endedAt: $endedAt, pendingDemonUid: $pendingDemonUid, demonRevokeUid: $demonRevokeUid, setting: $setting, users: $users)';
 }
 
 
@@ -280,7 +282,7 @@ abstract mixin class _$RoomCopyWith<$Res> implements $RoomCopyWith<$Res> {
   factory _$RoomCopyWith(_Room value, $Res Function(_Room) _then) = __$RoomCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String roomCode, String hostUserId, RoomStatus status, double? basePressure, int createdAt, int? startedAt, int? releasedAt, int? endsAt, int? endedAt, String? pendingDemonUid, RoomSetting setting, List<RoomUser> users
+ String id, String roomCode, String hostUserId, RoomStatus status, double? basePressure, int createdAt, int? startedAt, int? releasedAt, int? endsAt, int? endedAt, String? pendingDemonUid, String? demonRevokeUid, RoomSetting setting, List<RoomUser> users
 });
 
 
@@ -297,7 +299,7 @@ class __$RoomCopyWithImpl<$Res>
 
 /// Create a copy of Room
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? roomCode = null,Object? hostUserId = null,Object? status = null,Object? basePressure = freezed,Object? createdAt = null,Object? startedAt = freezed,Object? releasedAt = freezed,Object? endsAt = freezed,Object? endedAt = freezed,Object? pendingDemonUid = freezed,Object? setting = null,Object? users = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? roomCode = null,Object? hostUserId = null,Object? status = null,Object? basePressure = freezed,Object? createdAt = null,Object? startedAt = freezed,Object? releasedAt = freezed,Object? endsAt = freezed,Object? endedAt = freezed,Object? pendingDemonUid = freezed,Object? demonRevokeUid = freezed,Object? setting = null,Object? users = null,}) {
   return _then(_Room(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,roomCode: null == roomCode ? _self.roomCode : roomCode // ignore: cast_nullable_to_non_nullable
@@ -310,6 +312,7 @@ as int?,releasedAt: freezed == releasedAt ? _self.releasedAt : releasedAt // ign
 as int?,endsAt: freezed == endsAt ? _self.endsAt : endsAt // ignore: cast_nullable_to_non_nullable
 as int?,endedAt: freezed == endedAt ? _self.endedAt : endedAt // ignore: cast_nullable_to_non_nullable
 as int?,pendingDemonUid: freezed == pendingDemonUid ? _self.pendingDemonUid : pendingDemonUid // ignore: cast_nullable_to_non_nullable
+as String?,demonRevokeUid: freezed == demonRevokeUid ? _self.demonRevokeUid : demonRevokeUid // ignore: cast_nullable_to_non_nullable
 as String?,setting: null == setting ? _self.setting : setting // ignore: cast_nullable_to_non_nullable
 as RoomSetting,users: null == users ? _self._users : users // ignore: cast_nullable_to_non_nullable
 as List<RoomUser>,

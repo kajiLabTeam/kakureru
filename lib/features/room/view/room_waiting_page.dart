@@ -105,6 +105,13 @@ class RoomWaitingPage extends HookConsumerWidget {
       if (room.pendingDemonUid == myUid && myself?.role != UserRole.demon) {
         ref.read(roomRepositoryProvider).acceptDemonNomination(roomId, myUid!);
       }
+
+      // ホストが既に鬼になっている自分の指名を取り消したら、自分でroleを
+      // 逃走者に書き戻して受諾する(上と同じ自己申告方式。
+      // docs/rtdb-schema.mdの「鬼の取り消し」参照)。
+      if (room.demonRevokeUid == myUid && myself?.role == UserRole.demon) {
+        ref.read(roomRepositoryProvider).acceptDemonRevoke(roomId, myUid!);
+      }
       return null;
     }, [roomAsync.value]);
 
@@ -321,7 +328,10 @@ class RoomWaitingPage extends HookConsumerWidget {
                                 ),
                                 Text(
                                   [
-                                    if (u.role == UserRole.demon)
+                                    if (u.role == UserRole.demon &&
+                                        room.demonRevokeUid == u.id)
+                                      '鬼(解除中...)'
+                                    else if (u.role == UserRole.demon)
                                       '鬼'
                                     else if (isPending)
                                       '逃走者(鬼に指名中...)'
@@ -338,10 +348,34 @@ class RoomWaitingPage extends HookConsumerWidget {
                             ),
                           ),
                           _CalibrationStatusIcon(status: status),
-                          if (isHost && u.role != UserRole.demon)
+                          if (isHost)
                             Padding(
                               padding: const EdgeInsets.only(left: 8),
-                              child: room.pendingDemonUid == u.id
+                              child: u.role == UserRole.demon
+                                  ? ActionChip(
+                                      label: demonActionUid.value == u.id
+                                          ? const SizedBox(
+                                              width: 12,
+                                              height: 12,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Text('取り消す'),
+                                      onPressed: demonActionUid.value != null
+                                          ? null
+                                          : () => unawaited(
+                                              runDemonAction(
+                                                u.id,
+                                                () =>
+                                                    roomRepo.revokeDemon(
+                                                      roomId,
+                                                      u.id,
+                                                    ),
+                                              ),
+                                            ),
+                                    )
+                                  : room.pendingDemonUid == u.id
                                   ? ActionChip(
                                       label: demonActionUid.value == u.id
                                           ? const SizedBox(
