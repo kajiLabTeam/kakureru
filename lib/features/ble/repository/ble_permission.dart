@@ -1,3 +1,4 @@
+import 'package:kakureru/core/utils/permission_queue.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// BLEの広告・スキャンに必要な権限をまとめて要求する。
@@ -11,17 +12,29 @@ class BlePermissionService {
   /// テストからのみ差し替える。
   BlePermissionService({
     Future<PermissionStatus> Function(Permission permission)? requestPermission,
-  }) : _requestPermission = requestPermission ?? _requestWithHandler;
+    PermissionQueue? queue,
+  }) : _requestPermission = requestPermission ?? _requestWithHandler,
+       _queue = queue ?? PermissionQueue.shared;
 
   final Future<PermissionStatus> Function(Permission permission)
   _requestPermission;
+
+  /// 位置情報の権限要求と同時にダイアログを出さないための順番待ち。
+  /// 既定は全機能で共有する[PermissionQueue.shared]。
+  final PermissionQueue _queue;
 
   static Future<PermissionStatus> _requestWithHandler(Permission permission) =>
       permission.request();
 
   /// 3つとも許可されたかどうかを返す。Android 11以前ではこれらは
   /// インストール時権限扱いのため、要求は即座にgrantedで返る。
-  Future<bool> ensureGranted() async {
+  ///
+  /// 位置情報の権限要求と同じフレームで呼ばれる(ゲーム画面に入った瞬間)が、
+  /// permission_handlerは同時リクエストを許さないため[PermissionQueue]を
+  /// 通して順番待ちさせる(issue #66)。
+  Future<bool> ensureGranted() => _queue.add(_ensureGranted);
+
+  Future<bool> _ensureGranted() async {
     final scan = await _requestPermission(Permission.bluetoothScan);
     if (!scan.isGranted) return false;
 
