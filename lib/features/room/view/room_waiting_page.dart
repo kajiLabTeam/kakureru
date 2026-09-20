@@ -294,6 +294,47 @@ class RoomWaitingPage extends HookConsumerWidget {
                   ],
                 ),
               ),
+              if (isHost)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 4,
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        textStyle: const TextStyle(fontSize: 13),
+                      ),
+                      onPressed:
+                          randomNomination.isRunning ||
+                              room.pendingDemonUid != null ||
+                              demonCandidates.isEmpty
+                          ? null
+                          : () {
+                              // 連打対策: RTDBへの反映(room.pendingDemonUidの更新)には
+                              // ネットワーク往復の遅延があり、その間はボタンがまだ有効な
+                              // ままなので、useAsyncActionが内側で持つ
+                              // SingleFlightActionで同一フレーム内の連打も含めて
+                              // 多重発火を防ぐ。
+                              unawaited(
+                                randomNomination.run(() {
+                                  final target =
+                                      demonCandidates[Random().nextInt(
+                                        demonCandidates.length,
+                                      )];
+                                  return ref
+                                      .read(roomRepositoryProvider)
+                                      .nominateDemon(roomId, target.id);
+                                }),
+                              );
+                            },
+                      child: const Text('鬼をランダムで決める'),
+                    ),
+                  ),
+                ),
               if (demonActionError.value != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -493,36 +534,6 @@ class RoomWaitingPage extends HookConsumerWidget {
                   }).toList(),
                 ),
               ),
-              if (isHost)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: OutlinedButton(
-                    onPressed:
-                        randomNomination.isRunning ||
-                            room.pendingDemonUid != null ||
-                            demonCandidates.isEmpty
-                        ? null
-                        : () {
-                            // 連打対策: RTDBへの反映(room.pendingDemonUidの更新)には
-                            // ネットワーク往復の遅延があり、その間はボタンがまだ有効な
-                            // ままなので、useAsyncActionが内側で持つ
-                            // SingleFlightActionで同一フレーム内の連打も含めて
-                            // 多重発火を防ぐ。
-                            unawaited(
-                              randomNomination.run(() {
-                                final target =
-                                    demonCandidates[Random().nextInt(
-                                      demonCandidates.length,
-                                    )];
-                                return ref
-                                    .read(roomRepositoryProvider)
-                                    .nominateDemon(roomId, target.id);
-                              }),
-                            );
-                          },
-                    child: const Text('鬼をランダムで決める'),
-                  ),
-                ),
               _CalibrationSection(
                 roomId: roomId,
                 isHost: isHost,
