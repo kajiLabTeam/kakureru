@@ -81,8 +81,10 @@ void useOutsideAreaNotifications({required bool isOutside}) {
     var isCancelled = false;
     void pulse() {
       if (isCancelled) return;
-      _vibrateOnce(() => isCancelled);
-      showOutsideAreaNotification();
+      unawaited(_vibrateOnce(() => isCancelled));
+      // 失敗はshowOutsideAreaNotification()の中でログに落としているので、
+      // ここでawaitしなくても未処理の非同期エラーにはならない。
+      unawaited(showOutsideAreaNotification());
     }
 
     pulse();
@@ -94,7 +96,7 @@ void useOutsideAreaNotifications({required bool isOutside}) {
     return () {
       isCancelled = true;
       timer.cancel();
-      cancelOutsideAreaNotification();
+      unawaited(cancelOutsideAreaNotification());
     };
   }, [isOutside]);
 }
