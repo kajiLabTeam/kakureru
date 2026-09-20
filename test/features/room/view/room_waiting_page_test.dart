@@ -23,9 +23,11 @@ const _myUid = 'host';
 /// 暗黙の`super()`を通っても`.instance`は解決されない(Firebase未初期化でも
 /// インスタンス化できる)。
 class _FakeRoomRepository extends RoomRepository {
-  /// 直近の`nominateDemon`/`cancelDemonNomination`の完了を制御するCompleter。
+  /// 直近の`nominateDemon`/`cancelDemonNomination`/`revokeDemon`の完了を
+  /// 制御するCompleter。
   Completer<void>? pendingAction;
   final List<String> nominatedUids = [];
+  final List<String> revokedUids = [];
   int cancelCalls = 0;
   int leaveRoomCalls = 0;
 
@@ -46,7 +48,18 @@ class _FakeRoomRepository extends RoomRepository {
   }
 
   @override
+  Future<void> revokeDemon(String roomId, String uid) {
+    revokedUids.add(uid);
+    final completer = Completer<void>();
+    pendingAction = completer;
+    return completer.future;
+  }
+
+  @override
   Future<void> acceptDemonNomination(String roomId, String uid) async {}
+
+  @override
+  Future<void> acceptDemonRevoke(String roomId, String uid) async {}
 
   // 待機画面はdispose時に必ずleaveRoomを呼ぶので、ここで吸収する。
   @override

@@ -172,6 +172,7 @@ class RoomRepository {
       'endsAt': null,
       'endedAt': null,
       'pendingDemonUid': null,
+      'demonRevokeUid': null,
     });
   }
 
@@ -211,6 +212,23 @@ class RoomRepository {
   Future<void> acceptDemonNomination(String roomId, String uid) async {
     await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
     await _db.ref('rooms/$roomId/meta/pendingDemonUid').set(null);
+  }
+
+  /// ホストが、既に鬼になっている人を逃走者に戻す(指名の取り消し)。
+  /// `users/{uid}` は本人以外書き込み不可のため、鬼の決定と同じ自己申告
+  /// 方式(meta/demonRevokeUidに対象uidを書き、本人が[acceptDemonRevoke]で
+  /// 自分のroleを書き戻す)を使う。
+  Future<void> revokeDemon(String roomId, String uid) async {
+    await _db.ref('rooms/$roomId/meta/demonRevokeUid').set(uid);
+  }
+
+  /// 鬼の取り消しを本人が受諾し、自分のroleをFUGITIVEに書き戻す。
+  Future<void> acceptDemonRevoke(String roomId, String uid) async {
+    await _db.ref('rooms/$roomId/users/$uid').update({
+      'role': 'FUGITIVE',
+      'becameDemonAt': null,
+    });
+    await _db.ref('rooms/$roomId/meta/demonRevokeUid').set(null);
   }
 
   /// 逃走者が「捕まった」ことを自己申告する。
