@@ -46,6 +46,9 @@ rooms/
         accuracy           GPSの測位精度(m)。悪い測位の足切り(issue #46)に使う
         pressure
         updatedAt
+        wifiScan/          直近のWi-Fiスキャン結果（WifiScanRepositoryが書く）
+          bssidRssi/       {bssid}: rssi。電波の強い上位40件だけを残す
+          scannedAt
     visible/
       {uid}/              Functions が書き出す派生データ
         {targetUid}/

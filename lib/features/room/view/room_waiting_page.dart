@@ -9,6 +9,7 @@ import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/calibration_status.dart';
 import 'package:kakureru/features/room/left_user_notifications.dart';
 import 'package:kakureru/features/room/model/room.dart';
@@ -31,13 +32,14 @@ class RoomWaitingPage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final roomAsync = ref.watch(roomStreamProvider(roomId));
     final pressureState = ref.watch(pressureViewModelProvider);
-    final isStarting = useState(false);
-    final startError = useState<Object?>(null);
+    final startGame = useAsyncAction(context);
+    final randomNomination = useAsyncAction(context);
     final hasNavigated = useState(false);
-    final isNominatingRandom = useState(false);
-    final randomNominationGuard = useMemoized(SingleFlightAction.new);
     // 「鬼にする」「取り消す」の送信中フラグ。同時に1件までしか実行しない
-    // ため、実行中の対象uidだけを持てば足りる。SingleFlightActionは
+    // ため、実行中の対象uidだけを持てば足りる。ここだけuseAsyncActionに
+    // 寄せていないのは、どの参加者の行を送信中にするかという「キー付き」
+    // の状態が要るため(汎用フック側に持たせると、この1箇所のために
+    // 他の4箇所が使わない引数を抱えることになる)。SingleFlightActionは
     // リビルドを待たずに同期で多重発火を防ぐためのガード
     // (ランダム指名ボタンと同じ理由。上のコメント参照)。
     final demonActionUid = useState<String?>(null);
@@ -367,11 +369,10 @@ class RoomWaitingPage extends HookConsumerWidget {
                                           : () => unawaited(
                                               runDemonAction(
                                                 u.id,
-                                                () =>
-                                                    roomRepo.revokeDemon(
-                                                      roomId,
-                                                      u.id,
-                                                    ),
+                                                () => roomRepo.revokeDemon(
+                                                  roomId,
+                                                  u.id,
+                                                ),
                                               ),
                                             ),
                                     )
@@ -434,29 +435,25 @@ class RoomWaitingPage extends HookConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: OutlinedButton(
                     onPressed:
-                        isNominatingRandom.value ||
+                        randomNomination.isRunning ||
                             room.pendingDemonUid != null ||
                             demonCandidates.isEmpty
                         ? null
                         : () {
                             // 連打対策: RTDBへの反映(room.pendingDemonUidの更新)には
                             // ネットワーク往復の遅延があり、その間はボタンがまだ有効な
-                            // ままなので、SingleFlightActionで同一フレーム内の連打も
-                            // 含めて多重発火を防ぐ。
+                            // ままなので、useAsyncActionが内側で持つ
+                            // SingleFlightActionで同一フレーム内の連打も含めて
+                            // 多重発火を防ぐ。
                             unawaited(
-                              randomNominationGuard.run(() async {
-                                isNominatingRandom.value = true;
-                                try {
-                                  final target =
-                                      demonCandidates[Random().nextInt(
-                                        demonCandidates.length,
-                                      )];
-                                  await ref
-                                      .read(roomRepositoryProvider)
-                                      .nominateDemon(roomId, target.id);
-                                } finally {
-                                  isNominatingRandom.value = false;
-                                }
+                              randomNomination.run(() {
+                                final target =
+                                    demonCandidates[Random().nextInt(
+                                      demonCandidates.length,
+                                    )];
+                                return ref
+                                    .read(roomRepositoryProvider)
+                                    .nominateDemon(roomId, target.id);
                               }),
                             );
                           },
@@ -508,32 +505,24 @@ class RoomWaitingPage extends HookConsumerWidget {
                   padding: const EdgeInsets.all(24),
                   child: FilledButton(
                     onPressed:
-                        isStarting.value ||
+                        startGame.isRunning ||
                             !canStartWithRoleComposition ||
                             room.setting.gameArea.isEmpty ||
                             !allCalibrated
                         ? null
-                        : () async {
-                            isStarting.value = true;
-                            startError.value = null;
-                            try {
-                              await ref
-                                  .read(roomRepositoryProvider)
-                                  .startGame(roomId);
-                            } on Object catch (e) {
-                              startError.value = e;
-                            } finally {
-                              isStarting.value = false;
-                            }
-                          },
+                        : () => startGame.run(
+                            () => ref
+                                .read(roomRepositoryProvider)
+                                .startGame(roomId),
+                          ),
                     child: const Text('ゲーム開始'),
                   ),
                 ),
-              if (startError.value != null)
+              if (startGame.error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Text(
-                    '${startError.value}',
+                    '${startGame.error}',
                     style: const TextStyle(color: _demonColor),
                   ),
                 ),

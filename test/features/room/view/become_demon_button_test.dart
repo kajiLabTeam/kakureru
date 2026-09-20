@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kakureru/features/room/view/game_page.dart';
+import 'package:kakureru/features/room/view/game/become_demon_button.dart';
 
 /// [BecomeDemonButton]単体のテスト(issue #43)。
 ///
