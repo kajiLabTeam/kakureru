@@ -10,7 +10,12 @@ import 'package:kakureru/core/theme/app_theme.dart';
 /// 抱える他のprovider(位置情報・Wi-Fi・気圧など)に依存しない見た目だけの
 /// 部品にしている(widgetテストをそれらのproviderのfake抜きで書けるように
 /// するため)。
-@visibleForTesting
+///
+/// 以前はGamePageと同じライブラリに居て、テストから触るために
+/// `@visibleForTesting` を付けていた。ファイル分割でGamePageから見ても
+/// 別ライブラリになり、「テストからしか使わない」という意味が実態と
+/// 合わなくなったため注釈は外した(providerに依存しない設計自体は
+/// 上記のとおり維持している)。
 class BecomeDemonButton extends StatelessWidget {
   /// すべての引数はGamePageが計算して渡す(このウィジェットはproviderを
   /// 一切読まない)。
