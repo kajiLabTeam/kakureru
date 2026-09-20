@@ -209,9 +209,29 @@ class RoomRepository {
   }
 
   /// 指名された本人が、指名を受諾して自分のroleをDEMONに更新する。
+  ///
+  /// `pendingDemonUid`の確認とroleの書き込みが素の読み取り→書き込みだと、
+  /// ホストの[cancelDemonNomination](同じく素の`set(null)`)とレースする:
+  /// 本人がここに入った直後にホストが取り消すと、取り消しは反映されても
+  /// roleがDEMONのまま取り残されてしまう。`meta/pendingDemonUid`への
+  /// [DatabaseReference.runTransaction]で「読んだ時点の値が依然`uid`のとき
+  /// だけ`null`に書き換える」を原子的に行い、それが成立したとき(=取り消しに
+  /// 割り込まれていない)だけroleを書くことでこれを防ぐ。
   Future<void> acceptDemonNomination(String roomId, String uid) async {
+    final result = await _db
+        .ref('rooms/$roomId/meta/pendingDemonUid')
+        .runTransaction((currentData) {
+          if (currentData == uid) {
+            return Transaction.success(null);
+          }
+          return Transaction.abort();
+        });
+    if (!result.committed) {
+      // ホストが取り消した、または別の人を指名し直した後だったため、
+      // 受諾を反映しない。
+      return;
+    }
     await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
-    await _db.ref('rooms/$roomId/meta/pendingDemonUid').set(null);
   }
 
   /// ホストが、既に鬼になっている人を逃走者に戻す(指名の取り消し)。

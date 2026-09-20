@@ -142,6 +142,8 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 **既知のトレードオフ**: 指名された本人のアプリがその瞬間バックグラウンド等で `meta` の変化を受け取れないと、`pendingDemonUid` が一時的に残ったままになる(セキュリティ上の問題ではなく、単なる反映待ちの遅延)。
 
+**取り消しと受諾のレース対策**: ホストの `cancelDemonNomination`(`pendingDemonUid` への素の `set(null)`)と、本人の `acceptDemonNomination` は別々のリクエストなので、素の読み取り→書き込みだと「本人が受諾処理を始めた直後にホストが取り消す」と、取り消しは `pendingDemonUid` に反映されても `role` が `DEMON` のまま取り残されるレースがあった。`acceptDemonNomination` は `pendingDemonUid` への `runTransaction` で「読んだ時点の値が依然自分のuidであるときだけ `null` に書き換える」を原子的に行い、それが成立した(=取り消しや指名し直しに割り込まれていない)場合だけ `role` を書くことでこれを防いでいる。この経路はRTDBのトランザクション機構自体に依存するため、リポジトリ内にエミュレータ/モック環境が無く自動テストでは検証できない(手動確認方法は実装コメント参照)。
+
 ### 鬼の取り消し: `meta/demonRevokeUid` 経由の自己申告方式(issue #60)
 
 指名を受諾済み(`role == "DEMON"`)になった後で、ホストがその指名を取り消したい(逃走者へ戻したい)場合も、`users/{uid}` を本人以外書けない制約は変わらないため、`pendingDemonUid` と対になる同じ自己申告方式を使う: ホストは `meta/demonRevokeUid` に対象者のuidを書くだけにし(`RoomRepository.revokeDemon`)、対象者本人が自分で `role` を `"FUGITIVE"` に戻し `becameDemonAt` をクリアして `demonRevokeUid` をクリアする(`RoomRepository.acceptDemonRevoke`。`RoomWaitingPage` の該当 `useEffect` 参照)。
