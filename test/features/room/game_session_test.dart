@@ -69,7 +69,7 @@ void main() {
     testWidgets('権限を拒否したままアプリへ戻ってきたら、位置送信を始め直す', (tester) async {
       final viewModel = await _pumpHarness(
         tester,
-        const LocationState(permissionDenied: true),
+        const LocationState(failure: LocationFailure.locationPermission),
       );
 
       await _sendLifecycle(tester, AppLifecycleState.paused);
@@ -86,10 +86,40 @@ void main() {
     testWidgets('送信の開始に失敗したままでも、戻ってきたら始め直す', (tester) async {
       final viewModel = await _pumpHarness(
         tester,
-        const LocationState(sendingFailed: true),
+        const LocationState(failure: LocationFailure.sendingFailed),
       );
 
       await _sendLifecycle(tester, AppLifecycleState.paused);
+      await _sendLifecycle(tester, AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(viewModel.startedRooms, ['room-1']);
+    });
+
+    // Androidは権限ダイアログが手前に出ただけでも inactive を挟み、閉じた
+    // 瞬間に resumed を投げる。これで始め直すと、拒否した直後に同じ
+    // ダイアログをもう一度出すことになり、2回連続の拒否でAndroidが
+    // 「今後表示しない」扱いにしてしまう(issue #66のレビュー指摘)。
+    testWidgets('権限ダイアログを閉じただけ(inactive→resumed)では始め直さない', (tester) async {
+      final viewModel = await _pumpHarness(
+        tester,
+        const LocationState(failure: LocationFailure.locationPermission),
+      );
+
+      await _sendLifecycle(tester, AppLifecycleState.inactive);
+      await _sendLifecycle(tester, AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(viewModel.startedRooms, isEmpty);
+    });
+
+    testWidgets('hiddenを経由した復帰では始め直す', (tester) async {
+      final viewModel = await _pumpHarness(
+        tester,
+        const LocationState(failure: LocationFailure.locationPermission),
+      );
+
+      await _sendLifecycle(tester, AppLifecycleState.hidden);
       await _sendLifecycle(tester, AppLifecycleState.resumed);
       await tester.pump();
 

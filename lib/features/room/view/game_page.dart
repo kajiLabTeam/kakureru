@@ -35,21 +35,30 @@ import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
 /// 位置が送れていないときに画面上部へ出す赤い警告文。問題なければnull。
 ///
-/// 「権限が無い」と「送信の開始に失敗した」は、同じ「自分の位置が出ない」
-/// でも直し方が違う(前者は端末の設定で許可する、後者は通知の確認と入り直し)。
-/// 以前は両方まとめて「権限(常に許可)がない」と出していたため、権限は
-/// あるのにForeground Serviceが起動できていないケースで、設定を見に行っても
+/// 同じ「自分の位置が出ない」でも直し方が違うので、原因ごとに案内を変える。
+/// 以前は全部まとめて「権限(常に許可)がない」と出していたため、権限はある
+/// のにForeground Serviceが起動できていないケースで、設定を見に行っても
 /// 何も直らない案内になっていた(issue #66)。
+///
+/// 特に通知の拒否は要注意で、位置情報の許可を促す文言を出すと、ユーザーは
+/// 設定で位置情報が許可済みなのを確認して詰む(issue #66のレビュー指摘)。
 String? locationWarningMessage(LocationState state) {
-  if (state.permissionDenied) {
-    return '位置情報を利用できないため、自分の位置を送信できません。'
-        '端末の位置情報をONにし、このアプリへの位置情報の許可を確認してから戻ってください';
+  switch (state.failure) {
+    case LocationFailure.none:
+      return null;
+    case LocationFailure.serviceDisabled:
+      return '端末の位置情報がOFFになっています。'
+          '設定から位置情報をONにしてから戻ってください';
+    case LocationFailure.locationPermission:
+      return 'このアプリに位置情報が許可されていないため、自分の位置を送信できません。'
+          '設定から位置情報を許可してから戻ってください';
+    case LocationFailure.notificationPermission:
+      return '通知が許可されていないため、自分の位置を送信できません。'
+          '設定から通知を許可してから戻ってください';
+    case LocationFailure.sendingFailed:
+      return '位置情報の送信を開始できませんでした。'
+          'アプリのバッテリー最適化を外すか、ゲーム画面に入り直してください';
   }
-  if (state.sendingFailed) {
-    return '位置情報の送信を開始できませんでした。'
-        '通知が許可されているか確認し、ゲーム画面に入り直してください';
-  }
-  return null;
 }
 
 /// ゲーム中の画面。ゲーム内容自体はまだ無く、残り時間と参加者の位置表示のみ行う仮実装。

@@ -69,14 +69,34 @@ void useGameSession(
 /// ゲームを抜けて入り直さないと直せないのでは対戦中に実質直せないため、
 /// 復帰(resumed)を拾って1回だけ呼び直す。
 ///
-/// 成功している間(permissionDenied / sendingFailed がどちらもfalse)は何も
-/// しない。start()を無駄に呼ぶとForeground Serviceを止めて起動し直すことに
-/// なり、送信が一瞬途切れるため。
+/// 成功している間(failure が none)は何もしない。start()を無駄に呼ぶと
+/// Foreground Serviceを止めて起動し直すことになり、送信が一瞬途切れるため。
+///
+/// **「アプリが実際に背面へ回ってから戻ってきた」ときだけ**再試行する。
+/// Androidは権限ダイアログが手前に出ただけでも `inactive` を挟み、閉じた
+/// 瞬間に `resumed` を投げる。これを拾ってしまうと、ユーザーが拒否した
+/// 直後に同じダイアログをもう一度出すことになり、**2回連続の拒否でAndroidが
+/// 「今後表示しない」扱いにする**ため、アプリ内で許可してもらう最後の機会を
+/// 自分で潰す(issue #66のレビュー指摘)。
+///
+/// 直前の状態だけでは判別できない点に注意。Flutterは `paused` へ移るときに
+/// `inactive`→`hidden`→`paused` を、戻るときに `hidden`→`inactive`→`resumed`
+/// を合成して順に流すため、**`resumed` の直前は必ず `inactive`** になる。
+/// そこで「背面まで回ったことがあるか」を覚えておき、復帰時にそれを見る。
 void useLocationRetryOnResume(WidgetRef ref, {required String roomId}) {
+  final wentToBackground = useRef(false);
   useOnAppLifecycleStateChange((previous, current) {
+    if (current == AppLifecycleState.paused ||
+        current == AppLifecycleState.hidden) {
+      wentToBackground.value = true;
+      return;
+    }
     if (current != AppLifecycleState.resumed) return;
+    if (!wentToBackground.value) return;
+    wentToBackground.value = false;
+
     final location = ref.read(locationViewModelProvider);
-    if (!location.permissionDenied && !location.sendingFailed) return;
+    if (location.failure == LocationFailure.none) return;
     ref.read(locationViewModelProvider.notifier).start(roomId);
   });
 }

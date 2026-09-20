@@ -14,7 +14,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$LocationState {
 
- List<UserLocation> get locations; bool get permissionDenied; bool get sendingFailed; bool get isSending;
+ List<UserLocation> get locations; LocationFailure get failure; bool get isSending;
 /// Create a copy of LocationState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -25,16 +25,16 @@ $LocationStateCopyWith<LocationState> get copyWith => _$LocationStateCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LocationState&&const DeepCollectionEquality().equals(other.locations, locations)&&(identical(other.permissionDenied, permissionDenied) || other.permissionDenied == permissionDenied)&&(identical(other.sendingFailed, sendingFailed) || other.sendingFailed == sendingFailed)&&(identical(other.isSending, isSending) || other.isSending == isSending));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LocationState&&const DeepCollectionEquality().equals(other.locations, locations)&&(identical(other.failure, failure) || other.failure == failure)&&(identical(other.isSending, isSending) || other.isSending == isSending));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(locations),permissionDenied,sendingFailed,isSending);
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(locations),failure,isSending);
 
 @override
 String toString() {
-  return 'LocationState(locations: $locations, permissionDenied: $permissionDenied, sendingFailed: $sendingFailed, isSending: $isSending)';
+  return 'LocationState(locations: $locations, failure: $failure, isSending: $isSending)';
 }
 
 
@@ -45,7 +45,7 @@ abstract mixin class $LocationStateCopyWith<$Res>  {
   factory $LocationStateCopyWith(LocationState value, $Res Function(LocationState) _then) = _$LocationStateCopyWithImpl;
 @useResult
 $Res call({
- List<UserLocation> locations, bool permissionDenied, bool sendingFailed, bool isSending
+ List<UserLocation> locations, LocationFailure failure, bool isSending
 });
 
 
@@ -62,12 +62,11 @@ class _$LocationStateCopyWithImpl<$Res>
 
 /// Create a copy of LocationState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? locations = null,Object? permissionDenied = null,Object? sendingFailed = null,Object? isSending = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? locations = null,Object? failure = null,Object? isSending = null,}) {
   return _then(_self.copyWith(
 locations: null == locations ? _self.locations : locations // ignore: cast_nullable_to_non_nullable
-as List<UserLocation>,permissionDenied: null == permissionDenied ? _self.permissionDenied : permissionDenied // ignore: cast_nullable_to_non_nullable
-as bool,sendingFailed: null == sendingFailed ? _self.sendingFailed : sendingFailed // ignore: cast_nullable_to_non_nullable
-as bool,isSending: null == isSending ? _self.isSending : isSending // ignore: cast_nullable_to_non_nullable
+as List<UserLocation>,failure: null == failure ? _self.failure : failure // ignore: cast_nullable_to_non_nullable
+as LocationFailure,isSending: null == isSending ? _self.isSending : isSending // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
 }
@@ -153,10 +152,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<UserLocation> locations,  bool permissionDenied,  bool sendingFailed,  bool isSending)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<UserLocation> locations,  LocationFailure failure,  bool isSending)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _LocationState() when $default != null:
-return $default(_that.locations,_that.permissionDenied,_that.sendingFailed,_that.isSending);case _:
+return $default(_that.locations,_that.failure,_that.isSending);case _:
   return orElse();
 
 }
@@ -174,10 +173,10 @@ return $default(_that.locations,_that.permissionDenied,_that.sendingFailed,_that
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<UserLocation> locations,  bool permissionDenied,  bool sendingFailed,  bool isSending)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<UserLocation> locations,  LocationFailure failure,  bool isSending)  $default,) {final _that = this;
 switch (_that) {
 case _LocationState():
-return $default(_that.locations,_that.permissionDenied,_that.sendingFailed,_that.isSending);case _:
+return $default(_that.locations,_that.failure,_that.isSending);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -194,10 +193,10 @@ return $default(_that.locations,_that.permissionDenied,_that.sendingFailed,_that
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<UserLocation> locations,  bool permissionDenied,  bool sendingFailed,  bool isSending)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<UserLocation> locations,  LocationFailure failure,  bool isSending)?  $default,) {final _that = this;
 switch (_that) {
 case _LocationState() when $default != null:
-return $default(_that.locations,_that.permissionDenied,_that.sendingFailed,_that.isSending);case _:
+return $default(_that.locations,_that.failure,_that.isSending);case _:
   return null;
 
 }
@@ -209,7 +208,7 @@ return $default(_that.locations,_that.permissionDenied,_that.sendingFailed,_that
 
 
 class _LocationState implements LocationState {
-  const _LocationState({final  List<UserLocation> locations = const [], this.permissionDenied = false, this.sendingFailed = false, this.isSending = false}): _locations = locations;
+  const _LocationState({final  List<UserLocation> locations = const [], this.failure = LocationFailure.none, this.isSending = false}): _locations = locations;
   
 
  final  List<UserLocation> _locations;
@@ -219,8 +218,7 @@ class _LocationState implements LocationState {
   return EqualUnmodifiableListView(_locations);
 }
 
-@override@JsonKey() final  bool permissionDenied;
-@override@JsonKey() final  bool sendingFailed;
+@override@JsonKey() final  LocationFailure failure;
 @override@JsonKey() final  bool isSending;
 
 /// Create a copy of LocationState
@@ -233,16 +231,16 @@ _$LocationStateCopyWith<_LocationState> get copyWith => __$LocationStateCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LocationState&&const DeepCollectionEquality().equals(other._locations, _locations)&&(identical(other.permissionDenied, permissionDenied) || other.permissionDenied == permissionDenied)&&(identical(other.sendingFailed, sendingFailed) || other.sendingFailed == sendingFailed)&&(identical(other.isSending, isSending) || other.isSending == isSending));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LocationState&&const DeepCollectionEquality().equals(other._locations, _locations)&&(identical(other.failure, failure) || other.failure == failure)&&(identical(other.isSending, isSending) || other.isSending == isSending));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_locations),permissionDenied,sendingFailed,isSending);
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_locations),failure,isSending);
 
 @override
 String toString() {
-  return 'LocationState(locations: $locations, permissionDenied: $permissionDenied, sendingFailed: $sendingFailed, isSending: $isSending)';
+  return 'LocationState(locations: $locations, failure: $failure, isSending: $isSending)';
 }
 
 
@@ -253,7 +251,7 @@ abstract mixin class _$LocationStateCopyWith<$Res> implements $LocationStateCopy
   factory _$LocationStateCopyWith(_LocationState value, $Res Function(_LocationState) _then) = __$LocationStateCopyWithImpl;
 @override @useResult
 $Res call({
- List<UserLocation> locations, bool permissionDenied, bool sendingFailed, bool isSending
+ List<UserLocation> locations, LocationFailure failure, bool isSending
 });
 
 
@@ -270,12 +268,11 @@ class __$LocationStateCopyWithImpl<$Res>
 
 /// Create a copy of LocationState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? locations = null,Object? permissionDenied = null,Object? sendingFailed = null,Object? isSending = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? locations = null,Object? failure = null,Object? isSending = null,}) {
   return _then(_LocationState(
 locations: null == locations ? _self._locations : locations // ignore: cast_nullable_to_non_nullable
-as List<UserLocation>,permissionDenied: null == permissionDenied ? _self.permissionDenied : permissionDenied // ignore: cast_nullable_to_non_nullable
-as bool,sendingFailed: null == sendingFailed ? _self.sendingFailed : sendingFailed // ignore: cast_nullable_to_non_nullable
-as bool,isSending: null == isSending ? _self.isSending : isSending // ignore: cast_nullable_to_non_nullable
+as List<UserLocation>,failure: null == failure ? _self.failure : failure // ignore: cast_nullable_to_non_nullable
+as LocationFailure,isSending: null == isSending ? _self.isSending : isSending // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
 }

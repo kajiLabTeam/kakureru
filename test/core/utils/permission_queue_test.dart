@@ -70,6 +70,25 @@ void main() {
       await expectLater(failing, throwsException);
       expect(await following, 'ok');
     });
+
+    // permission_handler は、Activityが差し替わった場合などに例外を投げず
+    // Futureが永久に返らないことがある。キューは直列なので、1つ返らないだけで
+    // 以後アプリ全体の権限要求が二度と走らなくなる(BLEの広告・スキャンごと
+    // 止まる。issue #66のレビュー指摘)。
+    test('返ってこない要求があっても、上限を過ぎたら次へ進む', () async {
+      final queue = PermissionQueue(timeout: const Duration(milliseconds: 10));
+
+      // 永久に解決しないFuture(= 返ってこない権限要求)。
+      final stuck = queue.add(() => Completer<String>().future);
+      final following = queue.add(() async => 'ok');
+
+      await expectLater(stuck, throwsA(isA<TimeoutException>()));
+      expect(
+        await following,
+        'ok',
+        reason: '詰まった要求の後ろが実行されないと、BLEごと永久に止まる',
+      );
+    });
   });
 
   group('位置情報とBLEの権限要求の直列化(issue #66)', () {
@@ -93,6 +112,8 @@ void main() {
 
       final location = LocationPermissionService(
         requestPermission: fakeRequest,
+        // まだ聞ける状態にしておき、「常に許可」の要求まで走らせる。
+        checkPermission: (permission) async => PermissionStatus.denied,
         checkNotificationPermission: () async => NotificationPermission.granted,
         requestNotificationPermission: () async =>
             NotificationPermission.granted,
@@ -103,12 +124,15 @@ void main() {
         queue: queue,
       );
 
-      final results = await Future.wait([
+      final results = await Future.wait<Object>([
         location.ensureGranted(),
         ble.ensureGranted(),
       ]);
 
-      expect(results, [true, true]);
+      expect(results, [
+        LocationPermissionResult.granted,
+        true,
+      ]);
       // 位置情報の要求がすべて終わってからBLEの要求が始まっている
       // (2つの機能の要求が入り混じらない)。
       expect(requested, [
