@@ -57,7 +57,8 @@ class DefaultFirebaseOptions {
     appId: '1:219341099189:android:78af13949c6782cdc9aefc',
     messagingSenderId: '219341099189',
     projectId: 'kakureru-b8545',
-    databaseURL: 'https://kakureru-b8545-default-rtdb.asia-southeast1.firebasedatabase.app',
+    databaseURL:
+        'https://kakureru-b8545-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'kakureru-b8545.firebasestorage.app',
   );
 }

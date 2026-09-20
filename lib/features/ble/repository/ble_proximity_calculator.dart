@@ -73,7 +73,8 @@ bool isWithinBecomeDemonRange(double distanceMeters) =>
 
 /// 検知結果がまだ新しい(古すぎない)かどうか。
 bool isDetectionFresh({required int detectedAtMillis, required int nowMillis}) {
-  return nowMillis - detectedAtMillis <= BleProximityThresholds.staleAfterMillis;
+  return nowMillis - detectedAtMillis <=
+      BleProximityThresholds.staleAfterMillis;
 }
 
 /// 指定した役割の相手のうち、誰か1人でもBLEで至近距離(3m以内)にいれば真。
@@ -88,7 +89,10 @@ bool isOpponentWithinBecomeDemonRange({
   for (final shortUid in opponentShortUids) {
     final detection = detections[shortUid];
     if (detection == null) continue;
-    if (!isDetectionFresh(detectedAtMillis: detection.detectedAtMillis, nowMillis: nowMillis)) {
+    if (!isDetectionFresh(
+      detectedAtMillis: detection.detectedAtMillis,
+      nowMillis: nowMillis,
+    )) {
       continue;
     }
     if (isWithinBecomeDemonRange(estimateDistanceMeters(detection.rssiDbm))) {

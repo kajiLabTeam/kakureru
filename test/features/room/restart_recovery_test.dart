@@ -49,16 +49,15 @@ class _FakePressureViewModel extends PressureViewModel {
   Future<void> init(String roomId) async {}
 }
 
-Room _room({required RoomStatus status, required List<RoomUser> users}) =>
-    Room(
-      id: _roomId,
-      roomCode: '1234',
-      hostUserId: _hostUid,
-      status: status,
-      createdAt: 0,
-      setting: const RoomSetting(),
-      users: users,
-    );
+Room _room({required RoomStatus status, required List<RoomUser> users}) => Room(
+  id: _roomId,
+  roomCode: '1234',
+  hostUserId: _hostUid,
+  status: status,
+  createdAt: 0,
+  setting: const RoomSetting(),
+  users: users,
+);
 
 Future<StreamController<Room>> _pumpHarness(
   WidgetTester tester, {

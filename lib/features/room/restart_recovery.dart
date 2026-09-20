@@ -81,7 +81,9 @@ void useRestartRecovery(
       );
       if (!context.mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => RoomWaitingPage(roomId: roomId)),
+        MaterialPageRoute<void>(
+          builder: (_) => RoomWaitingPage(roomId: roomId),
+        ),
       );
       debugPrint('[useRestartRecovery] pushReplacement called');
     });
