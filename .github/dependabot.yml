@@ -1,0 +1,21 @@
+# 依存の更新・脆弱性をGitHub側から自動でPRにしてもらう設定。
+#
+# 誰も見ていなくても届くのが利点。特にこのアプリはプラグイン依存が重く
+# (flutter_foreground_task / flutter_ble_peripheral / wifi_scan / sensors_plus /
+# device_info_plus)、Flutterの「Built-in Kotlin」移行でKGP警告が出ている
+# 状態なので、対応版が出たことに気づく経路として効く。
+version: 2
+updates:
+  # Dart/Flutterのエコシステム名は pub。
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # ci.yml などで使っているaction自体の更新も追従する。
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

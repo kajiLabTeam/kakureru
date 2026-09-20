@@ -98,7 +98,7 @@ GitHubでチーム開発をするかを確認し、する場合は `"github@clau
 
 ### GitHubを使う場合: CI・依存メンテナンス・ブランチ保護
 
-hookやセキュリティレビューのプラグインは「Claude Codeのセッションの中」でしか効かない。別環境やGitHub上での直接編集はすり抜けるので、リポジトリ側にも検査の層を作る。雛形と注意点は [references/ci-workflow-examples.md](references/ci-workflow-examples.md) を読んでから作業すること。やることは3つ：
+hookやセキュリティレビューのプラグインは「Claude Codeのセッションの中」でしか効かない。別環境やGitHub上での直接編集はすり抜けるので、リポジトリ側にも検査の層を作る。雛形と注意点は [references/ci-workflow.md](references/ci-workflow.md) を読んでから作業すること。やることは3つ：
 
 1. **`.github/workflows/ci.yml` の生成**: Step 1で検出したコマンドからCIを作る。検出できていないコマンドを想像で書かない——初回から失敗し続けるCIは無いより悪い。スタックに依存しないシークレットスキャン（gitleaks）のジョブは常に入れる。あわせてGitHubのSecret scanning / Push protectionの有効化も案内する。
 2. **`.github/dependabot.yml` の生成**: `package-ecosystem: "pub"` で依存の更新をPRとして届けさせる。届いたPRを誰がどう処理するかの運用文をStep 5でCLAUDE.mdに残す。
