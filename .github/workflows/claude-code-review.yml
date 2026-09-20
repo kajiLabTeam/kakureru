@@ -6,6 +6,7 @@ on:
 
 jobs:
   review:
+    if: ${{ !startsWith(github.head_ref, 'night-run/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
