@@ -64,8 +64,17 @@ class GameHeaderBar extends StatelessWidget implements PreferredSizeWidget {
               theme?.label ?? 'ゲーム中',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                // 役割が決まっているときだけ白を指定する。
+                //
+                // 役割色(赤/緑)の帯の上に載るので白が要るが、**nullのときは
+                // 背景がAppBarThemeの白になる**ため、同じ白を指定すると
+                // 「ゲーム中」が白地に白で消える。かといって色指定を無条件に
+                // 外すと、AppBarThemeのtitleTextStyleが非nullなので
+                // foregroundColorは効かず、役割色の帯の上でもappInkのまま
+                // になる(Flutter側の仕様: titleTextStyleがあると
+                // foregroundColorを混ぜない)。
+                color: theme != null ? Colors.white : null,
                 fontSize: gameHeaderLabelFontSize,
                 fontWeight: FontWeight.w600,
               ),

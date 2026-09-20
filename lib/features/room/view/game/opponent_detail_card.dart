@@ -66,8 +66,17 @@ class OpponentDetailCard extends StatelessWidget {
   /// 上下バーの幅。ドット([_verticalDotSize])に左右の余白を足した程度。
   static const _verticalBarWidth = 26.0;
 
-  /// 距離感トラックのドットの直径。
-  static const _trackDotSize = 13.0;
+  /// 距離感トラックの相手ドットの直径。
+  static const _trackDotSize = 14.0;
+
+  /// 距離感トラックの自分ドットの直径。相手より小さく、**最後に**描く。
+  ///
+  /// 自分と相手のRSSIが同じだと2つの点はトラック上の同じ位置に来る。同じ
+  /// 大きさで描くと後から描いた方が前の点を完全に覆い、1点しか無いように
+  /// 見えてしまう(しかも「ぴったり重なっている」のは、そのAPから見て同じ
+  /// くらいの距離にいるという**一番知りたい状態**)。小さい自分の点を上に
+  /// 重ねることで、重なったときは同心円になって両方の色が見える。
+  static const _trackSelfDotSize = 8.0;
 
   /// 凡例に出す相手の名前の最大幅。長い名前でタイトルを押し潰さないため。
   static const _legendNameMaxWidth = 72.0;
@@ -446,8 +455,22 @@ class OpponentDetailCard extends StatelessWidget {
                   ),
                 ),
               ),
-              _trackDot(width, comparison.selfRssi, selfColor),
-              _trackDot(width, comparison.targetRssi, opponentColor),
+              // 相手 → 自分 の順に描く。自分の点の方が小さいので、位置が
+              // 重なっても下の相手の点が縁として残り、両方の色が見える。
+              _trackDot(
+                width,
+                comparison.targetRssi,
+                opponentColor,
+                size: _trackDotSize,
+                withBorder: true,
+              ),
+              _trackDot(
+                width,
+                comparison.selfRssi,
+                selfColor,
+                size: _trackSelfDotSize,
+                withBorder: false,
+              ),
             ],
           );
         },
@@ -455,21 +478,32 @@ class OpponentDetailCard extends StatelessWidget {
     );
   }
 
-  Widget _trackDot(double width, int rssi, Color color) {
-    final left = (width * rssiTrackFraction(rssi) - _trackDotSize / 2).clamp(
-      0.0,
-      width - _trackDotSize,
-    );
+  Widget _trackDot(
+    double width,
+    int rssi,
+    Color color, {
+    required double size,
+    required bool withBorder,
+  }) {
+    // 位置は点の「中心」で決める。大きさの違う2つの点が、同じRSSIなら
+    // 必ず同心円になるようにするため(左端を揃えると半径の差だけずれる)。
+    // トラックの端での丸め幅も、大きい方の点に合わせて共通にしておく
+    // (小さい点だけ先に端へ着くと、端でだけ中心がずれてしまう)。
+    const half = _trackDotSize / 2;
+    final center = width <= _trackDotSize
+        ? width / 2
+        : (width * rssiTrackFraction(rssi)).clamp(half, width - half);
     return Positioned(
-      left: left,
-      top: 0,
+      left: center - size / 2,
+      // トラックの高さは相手ドットぶん。小さい自分の点は縦中央に置く。
+      top: (_trackDotSize - size) / 2,
       child: Container(
-        width: _trackDotSize,
-        height: _trackDotSize,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
+          border: withBorder ? Border.all(color: Colors.white, width: 2) : null,
         ),
       ),
     );

@@ -9,6 +9,7 @@ import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/game/opponent_detail_card.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
+import 'package:kakureru/features/wifi/wifi_math.dart';
 
 /// [OpponentDetailCard](issue #76で作り直した「手がかり」カード)のテスト。
 ///
@@ -30,6 +31,22 @@ void main() {
     WifiApComparison(bssid: 'ap2', selfRssi: -60, targetRssi: -62),
     WifiApComparison(bssid: 'ap3', selfRssi: -80, targetRssi: -45),
   ];
+
+  /// 逃走者の緑(role_theme.dart)。相手の点の色。
+  const fugitiveGreen = Color(0xFF4A9C5D);
+
+  /// 指定したトラックの中の、その色で塗られた点の位置と大きさ。
+  Rect dotOf(WidgetTester tester, String bssid, Color color) {
+    return tester.getRect(
+      find.descendant(
+        of: find.byKey(ValueKey('wifiTrack:$bssid')),
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is Container && (w.decoration! as BoxDecoration).color == color,
+        ),
+      ),
+    );
+  }
 
   Future<void> pumpCard(
     WidgetTester tester, {
@@ -211,25 +228,76 @@ void main() {
       expect(ap1.width, greaterThan(0));
       expect(ap3.width, closeTo(ap1.width, 0.01));
 
-      Rect dotOf(String bssid, Color color) {
-        return tester.getRect(
-          find.descendant(
-            of: find.byKey(ValueKey('wifiTrack:$bssid')),
-            matching: find.byWidgetPredicate(
-              (w) =>
-                  w is Container &&
-                  (w.decoration! as BoxDecoration).color == color,
-            ),
-          ),
+      // 左端ではなく中心で比べる。2つの点は大きさが違うため。
+      expect(
+        dotOf(tester, 'ap1', selfColor).center.dx,
+        greaterThan(dotOf(tester, 'ap1', fugitiveGreen).center.dx),
+      );
+      expect(
+        dotOf(tester, 'ap3', selfColor).center.dx,
+        lessThan(dotOf(tester, 'ap3', fugitiveGreen).center.dx),
+      );
+    });
+
+    testWidgets('RSSIが同じでも、2つの点が同心円として両方見える', (tester) async {
+      // 同じ大きさで描くと後に描いた点が前の点を完全に覆い、1点しか無い
+      // ように見える。しかも「ぴったり同じ」はそのAPから見て同じくらいの
+      // 距離にいるという一番知りたい状態なので、消してはいけない。
+      await pumpCard(
+        tester,
+        comparisons: const [
+          WifiApComparison(bssid: 'same', selfRssi: -65, targetRssi: -65),
+        ],
+      );
+
+      final self = dotOf(tester, 'same', selfColor);
+      final opponent = dotOf(tester, 'same', fugitiveGreen);
+
+      // 両方とも描かれている。
+      expect(self.width, greaterThan(0));
+      expect(opponent.width, greaterThan(0));
+      // 中心は一致し、大きさが違う = 同心円。小さい方が上に乗るので、
+      // どちらの色も見える。
+      expect(self.center.dx, closeTo(opponent.center.dx, 0.01));
+      expect(self.center.dy, closeTo(opponent.center.dy, 0.01));
+      expect(self.width, lessThan(opponent.width));
+    });
+
+    testWidgets('RSSIが同じで、かつトラックの端でも同心円のまま', (tester) async {
+      // 端は位置を丸めている。大きい点と小さい点で丸め幅が違うと、端でだけ
+      // 中心がずれて同心円が崩れる。
+      for (final rssi in [rssiTrackMinDbm, rssiTrackMaxDbm]) {
+        await pumpCard(
+          tester,
+          comparisons: [
+            WifiApComparison(bssid: 'edge', selfRssi: rssi, targetRssi: rssi),
+          ],
+        );
+
+        expect(
+          dotOf(tester, 'edge', selfColor).center.dx,
+          closeTo(dotOf(tester, 'edge', fugitiveGreen).center.dx, 0.01),
+          reason: '$rssi dBm',
         );
       }
+    });
 
-      const green = Color(0xFF4A9C5D);
-      expect(
-        dotOf('ap1', selfColor).left,
-        greaterThan(dotOf('ap1', green).left),
+    testWidgets('小さい自分の点も、トラックの端からはみ出さない', (tester) async {
+      await pumpCard(
+        tester,
+        comparisons: const [
+          WifiApComparison(bssid: 'edge', selfRssi: -120, targetRssi: -10),
+        ],
       );
-      expect(dotOf('ap3', selfColor).left, lessThan(dotOf('ap3', green).left));
+
+      final track = tester.getRect(
+        find.byKey(const ValueKey('wifiTrack:edge')),
+      );
+      final self = dotOf(tester, 'edge', selfColor);
+      final opponent = dotOf(tester, 'edge', fugitiveGreen);
+
+      expect(self.left, greaterThanOrEqualTo(track.left));
+      expect(opponent.right, lessThanOrEqualTo(track.right));
     });
 
     testWidgets('鬼を追う逃走者視点なら、近づける先は赤になる', (tester) async {
