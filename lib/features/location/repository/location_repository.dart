@@ -37,7 +37,12 @@ class LocationRepository {
   /// sendDataToMain 経由でここ(メインisolate)が受け取ってRTDBへ書き込む
   /// (Firebase呼び出しは既存の動作確認済みのメインisolate側に集約している)。
   /// 1秒間隔だと転送量が跳ねるため、更新間隔(onRepeatEvent)は4秒にしている。
-  Future<void> startSendingLocation(String roomId) async {
+  ///
+  /// Foreground Serviceを起動できたかどうかを返す。起動に失敗しても例外は
+  /// 投げないが、ここでfalseを握りつぶすと「送信中と表示されたまま1件も
+  /// 送られない」無音の失敗になる(issue #66)ため、呼び出し側は必ず戻り値を
+  /// 見て画面へ反映すること。
+  Future<bool> startSendingLocation(String roomId) async {
     await stopSendingLocation();
     _lastAcceptedLat = null;
     _lastAcceptedLng = null;
@@ -134,7 +139,13 @@ class LocationRepository {
     );
     if (result is ServiceRequestFailure) {
       debugPrint('[LocationRepository] startService失敗: ${result.error}');
+      // 起動できていないのでコールバックだけ残しても届くデータは無い。
+      // 次のstartSendingLocation()で重複登録されないよう外しておく。
+      FlutterForegroundTask.removeTaskDataCallback(_taskDataCallback!);
+      _taskDataCallback = null;
+      return false;
     }
+    return true;
   }
 
   /// 位置送信を止める。ゲーム画面を離れる時に呼ぶこと。

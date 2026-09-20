@@ -6,10 +6,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/debug_mock_players.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/repository/room_repository.dart';
+import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/room_waiting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
@@ -104,6 +106,8 @@ Room _room({
   String? demonRevokeUid,
   int createdAt = 0,
   List<RoomUser>? users,
+  RoomSetting setting = const RoomSetting(),
+  double? basePressure,
 }) => Room(
   id: _roomId,
   roomCode: '1234',
@@ -112,7 +116,8 @@ Room _room({
   createdAt: createdAt,
   pendingDemonUid: pendingDemonUid,
   demonRevokeUid: demonRevokeUid,
-  setting: const RoomSetting(),
+  basePressure: basePressure,
+  setting: setting,
   users:
       users ??
       const [
@@ -426,6 +431,122 @@ void main() {
             )
             .onPressed,
         isNull,
+      );
+    });
+  });
+
+  // 実機1台では参加者が自分だけで開始条件を満たせず、ゲーム画面まで到達
+  // できない。そのための逃げ道だが、判定やRTDBへの書き込みにまで混ざると
+  // 本物のプレーを壊すので、そこを固定する(issue #67)。
+  group('デバッグ用の偽プレイヤー', () {
+    Future<void> toggleMocks(WidgetTester tester) async {
+      await tester.tap(find.byType(DebugMockPlayersToggle));
+      await tester.pump();
+    }
+
+    testWidgets('トグルを押すと一覧に出るが、本物と分けて数える', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+      );
+
+      expect(find.text('参加者 1人'), findsOneWidget);
+
+      await toggleMocks(tester);
+
+      expect(find.textContaining('参加者 1人'), findsOneWidget);
+      expect(find.textContaining('デバッグ'), findsOneWidget);
+      for (final user in debugMockWaitingUsers()) {
+        expect(find.text(user.displayName), findsOneWidget);
+      }
+    });
+
+    // 押すとRTDBへ実在しないuidが書き込まれ、誰も受諾できないまま残って
+    // 部屋が鬼を指名できなくなる。取り消しボタンも偽プレイヤーの行にしか
+    // 出ないので、トグルを戻すと復旧できない。
+    testWidgets('偽プレイヤーの行にはホストの操作を出さない', (tester) async {
+      final roomRepo = _FakeRoomRepository();
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: roomRepo,
+        pressureViewModel: _FakePressureViewModel(),
+      );
+
+      final chipsBefore = find.byType(ActionChip).evaluate().length;
+      await toggleMocks(tester);
+
+      // 偽プレイヤーが5人増えてもチップは増えない(本物の1人ぶんのまま)。
+      expect(find.byType(ActionChip), findsNWidgets(chipsBefore));
+      expect(roomRepo.nominatedUids, isEmpty);
+      expect(roomRepo.revokedUids, isEmpty);
+    });
+
+    // calibrationStatusesはroom.usersだけで作っているので、補わないと
+    // 偽プレイヤーが既定のpendingに落ちて未完了アイコンが出る。
+    // pressureSensorAvailable: false として作っているのと食い違う。
+    testWidgets('偽プレイヤーには未完了ではなく「非対応」を出す', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+      );
+
+      final pendingBefore = find
+          .byIcon(Icons.radio_button_unchecked)
+          .evaluate()
+          .length;
+      await tester.tap(find.byType(DebugMockPlayersToggle));
+      await tester.pump();
+
+      // 偽プレイヤーが増えても「未完了」は増えず、その数だけ「非対応」が出る。
+      expect(
+        find.byIcon(Icons.radio_button_unchecked),
+        findsNWidgets(pendingBefore),
+      );
+      expect(
+        find.byIcon(Icons.sensors_off),
+        findsNWidgets(debugMockPlayerCount),
+      );
+    });
+
+    testWidgets('1人でもゲーム開始が押せるようになる', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        initialRoom: _room(
+          setting: const RoomSetting(
+            gameArea: [
+              LatLng(lat: 35, lng: 139),
+              LatLng(lat: 35.001, lng: 139),
+              LatLng(lat: 35.001, lng: 139.001),
+              LatLng(lat: 35, lng: 139.001),
+            ],
+          ),
+          basePressure: 1013,
+        ),
+      );
+
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'ゲーム開始'),
+            )
+            .onPressed,
+        isNull,
+        reason: '1人では開始できない(鬼と逃走者が1人以上ずつ必要)',
+      );
+
+      await toggleMocks(tester);
+
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'ゲーム開始'),
+            )
+            .onPressed,
+        isNotNull,
       );
     });
   });
