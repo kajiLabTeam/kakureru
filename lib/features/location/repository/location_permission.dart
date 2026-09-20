@@ -40,25 +40,31 @@ class LocationPermissionService {
   static Future<PermissionStatus> _requestWithHandler(Permission permission) =>
       permission.request();
 
-  /// 位置情報(常に許可)とForeground Serviceの通知の権限を要求し、
-  /// すべて許可されたかどうかを返す。
+  /// 位置情報とForeground Serviceの通知の権限を要求し、位置送信に必要な
+  /// 権限がそろったかどうかを返す。
   ///
-  /// ポケットに入れたまま遊ぶ運用のため「常に許可」(バックグラウンド位置情報)まで
-  /// 必要とする。Android 11+では「使用中のみ許可」と同時には付与できないため、
-  /// まず使用中の許可を確定させてから、改めて常時許可をリクエストする。
-  /// 加えてForeground Serviceの通知(Android 13+)の権限も確認する。
+  /// 必須なのは「使用中のみ許可」とForeground Serviceの通知(Android 13+)の
+  /// 2つ。ポケットに入れたまま遊ぶ運用のため「常に許可」(バックグラウンド
+  /// 位置情報)も続けて要求するが、**拒否されても false にはしない**。
+  /// Android 11+の「常に許可」はランタイムのダイアログでは直接付与されず
+  /// 設定画面への誘導になるため、要求した直後の戻り値はまず denied になる。
+  /// これを必須ゲートにしていたせいで、初回プレーだけ位置送信がまるごと
+  /// 始まらなかった(issue #66)。このアプリは画面表示中に
+  /// foregroundServiceType="location" のForeground Serviceを起動するので、
+  /// 「使用中のみ許可」があれば位置取得は継続できる。
   ///
-  /// BLEの権限要求と同じフレームで呼ばれる(ゲーム画面に入った瞬間)が、
-  /// permission_handlerは同時リクエストを許さないため[PermissionQueue]を
-  /// 通して順番待ちさせる(issue #66)。
+  /// Android 11+では「使用中のみ許可」と「常に許可」は同時には付与できない
+  /// ため、まず使用中の許可を確定させてから、改めて常時許可をリクエストする
+  /// 順序は維持している。
   Future<bool> ensureGranted() => _queue.add(_ensureGranted);
 
   Future<bool> _ensureGranted() async {
     final whileInUse = await _requestPermission(Permission.locationWhenInUse);
     if (!whileInUse.isGranted) return false;
 
-    final always = await _requestPermission(Permission.locationAlways);
-    if (!always.isGranted) return false;
+    // 戻り値は見ない(上のdocコメント参照)。後から設定で「常に許可」に
+    // してもらうための導線として要求だけは出しておく。
+    await _requestPermission(Permission.locationAlways);
 
     var notification = await _checkNotificationPermission();
     if (notification != NotificationPermission.granted) {

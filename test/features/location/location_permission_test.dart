@@ -58,7 +58,12 @@ void main() {
     expect(notificationCalls, isEmpty);
   });
 
-  test('常に許可が拒否されたら、通知の権限は確認せず false を返す', () async {
+  // Android 11+では「常に許可」はランタイムのダイアログでは付与されず
+  // 設定画面への誘導になるため、要求した直後の戻り値はまず denied になる。
+  // これを必須ゲートにしていたせいで、初回プレーだけ位置送信がまるごと
+  // 始まらなかった(issue #66)。「使用中のみ許可」と通知があれば
+  // Foreground Serviceで位置は取り続けられるので true を返す。
+  test('常に許可が拒否されても、使用中の許可と通知があれば true を返す', () async {
     final requested = <Permission>[];
     final notificationCalls = <String>[];
 
@@ -68,12 +73,24 @@ void main() {
       notificationCalls: notificationCalls,
     ).ensureGranted();
 
-    expect(granted, isFalse);
+    expect(granted, isTrue);
     expect(requested, [
       Permission.locationWhenInUse,
       Permission.locationAlways,
     ]);
-    expect(notificationCalls, isEmpty);
+    // 常に許可で打ち切らず、通知の確認まで進んでいること。
+    expect(notificationCalls, ['check']);
+  });
+
+  test('常に許可が拒否され、通知も拒否されていれば false を返す', () async {
+    final granted = await buildService(
+      requested: <Permission>[],
+      always: PermissionStatus.permanentlyDenied,
+      notificationBefore: NotificationPermission.denied,
+      notificationAfter: NotificationPermission.denied,
+    ).ensureGranted();
+
+    expect(granted, isFalse);
   });
 
   test('通知が未許可なら要求し、許可されれば true を返す', () async {
