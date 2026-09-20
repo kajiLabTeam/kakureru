@@ -10,12 +10,16 @@ import 'package:kakureru/core/utils/duration_format.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
+import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/area_alert.dart';
+import 'package:kakureru/features/room/area_alert_notifications.dart';
 import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/game_notifications.dart';
 import 'package:kakureru/features/room/game_over_navigation.dart';
 import 'package:kakureru/features/room/game_session.dart';
+import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/opponent_roster_status.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
@@ -29,6 +33,7 @@ import 'package:kakureru/features/room/view/game/game_status_cards.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/game/opponent_detail_card.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
+import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
@@ -139,6 +144,37 @@ class GamePage extends HookConsumerWidget {
 
     // 誰かが鬼になったらSnackBarで全員に知らせる。
     useDemonChangeNotifications(ref, context, roomId: roomId, myUid: myUid);
+
+    // プレイエリア外のアラート(issue #61 / UI改修モック2a-07)。
+    //
+    // hooksはbuildの本体でしか呼べない(roomAsync.whenのdata:の中は
+    // roomがdataのときしか実行されず、呼ぶと順序が崩れる)ため、判定と
+    // 状態の持ち越しはここで済ませ、表示だけをdata:側でぶら下げる。
+    //
+    // エリア未設定のルームではgameAreaが空なのでdescribeReturnToAreaが
+    // 常にnullを返し、以下すべてが自動的に無効になる。
+    final myLocation = _findLocation(locationState.locations, myUid);
+    final returnToArea = room == null || myLocation == null
+        ? null
+        : describeReturnToArea(
+            area: room.setting.gameArea,
+            point: LatLng(
+              lat: myLocation.latitude,
+              lng: myLocation.longitude,
+            ),
+          );
+    // 猶予距離・猶予時間を通したあとの「いま警告を出すか」。警告中でない
+    // 間はnullになるので、これ1つで赤帯・地図の赤かぶせ・戻り方カードの
+    // 3つをまとめて出し入れできる。
+    final outsideAreaReturn =
+        useOutsideAreaWarning(
+          outsideMeters: returnToArea?.meters,
+          tick: tick.value,
+        )
+        ? returnToArea
+        : null;
+    // 外にいる間だけ振動と通知を続ける(戻ったら通知も消す)。
+    useOutsideAreaNotifications(isOutside: outsideAreaReturn != null);
 
     final pressureState = ref.watch(pressureViewModelProvider);
     final bleDetections = ref.watch(bleViewModelProvider);
@@ -339,6 +375,9 @@ class GamePage extends HookConsumerWidget {
 
                 return Column(
                   children: [
+                    // エリア外の赤帯(UI改修モック2a-07)。安全に関わる警告
+                    // なので、他のバナーより上(ヘッダーの真下)に出す。
+                    if (outsideAreaReturn != null) const OutsideAreaBanner(),
                     // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
                     // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
                     // なので逃走者のみに出す。
@@ -375,12 +414,42 @@ class GamePage extends HookConsumerWidget {
                         onPressed: handleBecomeDemonPressed,
                       ),
                     Expanded(
-                      child: GameLocationMap(
-                        locations: visibleLocations,
-                        users: room.users,
-                        myUid: myUid,
-                        cachedPosition: cachedPosition.value,
-                        gameArea: room.setting.gameArea,
+                      child: Stack(
+                        children: [
+                          GameLocationMap(
+                            locations: visibleLocations,
+                            users: room.users,
+                            myUid: myUid,
+                            cachedPosition: cachedPosition.value,
+                            gameArea: room.setting.gameArea,
+                          ),
+                          // エリアの破線境界と外側の暗転はGameLocationMapが
+                          // 既に描いている。ここに重ねるのは、エリア外の
+                          // ときだけ出す赤かぶせ・方向矢印・戻り方カードの
+                          // 3つ(UI改修モック2a-07)。
+                          if (outsideAreaReturn != null) ...[
+                            Positioned.fill(
+                              child: OutsideAreaMapOverlay(
+                                bearingDegrees:
+                                    outsideAreaReturn.bearingDegrees,
+                              ),
+                            ),
+                            Positioned(
+                              left: 14,
+                              right: 14,
+                              bottom: 14,
+                              // 地図のパン・ズームを邪魔しないよう、
+                              // カードもタップを素通りさせる。
+                              child: IgnorePointer(
+                                child: ReturnToAreaCard(
+                                  meters: outsideAreaReturn.meters,
+                                  bearingDegrees:
+                                      outsideAreaReturn.bearingDegrees,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     // マップの下は、対象役割の相手をタップで選べるチップ一覧と、
@@ -468,4 +537,17 @@ class GamePage extends HookConsumerWidget {
       ),
     );
   }
+}
+
+/// [locations]から指定uidの位置を探す。uidがnull、またはまだ届いていなければnull。
+///
+/// GameLocationMapにも同名の非公開ヘルパーがあるが、あちらは地図の
+/// 初期センターを決めるためのもの。こちらはエリア外判定に使う自分の位置を
+/// 取るためのもので、使う場所も寿命も違うため共有していない。
+UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
+  if (uid == null) return null;
+  for (final location in locations) {
+    if (location.uid == uid) return location;
+  }
+  return null;
 }
