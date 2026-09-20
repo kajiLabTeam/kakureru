@@ -7,18 +7,27 @@ import 'package:kakureru/features/pressure/pressure_math.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
 class PressureRepository {
-  final FirebaseDatabase _db;
-  final FirebaseAuth _auth;
-
   StreamSubscription<BarometerEvent>? _sensorSub;
   StreamController<double>? _smoothedController;
   MovingAverage? _movingAverage;
   double? _latestSmoothed;
   Timer? _writeTimer;
 
+  /// 引数を省略すると実際のFirebase(`FirebaseDatabase.instance` /
+  /// `FirebaseAuth.instance`)を使う。テストからのみ差し替える。
   PressureRepository({FirebaseDatabase? db, FirebaseAuth? auth})
-    : _db = db ?? FirebaseDatabase.instance,
-      _auth = auth ?? FirebaseAuth.instance;
+    : _dbOverride = db,
+      _authOverride = auth;
+
+  final FirebaseDatabase? _dbOverride;
+  final FirebaseAuth? _authOverride;
+
+  // `.instance` の解決を遅延させる理由は RoomRepository と同じ
+  // (メソッドを丸ごとoverrideするテスト用のサブクラスが、暗黙の
+  // `super()` を通るだけでFirebase未初期化の例外を踏まないようにするため)。
+  // 詳しい経緯は room_repository.dart のコメントを参照。
+  late final FirebaseDatabase _db = _dbOverride ?? FirebaseDatabase.instance;
+  late final FirebaseAuth _auth = _authOverride ?? FirebaseAuth.instance;
 
   String get _uid => _auth.currentUser!.uid;
 
