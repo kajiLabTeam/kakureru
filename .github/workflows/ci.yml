@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 同じブランチへ続けてpushしたとき、古い実行を止める。レビュー中に何度も
+# 直すことが多いので、これが無いと無駄な実行がキューに溜まる。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # ローカルと揃えて固定する。`dart format` の出力はSDKのバージョンで変わる
+  # ため、固定しないと「ある日Flutterが上がって、フォーマットチェックだけが
+  # 突然赤くなる」が起きる。またプラグイン5つにKGP警告(将来のFlutterで
+  # ビルドが落ちる予告)が出ているので、上げるタイミングは手動で選びたい。
+  FLUTTER_VERSION: "3.44.8"
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: 整形
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: 静的解析
+        # 素の `flutter analyze` は既存のinfo 315件で必ず終了コード1になり
+        # ゲートとして機能しない。かといって `--no-fatal-warnings` まで足すと
+        # エラーしか見なくなる。`--no-fatal-infos` で「新しいerror/warningは
+        # 通さない」線を引く(そのための警告解消は #79)。
+        run: flutter analyze --no-fatal-infos
+
+      - name: 生成コードがソースと一致しているか
+        # `.freezed.dart` / `.g.dart` はコミットされているので、ソースを直して
+        # build_runnerを回し忘れると古い生成物が残る。コンパイルは通ってしまい、
+        # 「新しいフィールドがRTDBから読まれない」のような静かな不具合になる。
+        # 生成コードの手編集(AGENTS.mdで禁止)もここで止まる。
+        #
+        # 対象を生成ファイルに絞るのは、build_runnerが pubspec.lock も毎回
+        # 書き換えるため(絞らないと常に赤くなる)。
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          if ! git diff --quiet -- '*.freezed.dart' '*.g.dart'; then
+            echo "::error::生成コードがソースと一致していません。'dart run build_runner build --delete-conflicting-outputs' を実行して、生成されたファイルもコミットしてください"
+            git diff --stat -- '*.freezed.dart' '*.g.dart'
+            exit 1
+          fi
+
+      - name: テスト
+        run: flutter test
+
+      - name: 安全網の整合性
+        # AGENTS.md 安全ルール8。標準ライブラリだけで動くので追加の準備は不要。
+        run: python3 scripts/verify_safety_net.py
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # android/app/build.gradle.kts の JavaVersion.VERSION_17 に合わせる。
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - run: flutter pub get
+
+      # Androidだけの破損(AndroidManifest / Gradle / プラグイン衝突 / minSdk)は
+      # `flutter test` では絶対に捕まらない。Foreground Service・BLE・Wi-Fi
+      # スキャンの権限まわりを触るアプリなので、ここまで見る価値がある。
+      #
+      # CARTO_API_KEY (dart_defines.json) は渡さない。`String.fromEnvironment`
+      # は未設定なら空文字になるだけで(game_map_options.dart)、ビルドは通る。
+      # 地図にウォーターマークが出るがCIでは表示を見ないので問題ない。
+      - run: flutter build apk --debug
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # 履歴に紛れ込んだ秘密情報も見るため、全部取ってくる。
+          fetch-depth: 0
+
+      # hookやレビュープラグインは「Claude Codeのセッションの中」でしか効かず、
+      # 人間がGitHub上で直接コミットした秘密情報はすり抜ける。その層をCIに置く。
+      #
+      # イメージは ghcr.io を使う(Docker Hubは匿名pullをIPあたり100回/6時間に
+      # 制限していて、Actionsの共有IPでは混雑時に失敗しうる)。`--redact` で
+      # 検出した値そのものはログに出さない。
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            detect --source /repo --config /repo/.gitleaks.toml --redact -v

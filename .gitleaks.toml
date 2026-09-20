@@ -1,0 +1,30 @@
+title = "gitleaks config"
+
+# デフォルトの検出ルールはそのまま継承し、誤検知だけをallowlistで外す。
+#
+# `--config` を付けずに運用すると誤検知が出たときに対処する手段が無く、
+# CIが赤いまま放置される → やがて「secret-scanのジョブを外そう」という
+# 話になる(安全網を弱める典型パターン)。
+[extend]
+useDefault = true
+
+[allowlist]
+description = "誤検知として確認済みのパターン"
+
+# **ここへの追記は、本物の秘密情報でないことを確認した場合に限る。**
+#
+# 下の2ファイルは gitleaks の `gcp-api-key` ルールに引っかかる
+# (`AIza...` 形式のGoogle APIキー)。これは**Firebaseのクライアント設定**で
+# あり、秘密情報ではない。APKに埋め込まれて配布される前提のもので、
+# プロジェクトを識別するだけで権限を与えない(アクセス制御はFirebase
+# Security Rules側が持つ)。.gitignoreにも「Firebaseクライアント設定で
+# あり」と明記したうえで意図的にコミットしている。
+#
+# **ルールごと無効にせず、パスで絞っているのが重要。** `gcp-api-key` を
+# 止めたり `AIza` の正規表現で外したりすると、別のファイルに本物の
+# Google APIキー(課金の紐づいたMaps/Cloud系など)が漏れたときも一緒に
+# 見逃すことになる。
+paths = [
+  '''android/app/google-services\.json''',
+  '''lib/firebase_options\.dart''',
+]
