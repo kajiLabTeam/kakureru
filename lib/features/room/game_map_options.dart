@@ -118,10 +118,15 @@ MapOptions buildGameMapOptions({
   required latlong.LatLng fallbackCenter,
 }) {
   if (areaBounds == null) {
-    return MapOptions(initialCenter: fallbackCenter, initialZoom: _defaultZoom);
+    return MapOptions(
+      initialCenter: fallbackCenter,
+      initialZoom: _defaultZoom,
+      interactionOptions: gameMapInteractionOptions,
+    );
   }
 
   return MapOptions(
+    interactionOptions: gameMapInteractionOptions,
     // 制限(cameraConstraint)の内側から始めるための初期位置。
     // initialCameraFitが効くまでの間はこの値がカメラ位置になる。
     //
@@ -147,6 +152,16 @@ MapOptions buildGameMapOptions({
     cameraConstraint: CameraConstraint.containCenter(bounds: areaBounds),
   );
 }
+
+/// ゲーム中の地図で許す操作。既定(`InteractiveFlag.all`)から回転だけを外す。
+///
+/// 回転を許すと、2本指でひねった分だけ地図が回り、エリア外アラートの矢印
+/// (絶対方位で描いている)が実際の方向とずれる。このアプリには方位を北に
+/// 戻すUIが無く、一度回すと戻せないため、回転自体を切る方を選んだ。
+/// パン・ピンチズーム・ダブルタップズームなど他の操作はそのまま使える。
+const gameMapInteractionOptions = InteractionOptions(
+  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+);
 
 const _defaultZoom = 17.0;
 

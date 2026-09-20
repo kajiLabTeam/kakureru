@@ -29,6 +29,20 @@ class _SequencedPermissionService extends LocationPermissionService {
   }
 }
 
+/// 前のルームで受け取った位置が残っている状態から始めるためのサブクラス。
+///
+/// 本来は`start()`の購読が[LocationState.locations]を埋めるが、`start()`は
+/// Geolocator・Foreground Service・Firebaseに触れるためテストから通せない。
+/// ここで見たいのは`stop()`の後始末だけなので、初期状態だけを差し替える。
+class _SeededLocationViewModel extends LocationViewModel {
+  @override
+  LocationState build() => super.build().copyWith(
+    locations: const [
+      UserLocation(uid: 'me', latitude: 35, longitude: 135, updatedAt: 1),
+    ],
+  );
+}
+
 /// [LocationRepository]の差し替え。Firebase・Foreground Serviceへ触れずに、
 /// 「送信の開始が成功したか失敗したか」だけをViewModelへ返す。
 ///
@@ -81,6 +95,30 @@ class _FakeLocationRepository implements LocationRepository {
 Future<void> _settle() => Future<void>.delayed(Duration.zero);
 
 void main() {
+  group('LocationViewModel.stop', () {
+    test(
+      '前のルームの位置を捨てる '
+      '(別の公園でルームに入り直した直後、古い位置でエリア外アラートが誤報を出さないように)',
+      () {
+        final container = ProviderContainer(
+          overrides: [
+            locationViewModelProvider.overrideWith(
+              _SeededLocationViewModel.new,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        final notifier = container.read(locationViewModelProvider.notifier);
+        expect(container.read(locationViewModelProvider).locations, isNotEmpty);
+
+        notifier.stop();
+
+        expect(container.read(locationViewModelProvider).locations, isEmpty);
+        expect(container.read(locationViewModelProvider).isSending, isFalse);
+      },
+    );
+  });
+
   group('LocationViewModel.ensurePermission', () {
     test(
       '先に呼ばれた要求が後から解決しても、後に呼ばれた要求の結果を上書きしない '

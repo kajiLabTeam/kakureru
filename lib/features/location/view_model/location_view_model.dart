@@ -229,16 +229,25 @@ class LocationViewModel extends Notifier<LocationState> {
     });
   }
 
-  /// ゲーム画面を離れた時に呼ぶ。送信・購読を止める。
+  /// ゲーム画面を離れた時に呼ぶ。送信・購読を止め、前のルームの状態を捨てる。
+  ///
+  /// このproviderはアプリの生存期間ずっと生きているので、残したものは次の
+  /// ルームへそのまま持ち越される。畳むものが2つある:
+  ///
+  /// - `locations`: 残すと、次のルームに入った直後のまだ購読が始まっていない
+  ///   間に「別の公園にいたときの自分の最後の位置」が新しいルームのエリアと
+  ///   突き合わされ、開始直後にエリア外アラートが誤報を出す(issue #61)
+  /// - `failure`: 残すと、次のルームの初回描画にいきなり前のルームの赤い
+  ///   警告が出る(しかも復帰時の再試行がそれを見て走り出す。issue #66)
   void stop() {
     _epoch++;
     _stoppedEpoch = _epoch;
     _disposeSubscriptions();
-    // 失敗の表示も一緒に畳む。locationViewModelProviderはアプリ生存期間の
-    // providerなので、消さないと次に入ったルームの初回描画にいきなり前の
-    // ルームの赤い警告が出る(しかも復帰時の再試行がそれを見て走り出す。
-    // issue #66のレビュー指摘)。
-    state = state.copyWith(isSending: false, failure: LocationFailure.none);
+    state = state.copyWith(
+      isSending: false,
+      failure: LocationFailure.none,
+      locations: const [],
+    );
   }
 
   void _disposeSubscriptions() {

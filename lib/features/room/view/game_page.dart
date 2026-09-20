@@ -15,6 +15,8 @@ import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/area_alert.dart';
+import 'package:kakureru/features/room/area_alert_notifications.dart';
 import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
@@ -35,6 +37,7 @@ import 'package:kakureru/features/room/view/game/game_status_cards.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/game/opponent_detail_card.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
+import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
@@ -49,23 +52,28 @@ import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 ///
 /// 特に通知の拒否は要注意で、位置情報の許可を促す文言を出すと、ユーザーは
 /// 設定で位置情報が許可済みなのを確認して詰む(issue #66のレビュー指摘)。
+///
+/// どの原因でも自分の位置が無い状態なので、**エリア外アラートも効かない**
+/// ことを併記する(issue #61)。一番エリアの外に出そうな人(GPSが無く鬼からも
+/// 見えない人)が、警告も受けないまま出ていくことになるため、送信だけの話に
+/// 読めると気づけない。
 String? locationWarningMessage(LocationState state) {
-  switch (state.failure) {
-    case LocationFailure.none:
-      return null;
-    case LocationFailure.serviceDisabled:
-      return '端末の位置情報がOFFになっています。'
-          '設定から位置情報をONにしてから戻ってください';
-    case LocationFailure.locationPermission:
-      return 'このアプリに位置情報が許可されていないため、自分の位置を送信できません。'
-          '設定から位置情報を許可してから戻ってください';
-    case LocationFailure.notificationPermission:
-      return '通知が許可されていないため、自分の位置を送信できません。'
-          '設定から通知を許可してから戻ってください';
-    case LocationFailure.sendingFailed:
-      return '位置情報の送信を開始できませんでした。'
-          'アプリのバッテリー最適化を外すか、ゲーム画面に入り直してください';
-  }
+  final cause = switch (state.failure) {
+    LocationFailure.none => null,
+    LocationFailure.serviceDisabled =>
+      '端末の位置情報がOFFになっています。設定から位置情報をONにしてから戻ってください',
+    LocationFailure.locationPermission =>
+      'このアプリに位置情報が許可されていないため、自分の位置を送信できません。'
+          '設定から位置情報を許可してから戻ってください',
+    LocationFailure.notificationPermission =>
+      '通知が許可されていないため、自分の位置を送信できません。'
+          '設定から通知を許可してから戻ってください',
+    LocationFailure.sendingFailed =>
+      '位置情報の送信を開始できませんでした。'
+          'アプリのバッテリー最適化を外すか、ゲーム画面に入り直してください',
+  };
+  if (cause == null) return null;
+  return '$cause(エリア外アラートも出ません)';
 }
 
 /// ゲーム中の画面。ゲーム内容自体はまだ無く、残り時間と参加者の位置表示のみ行う仮実装。
@@ -184,6 +192,50 @@ class GamePage extends HookConsumerWidget {
 
     // 誰かが鬼になったらSnackBarで全員に知らせる。
     useDemonChangeNotifications(ref, context, roomId: roomId, myUid: myUid);
+
+    // プレイエリア外のアラート(issue #61 / UI改修モック2a-07)。
+    //
+    // hooksはbuildの本体でしか呼べない(roomAsync.whenのdata:の中は
+    // roomがdataのときしか実行されず、呼ぶと順序が崩れる)ため、判定と
+    // 状態の持ち越しはここで済ませ、表示だけをdata:側でぶら下げる。
+    //
+    // 本文(roomAsync.when)がdataを描いていないときはroomを渡さない。
+    // 渡してしまうと、RTDBが一瞬こけてスピナーやエラーが出ている間も
+    // 判定だけが進み、バナーが無いまま振動と通知だけが続く。観測は
+    // 「分からない」になり、フック側が直前の判定を保つので、dataに戻れば
+    // 猶予を数え直さずに警告が復帰する。
+    //
+    // エリア未設定のルームではgameAreaが空なのでobserveOutsideAreaが
+    // 常に「内側」を返し、以下すべてが自動的に無効になる。
+    //
+    // 「dataを描いているか」は本文と同じ`when`で判定する。ローディング/
+    // エラーの細かい扱い(skipLoadingOnRefresh等)を書き写すと、いつか
+    // 本文とずれるため。
+    final isShowingRoomData = roomAsync.when(
+      data: (_) => true,
+      loading: () => false,
+      error: (_, _) => false,
+    );
+    final myLocation = _findLocation(locationState.locations, myUid);
+    final outsideAreaObservation = observeOutsideArea(
+      area: isShowingRoomData ? room?.setting.gameArea : null,
+      location: myLocation,
+      // updatedAtはServerValue.timestampで書かれるのでサーバー時刻で比べる。
+      nowMillis: now,
+    );
+    // 猶予距離・猶予時間を通したあとの「いま警告を出すか」。
+    final isOutsideAreaWarning = useOutsideAreaWarning(
+      observation: outsideAreaObservation,
+      tick: tick.value,
+    );
+    // 表示と発火の条件を揃える。これ1つで赤帯・地図の赤かぶせ・戻り方
+    // カード・振動・通知がまとめて出入りする。
+    final outsideAreaAlert = outsideAreaAlertOf(
+      isWarning: isOutsideAreaWarning && isShowingRoomData,
+      observation: outsideAreaObservation,
+    );
+    // 外にいる間だけ振動と通知を続ける(戻ったら通知も消す)。
+    useOutsideAreaNotifications(isOutside: outsideAreaAlert != null);
 
     final pressureState = ref.watch(pressureViewModelProvider);
     final bleDetections = ref.watch(bleViewModelProvider);
@@ -471,13 +523,22 @@ class GamePage extends HookConsumerWidget {
                         isSubmitting: becomeDemon.isRunning,
                         onPressed: handleBecomeDemonPressed,
                       ),
+                    // エリア外アラート(赤帯・赤かぶせ・矢印・戻り方カード)は
+                    // 地図の上に重ねる。Columnに足すと、その分だけ地図と
+                    // 下のカードが押し出されて画面外へ消えるため
+                    // (OutsideAreaAlertMapのコメント参照)。
                     Expanded(
-                      child: GameLocationMap(
-                        locations: visibleLocations,
-                        users: displayUsers,
-                        myUid: myUid,
-                        cachedPosition: cachedPosition.value,
-                        gameArea: room.setting.gameArea,
+                      child: OutsideAreaAlertMap(
+                        alert: outsideAreaAlert,
+                        // 偽プレイヤーのピンにも名前と役割色を出すため、
+                        // 地図には表示用の一覧を渡す(issue #67)。
+                        map: GameLocationMap(
+                          locations: visibleLocations,
+                          users: displayUsers,
+                          myUid: myUid,
+                          cachedPosition: cachedPosition.value,
+                          gameArea: room.setting.gameArea,
+                        ),
                       ),
                     ),
                     // マップの下は、対象役割の相手をタップで選べるチップ一覧と、
@@ -565,4 +626,17 @@ class GamePage extends HookConsumerWidget {
       ),
     );
   }
+}
+
+/// [locations]から指定uidの位置を探す。uidがnull、またはまだ届いていなければnull。
+///
+/// GameLocationMapにも同名の非公開ヘルパーがあるが、あちらは地図の
+/// 初期センターを決めるためのもの。こちらはエリア外判定に使う自分の位置を
+/// 取るためのもので、使う場所も寿命も違うため共有していない。
+UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
+  if (uid == null) return null;
+  for (final location in locations) {
+    if (location.uid == uid) return location;
+  }
+  return null;
 }
