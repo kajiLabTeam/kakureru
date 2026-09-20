@@ -93,6 +93,36 @@ void main() {
       expect(find.text('ゆいの気圧は 0.35 hPa 高い'), findsOneWidget);
     });
 
+    testWidgets('相手がいる側の半分だけを薄く塗る', (tester) async {
+      // ドットの位置だけだと、走りながらの一瞥で線より上か下かを読み違える。
+      const bar = ValueKey('verticalBar');
+      const tint = ValueKey('verticalTint');
+
+      await pumpCard(
+        tester,
+        verticalPosition: const RelativeVerticalPosition(
+          uid: 'u0',
+          deltaMeters: 8,
+        ),
+      );
+      var barRect = tester.getRect(find.byKey(bar));
+      var tintRect = tester.getRect(find.byKey(tint));
+      expect(tintRect.top, closeTo(barRect.top, 0.01));
+      expect(tintRect.height, closeTo(barRect.height / 2, 0.01));
+
+      await pumpCard(
+        tester,
+        verticalPosition: const RelativeVerticalPosition(
+          uid: 'u0',
+          deltaMeters: -8,
+        ),
+      );
+      barRect = tester.getRect(find.byKey(bar));
+      tintRect = tester.getRect(find.byKey(tint));
+      expect(tintRect.bottom, closeTo(barRect.bottom, 0.01));
+      expect(tintRect.height, closeTo(barRect.height / 2, 0.01));
+    });
+
     testWidgets('差が小さければ「同じ高さかも」で、数値は出さない', (tester) async {
       await pumpCard(
         tester,
@@ -104,6 +134,8 @@ void main() {
 
       expect(find.text('同じ高さかも'), findsOneWidget);
       expect(find.byIcon(Icons.horizontal_rule), findsOneWidget);
+      // 方向を言えないので、どちら側も塗らない。
+      expect(find.byKey(const ValueKey('verticalTint')), findsNothing);
       // 誤差の範囲を有効数字2桁で出すと、動いていないのに数字が動いて見える。
       expect(find.text('ゆいの気圧は ほぼ同じ'), findsOneWidget);
       expect(find.textContaining('hPa'), findsNothing);

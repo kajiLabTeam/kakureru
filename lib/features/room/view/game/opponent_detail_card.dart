@@ -286,6 +286,8 @@ class OpponentDetailCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
       ),
       child: ClipRRect(
+        // 塗りの範囲をテストから測れるようにする(枠の内側が基準)。
+        key: const ValueKey('verticalBar'),
         borderRadius: BorderRadius.circular(5),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -293,15 +295,15 @@ class OpponentDetailCard extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 if (height != RelativeHeight.same)
-                  Align(
-                    alignment: height == RelativeHeight.above
-                        ? Alignment.topCenter
-                        : Alignment.bottomCenter,
-                    child: FractionallySizedBox(
-                      heightFactor: 0.5,
-                      child: ColoredBox(
-                        color: opponentColor.withValues(alpha: 0.08),
-                      ),
+                  Positioned(
+                    key: const ValueKey('verticalTint'),
+                    top: height == RelativeHeight.above ? 0 : null,
+                    bottom: height == RelativeHeight.below ? 0 : null,
+                    left: 0,
+                    right: 0,
+                    height: constraints.maxHeight / 2,
+                    child: ColoredBox(
+                      color: opponentColor.withValues(alpha: 0.08),
                     ),
                   ),
                 Container(height: 3, color: selfColor),
