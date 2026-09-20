@@ -39,7 +39,7 @@ dependencies:
     sdk: flutter
   flutter_hooks: ^0.21.3+1
   freezed_annotation: ^3.1.0
-  geolocator: ^13.0.2
+  geolocator: ^14.0.2
   # hooks_riverpod は flutter_riverpod + flutter_hooks を統合したもの。
   # HookConsumerWidget で hooks と Riverpod を同じウィジェットで使える。
   hooks_riverpod: ^3.4.2
