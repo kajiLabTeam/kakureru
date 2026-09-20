@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/repository/location_permission.dart';
+import 'package:kakureru/features/location/repository/location_repository.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 
 /// [LocationPermissionService.ensureGranted]の結果を、呼び出された順に
@@ -15,25 +18,114 @@ import 'package:kakureru/features/location/view_model/location_view_model.dart';
 class _SequencedPermissionService extends LocationPermissionService {
   _SequencedPermissionService(this._results);
 
-  final List<Future<bool>> _results;
+  final List<Future<LocationPermissionResult>> _results;
   var _calls = 0;
 
   @override
-  Future<bool> ensureGranted() {
+  Future<LocationPermissionResult> ensureGranted() {
     final result = _results[_calls];
     _calls++;
     return result;
   }
 }
 
+/// 前のルームで受け取った位置が残っている状態から始めるためのサブクラス。
+///
+/// 本来は`start()`の購読が[LocationState.locations]を埋めるが、`start()`は
+/// Geolocator・Foreground Service・Firebaseに触れるためテストから通せない。
+/// ここで見たいのは`stop()`の後始末だけなので、初期状態だけを差し替える。
+class _SeededLocationViewModel extends LocationViewModel {
+  @override
+  LocationState build() => super.build().copyWith(
+    locations: const [
+      UserLocation(uid: 'me', latitude: 35, longitude: 135, updatedAt: 1),
+    ],
+  );
+}
+
+/// [LocationRepository]の差し替え。Firebase・Foreground Serviceへ触れずに、
+/// 「送信の開始が成功したか失敗したか」だけをViewModelへ返す。
+///
+/// extends ではなく implements なのは、LocationRepositoryのコンストラクタが
+/// FirebaseDatabase.instance / FirebaseAuth.instance に触れるため
+/// (Firebase未初期化のテストでは super() を呼んだ時点で失敗する)。
+class _FakeLocationRepository implements LocationRepository {
+  _FakeLocationRepository({this.startResult = true});
+
+  /// startSendingLocation() が返す値。Foreground Serviceの起動に失敗した
+  /// ケースを再現するときに false にする。
+  bool startResult;
+
+  final startedRooms = <String>[];
+  final stoppedCalls = <String>[];
+
+  /// watchLocations() に渡された roomId。購読が張られたかどうかを
+  /// 見るために記録する。
+  final watchedRooms = <String>[];
+
+  @override
+  Future<bool> startSendingLocation(String roomId) async {
+    startedRooms.add(roomId);
+    return startResult;
+  }
+
+  @override
+  Future<void> stopSendingLocation() async {
+    stoppedCalls.add('stop');
+  }
+
+  /// 空ストリームにしない。空だと「購読した」と「購読していない」が
+  /// 見分けられず、購読を張り忘れる回帰を検知できないため
+  /// (issue #66のレビュー指摘)。
+  @override
+  Stream<List<UserLocation>> watchLocations(String roomId) {
+    watchedRooms.add(roomId);
+    return Stream.value([
+      const UserLocation(
+        uid: 'other',
+        latitude: 35,
+        longitude: 139,
+        updatedAt: 1,
+      ),
+    ]);
+  }
+}
+
+/// listen したストリームの1件目が state に反映されるまで待つ。
+Future<void> _settle() => Future<void>.delayed(Duration.zero);
+
 void main() {
+  group('LocationViewModel.stop', () {
+    test(
+      '前のルームの位置を捨てる '
+      '(別の公園でルームに入り直した直後、古い位置でエリア外アラートが誤報を出さないように)',
+      () {
+        final container = ProviderContainer(
+          overrides: [
+            locationViewModelProvider.overrideWith(
+              _SeededLocationViewModel.new,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        final notifier = container.read(locationViewModelProvider.notifier);
+        expect(container.read(locationViewModelProvider).locations, isNotEmpty);
+
+        notifier.stop();
+
+        expect(container.read(locationViewModelProvider).locations, isEmpty);
+        expect(container.read(locationViewModelProvider).isSending, isFalse);
+      },
+    );
+  });
+
   group('LocationViewModel.ensurePermission', () {
     test(
       '先に呼ばれた要求が後から解決しても、後に呼ばれた要求の結果を上書きしない '
       '(起動時のMyAppとゲーム開始時のstart()が同時に権限確認する競合の再発防止)',
       () async {
-        final earlyCallResult = Completer<bool>();
-        final lateCallResult = Completer<bool>();
+        final earlyCallResult = Completer<LocationPermissionResult>();
+        final lateCallResult = Completer<LocationPermissionResult>();
         final container = ProviderContainer(
           overrides: [
             locationPermissionServiceProvider.overrideWithValue(
@@ -52,31 +144,34 @@ void main() {
         // 後から呼ばれた要求(例: ゲーム開始時のstart())。先に解決する。
         final lateCall = notifier.ensurePermission();
 
-        lateCallResult.complete(true); // 後の要求は許可された
+        lateCallResult.complete(LocationPermissionResult.granted);
         await lateCall;
         expect(
-          container.read(locationViewModelProvider).permissionDenied,
-          isFalse,
+          container.read(locationViewModelProvider).failure,
+          LocationFailure.none,
         );
 
-        earlyCallResult.complete(false); // 先の要求は(後から)拒否と分かる
+        // 先の要求は(後から)拒否と分かる。
+        earlyCallResult.complete(LocationPermissionResult.locationDenied);
         await earlyCall;
 
         // 呼び出し順としては古い結果なので、後の要求が書いた
-        // permissionDenied:false を上書きしてはいけない。
+        // 「問題なし」を上書きしてはいけない。
         expect(
-          container.read(locationViewModelProvider).permissionDenied,
-          isFalse,
+          container.read(locationViewModelProvider).failure,
+          LocationFailure.none,
         );
       },
     );
 
-    test('権限確認が例外を投げても握りつぶし、permissionDenied:trueにする', () async {
+    test('権限確認が例外を投げても握りつぶし、位置情報の権限の失敗として扱う', () async {
       final container = ProviderContainer(
         overrides: [
           locationPermissionServiceProvider.overrideWithValue(
             _SequencedPermissionService([
-              Future<bool>.error(Exception('プラグイン呼び出しの失敗を模擬')),
+              Future<LocationPermissionResult>.error(
+                Exception('プラグイン呼び出しの失敗を模擬'),
+              ),
             ]),
           ),
         ],
@@ -91,16 +186,18 @@ void main() {
 
       expect(granted, isFalse);
       expect(
-        container.read(locationViewModelProvider).permissionDenied,
-        isTrue,
+        container.read(locationViewModelProvider).failure,
+        LocationFailure.locationPermission,
       );
     });
 
-    test('許可されれば permissionDenied は false になる', () async {
+    test('許可されれば failure は none になる', () async {
       final container = ProviderContainer(
         overrides: [
           locationPermissionServiceProvider.overrideWithValue(
-            _SequencedPermissionService([Future.value(true)]),
+            _SequencedPermissionService([
+              Future.value(LocationPermissionResult.granted),
+            ]),
           ),
         ],
       );
@@ -111,9 +208,218 @@ void main() {
 
       expect(granted, isTrue);
       expect(
-        container.read(locationViewModelProvider).permissionDenied,
-        isFalse,
+        container.read(locationViewModelProvider).failure,
+        LocationFailure.none,
       );
+    });
+
+    // 通知を拒否したのに「位置情報を許可してください」と案内すると、設定で
+    // 位置情報が許可済みなのを確認して詰む(issue #66のレビュー指摘)。
+    test('通知が拒否されたときは、位置情報ではなく通知の失敗として区別する', () async {
+      final container = ProviderContainer(
+        overrides: [
+          locationPermissionServiceProvider.overrideWithValue(
+            _SequencedPermissionService([
+              Future.value(LocationPermissionResult.notificationDenied),
+            ]),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final granted = await container
+          .read(locationViewModelProvider.notifier)
+          .ensurePermission();
+
+      expect(granted, isFalse);
+      expect(
+        container.read(locationViewModelProvider).failure,
+        LocationFailure.notificationPermission,
+      );
+    });
+  });
+
+  group('LocationViewModel.start', () {
+    // 端末の位置情報(GPS)がONかどうかの確認はMethodChannel越しに実機へ
+    // 聞きに行くため、テストではチャンネルの応答だけを差し替える。
+    const geolocatorChannel = MethodChannel('flutter.baseflow.com/geolocator');
+    var locationServiceEnabled = true;
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      locationServiceEnabled = true;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(geolocatorChannel, (call) async {
+            if (call.method == 'isLocationServiceEnabled') {
+              return locationServiceEnabled;
+            }
+            return null;
+          });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(geolocatorChannel, null);
+    });
+
+    ProviderContainer buildContainer({
+      required _FakeLocationRepository repository,
+      required List<LocationPermissionResult> permissionResults,
+    }) {
+      final container = ProviderContainer(
+        overrides: [
+          locationPermissionServiceProvider.overrideWithValue(
+            _SequencedPermissionService([
+              for (final result in permissionResults) Future.value(result),
+            ]),
+          ),
+          locationRepositoryProvider.overrideWithValue(repository),
+        ],
+      );
+      addTearDown(container.dispose);
+      return container;
+    }
+
+    test('権限が無いときは権限の失敗だけが立ち、送信の開始は試みない', () async {
+      final repository = _FakeLocationRepository();
+      final container = buildContainer(
+        repository: repository,
+        permissionResults: [LocationPermissionResult.locationDenied],
+      );
+
+      await container.read(locationViewModelProvider.notifier).start('room-1');
+
+      final state = container.read(locationViewModelProvider);
+      expect(state.failure, LocationFailure.locationPermission);
+      expect(state.isSending, isFalse);
+      expect(repository.startedRooms, isEmpty);
+    });
+
+    // 自分が送れないことと、相手の位置を見られないことは別。ここを飛ばすと
+    // 地図・Wi-Fi距離感・気圧の上下まで全部空になる(issue #66のレビュー指摘)。
+    test('権限が無くても、他の参加者の位置の購読は張る', () async {
+      final repository = _FakeLocationRepository();
+      final container = buildContainer(
+        repository: repository,
+        permissionResults: [LocationPermissionResult.locationDenied],
+      );
+
+      await container.read(locationViewModelProvider.notifier).start('room-1');
+      await _settle();
+
+      expect(repository.watchedRooms, ['room-1']);
+      expect(container.read(locationViewModelProvider).locations, hasLength(1));
+    });
+
+    test('送信の開始に失敗しても、他の参加者の位置の購読は張る', () async {
+      final repository = _FakeLocationRepository(startResult: false);
+      final container = buildContainer(
+        repository: repository,
+        permissionResults: [LocationPermissionResult.granted],
+      );
+
+      await container.read(locationViewModelProvider.notifier).start('room-1');
+      await _settle();
+
+      expect(repository.watchedRooms, ['room-1']);
+      expect(container.read(locationViewModelProvider).locations, hasLength(1));
+    });
+
+    test('端末の位置情報がOFFなら、権限ではなくGPS自体の失敗として区別する', () async {
+      locationServiceEnabled = false;
+      final repository = _FakeLocationRepository();
+      final container = buildContainer(
+        repository: repository,
+        permissionResults: [LocationPermissionResult.granted],
+      );
+
+      await container.read(locationViewModelProvider.notifier).start('room-1');
+
+      expect(
+        container.read(locationViewModelProvider).failure,
+        LocationFailure.serviceDisabled,
+      );
+      expect(repository.startedRooms, isEmpty);
+    });
+
+    test('権限はあるのに送信を開始できなければ、権限ではなく送信の失敗が立つ '
+        '(画面の案内を出し分けるため)', () async {
+      final repository = _FakeLocationRepository(startResult: false);
+      final container = buildContainer(
+        repository: repository,
+        permissionResults: [LocationPermissionResult.granted],
+      );
+
+      await container.read(locationViewModelProvider.notifier).start('room-1');
+
+      final state = container.read(locationViewModelProvider);
+      expect(state.failure, LocationFailure.sendingFailed);
+      // 開始できていないのに「送信中」と表示しない(issue #66の無音の失敗)。
+      expect(state.isSending, isFalse);
+      expect(repository.startedRooms, ['room-1']);
+    });
+
+    test('送信を開始できたら failure は none になり isSending になる', () async {
+      final repository = _FakeLocationRepository();
+      final container = buildContainer(
+        repository: repository,
+        permissionResults: [LocationPermissionResult.granted],
+      );
+
+      await container.read(locationViewModelProvider.notifier).start('room-1');
+
+      final state = container.read(locationViewModelProvider);
+      expect(state.failure, LocationFailure.none);
+      expect(state.isSending, isTrue);
+    });
+
+    test('一度失敗しても、設定で許可して呼び直せば警告の状態は解除される '
+        '(アプリ復帰時の再試行が効くこと)', () async {
+      final repository = _FakeLocationRepository();
+      final container = buildContainer(
+        repository: repository,
+        permissionResults: [
+          LocationPermissionResult.locationDenied,
+          LocationPermissionResult.granted,
+        ],
+      );
+      final notifier = container.read(locationViewModelProvider.notifier);
+
+      await notifier.start('room-1');
+      expect(
+        container.read(locationViewModelProvider).failure,
+        LocationFailure.locationPermission,
+      );
+
+      await notifier.start('room-1');
+
+      final state = container.read(locationViewModelProvider);
+      expect(state.failure, LocationFailure.none);
+      expect(state.isSending, isTrue);
+    });
+
+    // locationViewModelProviderはアプリ生存期間のproviderなので、消さないと
+    // 次に入ったルームの初回描画にいきなり前のルームの赤い警告が出る。しかも
+    // 復帰時の再試行がそれを見て走り出す(issue #66のレビュー指摘)。
+    test('stop()すると失敗の表示も畳む(次のルームへ持ち越さない)', () async {
+      final repository = _FakeLocationRepository();
+      final container = buildContainer(
+        repository: repository,
+        permissionResults: [LocationPermissionResult.locationDenied],
+      );
+      final notifier = container.read(locationViewModelProvider.notifier);
+
+      await notifier.start('room-1');
+      expect(
+        container.read(locationViewModelProvider).failure,
+        LocationFailure.locationPermission,
+      );
+
+      notifier.stop();
+
+      final state = container.read(locationViewModelProvider);
+      expect(state.failure, LocationFailure.none);
+      expect(state.isSending, isFalse);
     });
   });
 }

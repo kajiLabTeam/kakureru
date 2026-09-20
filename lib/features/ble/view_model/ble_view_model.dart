@@ -5,7 +5,18 @@ import 'package:kakureru/features/ble/model/ble_detection.dart';
 import 'package:kakureru/features/ble/repository/ble_permission.dart';
 import 'package:kakureru/features/ble/repository/ble_scan_repository.dart';
 
-final bleScanRepositoryProvider = Provider((ref) => BleScanRepository());
+/// BLEのリポジトリ。アプリ生存期間のシングルトンとして扱う。
+///
+/// 画面ごとの開始/停止は[BleViewModel]の start()/stop() が行い、
+/// [BleScanRepository.dispose]は内部のStreamControllerまで閉じるため、
+/// Providerが破棄されるとき(=アプリ終了時)にだけ呼ぶ。
+/// 以前はdisposeの呼び出し経路自体が無くデッドコードになっていた
+/// (issue #30)。
+final bleScanRepositoryProvider = Provider((ref) {
+  final repository = BleScanRepository();
+  ref.onDispose(repository.dispose);
+  return repository;
+});
 
 final blePermissionServiceProvider = Provider((ref) => BlePermissionService());
 
@@ -34,7 +45,9 @@ class BleViewModel extends Notifier<Map<String, BleDetection>> {
   /// 相手の広告のスキャンを両方始める。
   Future<void> start(String myUid) async {
     final epoch = ++_epoch;
-    final granted = await ref.read(blePermissionServiceProvider).ensureGranted();
+    final granted = await ref
+        .read(blePermissionServiceProvider)
+        .ensureGranted();
     if (epoch != _epoch || !granted) return;
 
     _sub?.cancel();
@@ -69,6 +82,7 @@ int _median(List<int> values) {
   return sorted[sorted.length ~/ 2];
 }
 
-final bleViewModelProvider = NotifierProvider<BleViewModel, Map<String, BleDetection>>(
-  BleViewModel.new,
-);
+final bleViewModelProvider =
+    NotifierProvider<BleViewModel, Map<String, BleDetection>>(
+      BleViewModel.new,
+    );

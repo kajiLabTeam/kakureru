@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/room/location_grid.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
-import 'package:kakureru/features/room/view/game_page.dart';
+import 'package:kakureru/features/room/view/game/game_location_map.dart';
 import 'package:latlong2/latlong.dart' as latlong;
 
 const _myUid = 'me';

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -9,12 +10,15 @@ import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/calibration_status.dart';
+import 'package:kakureru/features/room/debug_mock_players.dart';
 import 'package:kakureru/features/room/left_user_notifications.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/single_flight_action.dart';
+import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
@@ -31,13 +35,14 @@ class RoomWaitingPage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final roomAsync = ref.watch(roomStreamProvider(roomId));
     final pressureState = ref.watch(pressureViewModelProvider);
-    final isStarting = useState(false);
-    final startError = useState<Object?>(null);
+    final startGame = useAsyncAction(context);
+    final randomNomination = useAsyncAction(context);
     final hasNavigated = useState(false);
-    final isNominatingRandom = useState(false);
-    final randomNominationGuard = useMemoized(SingleFlightAction.new);
     // 「鬼にする」「取り消す」の送信中フラグ。同時に1件までしか実行しない
-    // ため、実行中の対象uidだけを持てば足りる。SingleFlightActionは
+    // ため、実行中の対象uidだけを持てば足りる。ここだけuseAsyncActionに
+    // 寄せていないのは、どの参加者の行を送信中にするかという「キー付き」
+    // の状態が要るため(汎用フック側に持たせると、この1箇所のために
+    // 他の4箇所が使わない引数を抱えることになる)。SingleFlightActionは
     // リビルドを待たずに同期で多重発火を防ぐためのガード
     // (ランダム指名ボタンと同じ理由。上のコメント参照)。
     final demonActionUid = useState<String?>(null);
@@ -136,21 +141,49 @@ class RoomWaitingPage extends HookConsumerWidget {
     }, const []);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('待機中')),
+      appBar: AppBar(
+        title: const Text('待機中'),
+        // デバッグ用の偽プレイヤーを足す(issue #67)。実機1台では参加者が
+        // 自分だけで開始条件を満たせず、ゲーム画面まで到達できないため。
+        // kDebugModeがfalseのリリースビルドではこのボタン自体が存在しない。
+        actions: const [if (kDebugMode) DebugMockPlayersToggle()],
+      ),
       body: roomAsync.when(
         data: (room) {
           final isHost = room.hostUserId == myUid;
           final hostCalibrated = room.basePressure != null;
+
+          // デバッグ用の偽プレイヤー(issue #67)。実機1台では参加者が自分
+          // だけになり、開始条件(鬼と逃走者が1人以上ずつ)を満たせず
+          // ゲーム画面まで到達できないため、1台でも通せるようにする。
+          //
+          // **一覧への表示だけに使う**。人数・役割・キャリブレーションの
+          // 判定や、RTDBへ書き込むボタン(鬼の指名・取り消し)は、すべて
+          // RTDB由来のroom.usersのまま見る。判定側にまで混ぜると、複数人
+          // でプレー中に押したときに「鬼0人のまま開始できる」「全員鬼で
+          // 開始して全員が即結果画面へ飛ばされる」といった事故になる。
+          // 開始条件の迂回だけは下のmockBypassStartで明示的に行う。
+          final showMocks =
+              kDebugMode && ref.watch(showDebugMockPlayersProvider);
+          final displayUsers = showMocks
+              ? [...room.users, ...debugMockWaitingUsers()]
+              : room.users;
+
           final demonCandidates = room.users
               .where((u) => u.role != UserRole.demon)
               .toList();
           final demonCount = room.users
               .where((u) => u.role == UserRole.demon)
               .length;
-          final canStartWithRoleComposition = hasStartableRoleComposition(
-            demonCount: demonCount,
-            totalUserCount: room.users.length,
-          );
+          // 1台で通すための迂回。開始条件そのものは本物の参加者で判定し、
+          // デバッグ時だけ明示的に上書きする(どこで緩めているかを1箇所に
+          // 集めるため)。
+          final canStartWithRoleComposition =
+              hasStartableRoleComposition(
+                demonCount: demonCount,
+                totalUserCount: room.users.length,
+              ) ||
+              showMocks;
 
           final calibrationStatuses = {
             for (final u in room.users)
@@ -238,7 +271,13 @@ class RoomWaitingPage extends HookConsumerWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '参加者 ${room.users.length}人',
+                      // 偽プレイヤーは本物と分けて数える。混ぜて数えると
+                      // トグルを入れたままの部屋を「6人集まっている」と
+                      // 読み違える。
+                      showMocks
+                          ? '参加者 ${room.users.length}人 '
+                                '(+ デバッグ$debugMockPlayerCount人)'
+                          : '参加者 ${room.users.length}人',
                       style: const TextStyle(color: appMuted, fontSize: 12),
                     ),
                     if (requiredCount > 0)
@@ -269,9 +308,21 @@ class RoomWaitingPage extends HookConsumerWidget {
                     horizontal: 24,
                     vertical: 4,
                   ),
-                  children: room.users.map((u) {
+                  children: displayUsers.map((u) {
+                    // showMocksで短絡させる。無条件に呼ぶと、リリース
+                    // ビルドでも判定と偽プレイヤーのuid一覧が参照され、
+                    // 「偽プレイヤーのコードを配布物に含めない」という
+                    // 前提が崩れる。1行に1回だけ計算して使い回す。
+                    final isMock = showMocks && isDebugMockPlayer(u.id);
+                    // calibrationStatusesはroom.usersだけで作っているので、
+                    // 偽プレイヤーは既定のpendingに落ちる。センサー非対応
+                    // (pressureSensorAvailable: false)として作っているのに
+                    // 未完了アイコンが出てしまうため、ここで補う。
                     final status =
-                        calibrationStatuses[u.id] ?? CalibrationStatus.pending;
+                        calibrationStatuses[u.id] ??
+                        (isMock
+                            ? CalibrationStatus.unavailable
+                            : CalibrationStatus.pending);
                     final isPending =
                         room.pendingDemonUid == u.id &&
                         u.role != UserRole.demon;
@@ -289,141 +340,154 @@ class RoomWaitingPage extends HookConsumerWidget {
                         ? _pendingColor
                         : appMuted;
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: borderColor, width: 2),
-                        borderRadius: BorderRadius.circular(11),
-                        color: u.role == UserRole.demon
-                            ? _demonColor.withValues(alpha: 0.05)
-                            : status == CalibrationStatus.pending
-                            ? const Color(0xFFFFFAF0)
-                            : null,
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 13,
-                            backgroundColor: avatarColor,
-                            child: Text(
-                              avatarInitial(u.displayName),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
+                    // 偽プレイヤーは薄く出して本物と見分けが付くようにする。
+                    // 区別が付かないと、トグルを入れたままの部屋を「6人
+                    // 集まっている」と読み違えたまま開始してしまう。
+                    return Opacity(
+                      opacity: isMock ? 0.45 : 1,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: borderColor, width: 2),
+                          borderRadius: BorderRadius.circular(11),
+                          color: u.role == UserRole.demon
+                              ? _demonColor.withValues(alpha: 0.05)
+                              : status == CalibrationStatus.pending
+                              ? const Color(0xFFFFFAF0)
+                              : null,
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 13,
+                              backgroundColor: avatarColor,
+                              child: Text(
+                                avatarInitial(u.displayName),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  u.displayName,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                                Text(
-                                  [
-                                    if (u.role == UserRole.demon &&
-                                        room.demonRevokeUid == u.id)
-                                      '鬼(解除中...)'
-                                    else if (u.role == UserRole.demon)
-                                      '鬼'
-                                    else if (isPending)
-                                      '逃走者(鬼に指名中...)'
-                                    else
-                                      '逃走者',
-                                    if (u.isHost) 'ホスト',
-                                  ].join(' ・ '),
-                                  style: TextStyle(
-                                    color: subtitleColor,
-                                    fontSize: 9.5,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    u.displayName,
+                                    style: const TextStyle(fontSize: 13),
                                   ),
-                                ),
-                              ],
+                                  Text(
+                                    [
+                                      if (u.role == UserRole.demon &&
+                                          room.demonRevokeUid == u.id)
+                                        '鬼(解除中...)'
+                                      else if (u.role == UserRole.demon)
+                                        '鬼'
+                                      else if (isPending)
+                                        '逃走者(鬼に指名中...)'
+                                      else
+                                        '逃走者',
+                                      if (u.isHost) 'ホスト',
+                                    ].join(' ・ '),
+                                    style: TextStyle(
+                                      color: subtitleColor,
+                                      fontSize: 9.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          _CalibrationStatusIcon(status: status),
-                          if (isHost)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: u.role == UserRole.demon
-                                  ? ActionChip(
-                                      label: demonActionUid.value == u.id
-                                          ? const SizedBox(
-                                              width: 12,
-                                              height: 12,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : const Text('取り消す'),
-                                      onPressed: demonActionUid.value != null
-                                          ? null
-                                          : () => unawaited(
-                                              runDemonAction(
-                                                u.id,
-                                                () =>
-                                                    roomRepo.revokeDemon(
-                                                      roomId,
-                                                      u.id,
+                            _CalibrationStatusIcon(status: status),
+                            // 偽プレイヤーの行にはホストの操作を出さない。
+                            // 押すとRTDBへ実在しないuidが書き込まれ、誰も
+                            // 受諾できないまま残って**部屋が鬼を指名できなく
+                            // なる**(取り消しボタンも偽プレイヤーの行にしか
+                            // 出ないので、トグルを戻すと復旧できない)。
+                            if (isHost && !isMock)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: u.role == UserRole.demon
+                                    ? ActionChip(
+                                        label: demonActionUid.value == u.id
+                                            ? const SizedBox(
+                                                width: 12,
+                                                height: 12,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
                                                     ),
-                                              ),
-                                            ),
-                                    )
-                                  : room.pendingDemonUid == u.id
-                                  ? ActionChip(
-                                      label: demonActionUid.value == u.id
-                                          ? const SizedBox(
-                                              width: 12,
-                                              height: 12,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : const Text('取り消す'),
-                                      onPressed: demonActionUid.value != null
-                                          ? null
-                                          : () => unawaited(
-                                              runDemonAction(
-                                                u.id,
-                                                () => roomRepo
-                                                    .cancelDemonNomination(
-                                                      roomId,
-                                                    ),
-                                              ),
-                                            ),
-                                    )
-                                  : ActionChip(
-                                      label: demonActionUid.value == u.id
-                                          ? const SizedBox(
-                                              width: 12,
-                                              height: 12,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : const Text('鬼にする'),
-                                      onPressed:
-                                          demonActionUid.value != null ||
-                                              room.pendingDemonUid != null
-                                          ? null
-                                          : () => unawaited(
-                                              runDemonAction(
-                                                u.id,
-                                                () => roomRepo.nominateDemon(
-                                                  roomId,
+                                              )
+                                            : const Text('取り消す'),
+                                        onPressed: demonActionUid.value != null
+                                            ? null
+                                            : () => unawaited(
+                                                runDemonAction(
                                                   u.id,
+                                                  () => roomRepo.revokeDemon(
+                                                    roomId,
+                                                    u.id,
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                    ),
-                            ),
-                        ],
+                                      )
+                                    : room.pendingDemonUid == u.id
+                                    ? ActionChip(
+                                        label: demonActionUid.value == u.id
+                                            ? const SizedBox(
+                                                width: 12,
+                                                height: 12,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : const Text('取り消す'),
+                                        onPressed: demonActionUid.value != null
+                                            ? null
+                                            : () => unawaited(
+                                                runDemonAction(
+                                                  u.id,
+                                                  () => roomRepo
+                                                      .cancelDemonNomination(
+                                                        roomId,
+                                                      ),
+                                                ),
+                                              ),
+                                      )
+                                    : ActionChip(
+                                        label: demonActionUid.value == u.id
+                                            ? const SizedBox(
+                                                width: 12,
+                                                height: 12,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : const Text('鬼にする'),
+                                        onPressed:
+                                            demonActionUid.value != null ||
+                                                room.pendingDemonUid != null
+                                            ? null
+                                            : () => unawaited(
+                                                runDemonAction(
+                                                  u.id,
+                                                  () => roomRepo.nominateDemon(
+                                                    roomId,
+                                                    u.id,
+                                                  ),
+                                                ),
+                                              ),
+                                      ),
+                              ),
+                          ],
+                        ),
                       ),
                     );
                   }).toList(),
@@ -434,29 +498,25 @@ class RoomWaitingPage extends HookConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: OutlinedButton(
                     onPressed:
-                        isNominatingRandom.value ||
+                        randomNomination.isRunning ||
                             room.pendingDemonUid != null ||
                             demonCandidates.isEmpty
                         ? null
                         : () {
                             // 連打対策: RTDBへの反映(room.pendingDemonUidの更新)には
                             // ネットワーク往復の遅延があり、その間はボタンがまだ有効な
-                            // ままなので、SingleFlightActionで同一フレーム内の連打も
-                            // 含めて多重発火を防ぐ。
+                            // ままなので、useAsyncActionが内側で持つ
+                            // SingleFlightActionで同一フレーム内の連打も含めて
+                            // 多重発火を防ぐ。
                             unawaited(
-                              randomNominationGuard.run(() async {
-                                isNominatingRandom.value = true;
-                                try {
-                                  final target =
-                                      demonCandidates[Random().nextInt(
-                                        demonCandidates.length,
-                                      )];
-                                  await ref
-                                      .read(roomRepositoryProvider)
-                                      .nominateDemon(roomId, target.id);
-                                } finally {
-                                  isNominatingRandom.value = false;
-                                }
+                              randomNomination.run(() {
+                                final target =
+                                    demonCandidates[Random().nextInt(
+                                      demonCandidates.length,
+                                    )];
+                                return ref
+                                    .read(roomRepositoryProvider)
+                                    .nominateDemon(roomId, target.id);
                               }),
                             );
                           },
@@ -508,32 +568,24 @@ class RoomWaitingPage extends HookConsumerWidget {
                   padding: const EdgeInsets.all(24),
                   child: FilledButton(
                     onPressed:
-                        isStarting.value ||
+                        startGame.isRunning ||
                             !canStartWithRoleComposition ||
                             room.setting.gameArea.isEmpty ||
                             !allCalibrated
                         ? null
-                        : () async {
-                            isStarting.value = true;
-                            startError.value = null;
-                            try {
-                              await ref
-                                  .read(roomRepositoryProvider)
-                                  .startGame(roomId);
-                            } on Object catch (e) {
-                              startError.value = e;
-                            } finally {
-                              isStarting.value = false;
-                            }
-                          },
+                        : () => startGame.run(
+                            () => ref
+                                .read(roomRepositoryProvider)
+                                .startGame(roomId),
+                          ),
                     child: const Text('ゲーム開始'),
                   ),
                 ),
-              if (startError.value != null)
+              if (startGame.error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Text(
-                    '${startError.value}',
+                    '${startGame.error}',
                     style: const TextStyle(color: _demonColor),
                   ),
                 ),

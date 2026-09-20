@@ -109,6 +109,57 @@ Future<StreamController<Room>> _pumpResultPage(
 }
 
 void main() {
+  group('勝敗の表示', () {
+    testWidgets('逃走者が残っていれば「タイムアップ」と逃げ切り人数を出す', (tester) async {
+      await _pumpResultPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        myUid: _hostUid,
+        initialRoom: _room(
+          status: RoomStatus.finished,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'たくみ', isHost: true),
+            RoomUser(
+              id: _memberUid,
+              displayName: 'りんや',
+              role: UserRole.demon,
+            ),
+          ],
+        ),
+      );
+
+      expect(find.text('タイムアップ'), findsOneWidget);
+      expect(find.text('逃走者 1人 が逃げ切り'), findsOneWidget);
+    });
+
+    testWidgets('逃走者が全員鬼になっていれば鬼の勝ちを出す', (tester) async {
+      await _pumpResultPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        myUid: _hostUid,
+        initialRoom: _room(
+          status: RoomStatus.finished,
+          users: const [
+            RoomUser(
+              id: _hostUid,
+              displayName: 'たくみ',
+              isHost: true,
+              role: UserRole.demon,
+            ),
+            RoomUser(
+              id: _memberUid,
+              displayName: 'りんや',
+              role: UserRole.demon,
+            ),
+          ],
+        ),
+      );
+
+      expect(find.text('全員捕まりました'), findsOneWidget);
+      expect(find.text('鬼の勝ち'), findsOneWidget);
+    });
+  });
+
   group('全参加者の表示', () {
     testWidgets('最後まで逃げ切った人と鬼になった人が2セクションに分かれて表示される', (tester) async {
       await _pumpResultPage(

@@ -1,15 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
+import 'package:kakureru/features/room/async_action.dart';
+import 'package:kakureru/features/room/game_outcome.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
-import 'package:kakureru/features/room/single_flight_action.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 const _demonColor = Color(0xFFE5484D);
@@ -18,7 +18,8 @@ const _demonColor = Color(0xFFE5484D);
 /// (終了時点で鬼)の2セクションで全参加者を表示し、ホストは「同じメンバーで
 /// もう一回」で同じ部屋を待機状態に巻き戻せる(issue #44)。
 ///
-/// 勝敗表示・捕まった時刻の表示はスコープ外(別issue)。
+/// ヘッダーには勝敗(逃走者の逃げ切り / 鬼の勝ち)を出す(issue #30)。
+/// 捕まった時刻の表示はスコープ外(別issue)。
 class GameResultPage extends HookConsumerWidget {
   const GameResultPage({super.key, required this.roomId});
 
@@ -28,9 +29,7 @@ class GameResultPage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final roomAsync = ref.watch(roomStreamProvider(roomId));
     final myUid = ref.watch(myUidProvider);
-    final isRestarting = useState(false);
-    final restartError = useState<Object?>(null);
-    final restartGuard = useMemoized(SingleFlightAction.new);
+    final restart = useAsyncAction(context);
 
     // 巻き戻し(「同じメンバーでもう一回」)の検知・自分の役割リセット・
     // 待機画面への遷移は、GamePage側でも同じ処理が要るため共通フックに
@@ -49,6 +48,16 @@ class GameResultPage extends HookConsumerWidget {
                 .where((u) => u.role == UserRole.demon)
                 .toList();
 
+            // 勝敗(UI改修モック2a-08)。終了時点で逃走者が残っていれば
+            // 逃げ切り、0人なら鬼の勝ち(issue #30)。
+            final outcome = determineGameOutcome(
+              survivedFugitiveCount: survivedFugitives.length,
+            );
+            final outcomeText = describeGameOutcome(
+              outcome: outcome,
+              survivedFugitiveCount: survivedFugitives.length,
+            );
+
             return Column(
               children: [
                 Container(
@@ -62,7 +71,25 @@ class GameResultPage extends HookConsumerWidget {
                       bottom: BorderSide(color: appFaintBorder, width: 2),
                     ),
                   ),
-                  child: const Text('ゲーム終了', style: TextStyle(fontSize: 20)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        outcomeText.title,
+                        style: const TextStyle(fontSize: 20),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        outcomeText.summary,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: outcome == GameOutcome.demonsWon
+                              ? _demonColor
+                              : roleThemeOf(UserRole.fugitive).color,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 Expanded(
                   child: ListView(
@@ -108,37 +135,23 @@ class GameResultPage extends HookConsumerWidget {
                     children: [
                       if (isHost)
                         FilledButton(
-                          onPressed: isRestarting.value
+                          // awaitの後はこのページが既に破棄されている可能性
+                          // がある。巻き戻しを検知したuseRestartRecoveryが
+                          // RoomWaitingPageへpushReplacementすると、旧ルート
+                          // は遷移アニメーション完了(約300ms)後に破棄される
+                          // ため、RTDBのackがそれより遅いとdispose済みの
+                          // HookElementへのsetStateになる。mountedの確認は
+                          // useAsyncActionが内側で行う。
+                          onPressed: restart.isRunning
                               ? null
                               : () => unawaited(
-                                  restartGuard.run(() async {
-                                    isRestarting.value = true;
-                                    restartError.value = null;
-                                    try {
-                                      await ref
-                                          .read(roomRepositoryProvider)
-                                          .restartRoom(roomId);
-                                    } on Object catch (e) {
-                                      // awaitの後はこのページが既に破棄されて
-                                      // いる可能性がある。巻き戻しを検知した
-                                      // useRestartRecoveryがRoomWaitingPageへ
-                                      // pushReplacementすると、旧ルートは遷移
-                                      // アニメーション完了(約300ms)後に破棄
-                                      // されるため、RTDBのack がそれより遅い
-                                      // とdispose済みのHookElementへの
-                                      // setStateになり、unawaited経由の未処理
-                                      // 非同期エラーとして表に出てしまう。
-                                      if (context.mounted) {
-                                        restartError.value = e;
-                                      }
-                                    } finally {
-                                      if (context.mounted) {
-                                        isRestarting.value = false;
-                                      }
-                                    }
-                                  }),
+                                  restart.run(
+                                    () => ref
+                                        .read(roomRepositoryProvider)
+                                        .restartRoom(roomId),
+                                  ),
                                 ),
-                          child: isRestarting.value
+                          child: restart.isRunning
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
@@ -153,11 +166,11 @@ class GameResultPage extends HookConsumerWidget {
                           'ホストの操作を待っています',
                           style: TextStyle(color: appMuted, fontSize: 12),
                         ),
-                      if (restartError.value != null)
+                      if (restart.error != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(
-                            '${restartError.value}',
+                            '${restart.error}',
                             style: const TextStyle(color: _demonColor),
                           ),
                         ),

@@ -111,6 +111,35 @@ void main() {
       expect(options.cameraConstraint, isA<UnconstrainedCamera>());
       expectInitialCameraSatisfiesConstraint(options);
     });
+
+    test('地図の回転を無効にする(エリア外アラートの矢印が絶対方位のため)', () {
+      final bounds = gameAreaBounds(
+        calculateRectangleCorners(
+          const LatLng(lat: 35.0, lng: 139.0),
+          const LatLng(lat: 35.01, lng: 139.01),
+        ),
+      );
+      final withArea = buildGameMapOptions(
+        areaBounds: bounds,
+        fallbackCenter: fallbackMapCenter,
+      );
+      final withoutArea = buildGameMapOptions(
+        areaBounds: null,
+        fallbackCenter: fallbackMapCenter,
+      );
+
+      for (final options in [withArea, withoutArea]) {
+        final flags = options.interactionOptions.flags;
+        expect(
+          InteractiveFlag.hasRotate(flags),
+          isFalse,
+          reason: '2本指でひねると地図だけ回り、矢印が指す向きとずれる',
+        );
+        // 回転以外(パン・ピンチズーム)は今までどおり使える。
+        expect(InteractiveFlag.hasDrag(flags), isTrue);
+        expect(InteractiveFlag.hasPinchZoom(flags), isTrue);
+      }
+    });
   });
 
   group('gameAreaBounds', () {
