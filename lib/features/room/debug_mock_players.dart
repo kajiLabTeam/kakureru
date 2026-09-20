@@ -20,6 +20,7 @@ library;
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -83,22 +84,89 @@ const _debugMockAngleJitterRadians = 0.6;
 /// この値にcos(緯度)を掛けて使う。
 const _metersPerDegreeLatitude = 111320.0;
 
-/// 偽プレイヤー5人ぶんの [RoomUser]。
+/// 偽プレイヤーを出しているかどうか。
+///
+/// 待機画面とゲーム画面の**両方**で使うのでRiverpodに持つ(AGENTS.mdの
+/// 状態管理規約: 画面が消えても状態が残ってほしいものはRiverpod)。
+/// 以前は各画面が別々の`useState`で持っていたため、待機画面で出しても
+/// ゲーム画面へ移った瞬間に消え、「モックが壊れている」ように見えた。
+final showDebugMockPlayersProvider =
+    NotifierProvider<ShowDebugMockPlayers, bool>(ShowDebugMockPlayers.new);
+
+/// [showDebugMockPlayersProvider]の実体。
+class ShowDebugMockPlayers extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  /// 出す/隠すを切り替える。
+  void toggle() => state = !state;
+}
+
+/// [uid]が偽プレイヤーのものか。
+///
+/// RTDBへ書き込むボタン(鬼の指名・取り消し)を偽プレイヤーの行に出さない
+/// ための判定。出してしまうと実在しないuidが`meta/pendingDemonUid`等へ
+/// 書き込まれ、誰も受諾できないまま残って**部屋が鬼を指名できなくなる**。
+bool isDebugMockPlayer(String uid) => debugMockPlayerUids.contains(uid);
+
+/// 待機画面に足す偽プレイヤーの役割。鬼2人・逃走者3人が混ざる。
+///
+/// ゲーム開始の条件は「鬼が1人以上 かつ 逃走者が1人以上」
+/// (`hasStartableRoleComposition`、issue #33)。全員を同じ役割にすると、
+/// 自分がどちらになるかで条件を満たせなくなる。混ぜておけば、自分が
+/// 鬼でも逃走者でも必ず両方が1人以上いる状態になる。
+const List<UserRole> _debugMockWaitingRoles = [
+  UserRole.demon,
+  UserRole.fugitive,
+  UserRole.demon,
+  UserRole.fugitive,
+  UserRole.fugitive,
+];
+
+/// 待機画面に足す偽プレイヤー5人ぶんの [RoomUser](issue #67)。
+///
+/// ゲーム画面用の[debugMockUsers]と分けているのは、必要な役割の配り方が
+/// 逆だから。ゲーム画面は「自分と逆の役割」しか表示しないので全員を逆の
+/// 役割にするが、待機画面は開始条件を満たしたいので両方の役割を混ぜる。
+///
+/// `pressureSensorAvailable: false` にしているのは、キャリブレーションの
+/// 完了判定(`calibrationStatusFor`)で「非対応」として数から外すため。
+/// 偽プレイヤーは当然キャリブレーションできないので、そうしないと
+/// 「キャリブレーション未完了」で永久に開始できない。
+List<RoomUser> debugMockWaitingUsers() =>
+    _mockUsers(roles: _debugMockWaitingRoles);
+
+/// ゲーム画面に足す偽プレイヤー5人ぶんの [RoomUser]。
 ///
 /// 役割は [myRole] の逆にする(自分が鬼なら逃走者5人)。相手選択チップも
 /// 地図のピンも「自分と逆の役割」しか出さないため、同じ役割で作ると
 /// どこにも現れない。
 List<RoomUser> debugMockUsers({required UserRole myRole}) {
-  if (!kDebugMode) return const [];
-
   final role = myRole == UserRole.demon ? UserRole.fugitive : UserRole.demon;
+  return _mockUsers(roles: List.filled(debugMockPlayerCount, role));
+}
+
+/// 偽プレイヤー5人ぶんの [RoomUser] を組み立てる。役割の配り方だけが
+/// 画面ごとに違うので、そこだけ[roles]で受け取る。
+///
+/// `pressureSensorAvailable: false` は待機画面のキャリブレーション判定で
+/// 「非対応」として数から外すため。どちらの画面でも同じ人物として扱いたい
+/// ので、片方だけ未設定にはしない。
+List<RoomUser> _mockUsers({required List<UserRole> roles}) {
+  if (!kDebugMode) return const [];
+  assert(
+    roles.length == debugMockPlayerCount,
+    '役割の数が偽プレイヤーの人数と合っていない',
+  );
+
   return [
     for (var i = 0; i < debugMockPlayerCount; i++)
       RoomUser(
         id: debugMockPlayerUids[i],
         displayName: _debugMockPlayerNames[i],
         deviceId: debugMockPlayerUids[i],
-        role: role,
+        role: roles[i],
+        pressureSensorAvailable: false,
       ),
   ];
 }

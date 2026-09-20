@@ -24,6 +24,7 @@ void useGameOverNavigation(
   required int serverTimeOffset,
   required int tick,
   required bool isShowingCaughtTransition,
+  bool debugMocksEnabled = false,
 }) {
   final hasNavigated = useRef(false);
   useEffect(() {
@@ -33,7 +34,13 @@ void useGameOverNavigation(
       status: room.status,
       endsAt: room.endsAt,
       nowMillis: serverNowMillis(serverTimeOffset),
-      hasFugitives: room.users.any((u) => u.role == UserRole.fugitive),
+      // デバッグ用の偽プレイヤーを出している間は、逃走者が居る扱いにする。
+      // 実機1台で自分が鬼になって開始すると、RTDB上の逃走者は0人なので
+      // この画面に入った瞬間に結果画面へ飛ばされ、鬼視点をまったく
+      // 確認できない(issue #67)。リリースビルドでは常にfalseが渡る。
+      hasFugitives:
+          debugMocksEnabled ||
+          room.users.any((u) => u.role == UserRole.fugitive),
     );
     if (!gameOver) return null;
     hasNavigated.value = true;

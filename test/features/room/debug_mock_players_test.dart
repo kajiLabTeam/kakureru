@@ -1,8 +1,10 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kakureru/features/room/calibration_status.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 
 /// デバッグ用の偽プレイヤー(issue #67)のテスト。
@@ -165,6 +167,69 @@ void main() {
             centerLongitude: centerLongitude,
           ),
         ),
+      );
+    });
+  });
+
+  // 実機1台では参加者が自分だけになり、開始条件(鬼と逃走者が1人以上ずつ)を
+  // 満たせずゲーム画面まで到達できない。待機画面用の偽プレイヤーは、それを
+  // 1台で通せるようにするためのもの。
+  group('debugMockWaitingUsers(待機画面用)', () {
+    test('5人ぶん作る', () {
+      expect(debugMockWaitingUsers(), hasLength(debugMockPlayerCount));
+    });
+
+    test('鬼と逃走者が混ざっている', () {
+      final users = debugMockWaitingUsers();
+
+      expect(users.where((u) => u.role == UserRole.demon), isNotEmpty);
+      expect(users.where((u) => u.role == UserRole.fugitive), isNotEmpty);
+    });
+
+    // 全員を同じ役割にすると、自分がどちらになるかで開始条件を満たせなく
+    // なる。自分が鬼でも逃走者でも通ることを両方確かめる。
+    test('自分がどちらの役割でも、開始条件を満たす', () {
+      final mocks = debugMockWaitingUsers();
+
+      for (final myRole in UserRole.values) {
+        final users = [
+          RoomUser(id: 'me', displayName: '自分', role: myRole),
+          ...mocks,
+        ];
+        final demonCount = users.where((u) => u.role == UserRole.demon).length;
+
+        expect(
+          hasStartableRoleComposition(
+            demonCount: demonCount,
+            totalUserCount: users.length,
+          ),
+          isTrue,
+          reason: '自分が$myRoleのときに開始できない',
+        );
+      }
+    });
+
+    // 偽プレイヤーはキャリブレーションできないので、必要人数から外さないと
+    // 「キャリブレーション未完了」で永久に開始できない。
+    test('キャリブレーションの必要人数に数えられない(センサー非対応扱い)', () {
+      for (final user in debugMockWaitingUsers()) {
+        expect(user.pressureSensorAvailable, isFalse);
+        expect(
+          calibrationStatusFor(
+            isHost: false,
+            sensorAvailable: user.pressureSensorAvailable,
+            basePressure: null,
+            pressureOffset: user.pressureOffset,
+          ),
+          CalibrationStatus.unavailable,
+        );
+      }
+    });
+
+    test('ゲーム画面用とは別のIDにはしない(同じ偽プレイヤーとして扱う)', () {
+      expect(
+        debugMockWaitingUsers().map((u) => u.id),
+        debugMockUsers(myRole: UserRole.fugitive).map((u) => u.id),
       );
     });
   });

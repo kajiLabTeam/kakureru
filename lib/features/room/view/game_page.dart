@@ -27,6 +27,7 @@ import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
+import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/game/become_demon_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_confirm_dialog.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
@@ -100,9 +101,9 @@ class GamePage extends HookConsumerWidget {
 
     // デバッグ用の偽プレイヤーを出しているかどうか(issue #67)。多人数での
     // 見え方は端末を人数分集めないと確認できないため、デバッグビルドでだけ
-    // AppBarに出るボタンで切り替えられるようにしている。この画面を離れたら
-    // 消えてよい一時状態なのでhooksで持つ(AGENTS.md規約)。
-    final showMockPlayers = useState(false);
+    // AppBarに出るボタンで切り替えられるようにしている。待機画面と同じ
+    // 状態を見る(画面をまたいで持ち回りたいのでRiverpod。AGENTS.md規約)。
+    final showMocks = kDebugMode && ref.watch(showDebugMockPlayersProvider);
 
     // ゲーム画面に滞在している間だけ、位置情報・気圧・Wi-Fi・BLEを動かす。
     useGameSession(ref, roomId: roomId, myUid: myUid);
@@ -140,6 +141,10 @@ class GamePage extends HookConsumerWidget {
       serverTimeOffset: offset,
       tick: tick.value,
       isShowingCaughtTransition: showCaughtTransition.value,
+      // 偽プレイヤーを出している間は「逃走者0人で即終了」を抑える。
+      // 1台で自分が鬼になって開始すると、RTDB上の逃走者は0人なので
+      // GamePageに入った瞬間に結果画面へ飛ばされてしまう(issue #67)。
+      debugMocksEnabled: showMocks,
     );
 
     // 「同じメンバーでもう一回」による巻き戻しの検知。ホストが結果画面
@@ -223,23 +228,7 @@ class GamePage extends HookConsumerWidget {
               // (issue #67)。RTDBには一切書かず、この端末の画面にだけ
               // 偽の相手を足す。kDebugModeがfalseのリリースビルドでは
               // このボタン自体が存在しない。
-              actions: [
-                if (kDebugMode)
-                  IconButton(
-                    iconSize: 20,
-                    visualDensity: VisualDensity.compact,
-                    tooltip: showMockPlayers.value
-                        ? 'デバッグ用の偽プレイヤーを隠す'
-                        : 'デバッグ用の偽プレイヤーを出す',
-                    icon: Icon(
-                      showMockPlayers.value
-                          ? Icons.group
-                          : Icons.group_outlined,
-                    ),
-                    onPressed: () =>
-                        showMockPlayers.value = !showMockPlayers.value,
-                  ),
-              ],
+              actions: const [if (kDebugMode) DebugMockPlayersToggle()],
             ),
             body: roomAsync.when(
               data: (room) {
@@ -275,7 +264,7 @@ class GamePage extends HookConsumerWidget {
                 var mockWifiEntries = const <WifiProximityEntry>[];
                 var mockVerticalPositions = const <RelativeVerticalPosition>[];
                 var mockLocations = const <UserLocation>[];
-                if (kDebugMode && showMockPlayers.value && myRole != null) {
+                if (showMocks && myRole != null) {
                   final center = debugMockCenterOf(
                     locations: locationState.locations,
                     myUid: myUid,
