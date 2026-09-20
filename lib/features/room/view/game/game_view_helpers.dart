@@ -24,6 +24,23 @@ Color colorForRole(UserRole? role) {
   return role == null ? Colors.grey : roleThemeOf(role).color;
 }
 
+/// [colorForRole]が返す色を指す日本語の色名。
+///
+/// 相手詳細カードの「青を緑に近づけよう」のように、**画面上の点の色を
+/// 名指しして操作を説明する**ために使う。役割が不明なときの'グレー'は
+/// [colorForRole]のフォールバックに合わせたもので、通常は通らない
+/// (相手一覧は役割で絞ってから作られるため)。
+String colorNameForRole(UserRole? role) {
+  switch (role) {
+    case UserRole.demon:
+      return '赤';
+    case UserRole.fugitive:
+      return '緑';
+    case null:
+      return 'グレー';
+  }
+}
+
 /// [users]から指定uidの参加者を探す。居なければnull。
 RoomUser? findUser(List<RoomUser> users, String uid) {
   for (final user in users) {
