@@ -40,6 +40,34 @@ import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
+/// 位置が送れていないときに画面上部へ出す赤い警告文。問題なければnull。
+///
+/// 同じ「自分の位置が出ない」でも直し方が違うので、原因ごとに案内を変える。
+/// 以前は全部まとめて「権限(常に許可)がない」と出していたため、権限はある
+/// のにForeground Serviceが起動できていないケースで、設定を見に行っても
+/// 何も直らない案内になっていた(issue #66)。
+///
+/// 特に通知の拒否は要注意で、位置情報の許可を促す文言を出すと、ユーザーは
+/// 設定で位置情報が許可済みなのを確認して詰む(issue #66のレビュー指摘)。
+String? locationWarningMessage(LocationState state) {
+  switch (state.failure) {
+    case LocationFailure.none:
+      return null;
+    case LocationFailure.serviceDisabled:
+      return '端末の位置情報がOFFになっています。'
+          '設定から位置情報をONにしてから戻ってください';
+    case LocationFailure.locationPermission:
+      return 'このアプリに位置情報が許可されていないため、自分の位置を送信できません。'
+          '設定から位置情報を許可してから戻ってください';
+    case LocationFailure.notificationPermission:
+      return '通知が許可されていないため、自分の位置を送信できません。'
+          '設定から通知を許可してから戻ってください';
+    case LocationFailure.sendingFailed:
+      return '位置情報の送信を開始できませんでした。'
+          'アプリのバッテリー最適化を外すか、ゲーム画面に入り直してください';
+  }
+}
+
 /// ゲーム中の画面。ゲーム内容自体はまだ無く、残り時間と参加者の位置表示のみ行う仮実装。
 class GamePage extends HookConsumerWidget {
   const GamePage({super.key, required this.roomId});
@@ -411,12 +439,15 @@ class GamePage extends HookConsumerWidget {
                     if (myRole == UserRole.fugitive &&
                         phase == GamePhase.beforeRelease)
                       PreReleaseBanner(countdownSec: countdownSec),
-                    if (locationState.permissionDenied)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
+                    // 位置が送れていないときの警告。原因によって直し方が
+                    // 違う(設定で許可する/入り直す)ため文言を出し分ける。
+                    if (locationWarningMessage(locationState)
+                        case final message?)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Text(
-                          '位置情報の権限(常に許可)がないため、自分の位置を送信できません',
-                          style: TextStyle(color: Color(0xFFE5484D)),
+                          message,
+                          style: const TextStyle(color: Color(0xFFE5484D)),
                         ),
                       ),
                     // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/core/utils/permission_queue.dart';
 import 'package:kakureru/features/ble/model/ble_detection.dart';
 import 'package:kakureru/features/ble/repository/ble_permission.dart';
 import 'package:kakureru/features/ble/repository/ble_scan_repository.dart';
@@ -312,6 +313,8 @@ void main() {
   });
 
   group('BlePermissionService', () {
+    // テストごとに新しいキューを渡す。既定の PermissionQueue.shared を使うと
+    // 他のテストと1本の鎖でつながってしまう(issue #66のレビュー指摘)。
     test('BLUETOOTH_SCANが拒否されたら残りは要求せずfalseを返す', () async {
       final requestedPermissions = <Permission>[];
       final service = BlePermissionService(
@@ -319,6 +322,7 @@ void main() {
           requestedPermissions.add(permission);
           return PermissionStatus.denied;
         },
+        queue: PermissionQueue(),
       );
 
       final granted = await service.ensureGranted();
@@ -330,6 +334,7 @@ void main() {
     test('3つとも許可されたらtrueを返す', () async {
       final service = BlePermissionService(
         requestPermission: (permission) async => PermissionStatus.granted,
+        queue: PermissionQueue(),
       );
 
       final granted = await service.ensureGranted();

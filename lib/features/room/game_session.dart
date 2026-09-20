@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
@@ -27,6 +28,9 @@ void useGameSession(
     return () => ref.read(locationViewModelProvider.notifier).stop();
   }, [roomId]);
 
+  // 位置送信に失敗していたら、アプリへ戻ってきたタイミングで貼り直す。
+  useLocationRetryOnResume(ref, roomId: roomId);
+
   // 気圧の送信。センサー購読自体は待機画面のキャリブレーションで既に
   // 始まっている想定(PressureViewModel.initは判定済みなら再判定しない)。
   useEffect(() {
@@ -53,4 +57,46 @@ void useGameSession(
     ref.read(bleViewModelProvider.notifier).start(myUid);
     return () => ref.read(bleViewModelProvider.notifier).stop();
   }, [myUid]);
+}
+
+/// 位置送信に失敗した状態のままアプリを離れ、設定で許可して戻ってきたときに
+/// 送信を貼り直すフック。
+///
+/// 「常に許可」を必須ゲートにしていた頃は初回だけ必ずここで詰まっていたが
+/// (issue #66)、ゲートを外した後も、最初のダイアログで拒否した人・端末の
+/// 位置情報がOFFだった人は同じ状態になる。[useGameSession]の位置のeffectは
+/// 依存配列が[roomId]だけなので、同じ部屋に居る限り二度とstart()されない。
+/// ゲームを抜けて入り直さないと直せないのでは対戦中に実質直せないため、
+/// 復帰(resumed)を拾って1回だけ呼び直す。
+///
+/// 成功している間(failure が none)は何もしない。start()を無駄に呼ぶと
+/// Foreground Serviceを止めて起動し直すことになり、送信が一瞬途切れるため。
+///
+/// **「アプリが実際に背面へ回ってから戻ってきた」ときだけ**再試行する。
+/// Androidは権限ダイアログが手前に出ただけでも `inactive` を挟み、閉じた
+/// 瞬間に `resumed` を投げる。これを拾ってしまうと、ユーザーが拒否した
+/// 直後に同じダイアログをもう一度出すことになり、**2回連続の拒否でAndroidが
+/// 「今後表示しない」扱いにする**ため、アプリ内で許可してもらう最後の機会を
+/// 自分で潰す(issue #66のレビュー指摘)。
+///
+/// 直前の状態だけでは判別できない点に注意。Flutterは `paused` へ移るときに
+/// `inactive`→`hidden`→`paused` を、戻るときに `hidden`→`inactive`→`resumed`
+/// を合成して順に流すため、**`resumed` の直前は必ず `inactive`** になる。
+/// そこで「背面まで回ったことがあるか」を覚えておき、復帰時にそれを見る。
+void useLocationRetryOnResume(WidgetRef ref, {required String roomId}) {
+  final wentToBackground = useRef(false);
+  useOnAppLifecycleStateChange((previous, current) {
+    if (current == AppLifecycleState.paused ||
+        current == AppLifecycleState.hidden) {
+      wentToBackground.value = true;
+      return;
+    }
+    if (current != AppLifecycleState.resumed) return;
+    if (!wentToBackground.value) return;
+    wentToBackground.value = false;
+
+    final location = ref.read(locationViewModelProvider);
+    if (location.failure == LocationFailure.none) return;
+    ref.read(locationViewModelProvider.notifier).start(roomId);
+  });
 }

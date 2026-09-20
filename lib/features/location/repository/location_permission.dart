@@ -1,4 +1,5 @@
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:kakureru/core/utils/permission_queue.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// 位置送信に必要な権限をまとめて要求する。
@@ -14,43 +15,103 @@ class LocationPermissionService {
   /// flutter_foreground_task)を呼ぶ。テストからのみ差し替える。
   LocationPermissionService({
     Future<PermissionStatus> Function(Permission permission)? requestPermission,
+    Future<PermissionStatus> Function(Permission permission)? checkPermission,
     Future<NotificationPermission> Function()? checkNotificationPermission,
     Future<NotificationPermission> Function()? requestNotificationPermission,
+    PermissionQueue? queue,
   }) : _requestPermission = requestPermission ?? _requestWithHandler,
+       _checkPermission = checkPermission ?? _statusWithHandler,
        _checkNotificationPermission =
            checkNotificationPermission ??
            FlutterForegroundTask.checkNotificationPermission,
        _requestNotificationPermission =
            requestNotificationPermission ??
-           FlutterForegroundTask.requestNotificationPermission;
+           FlutterForegroundTask.requestNotificationPermission,
+       _queue = queue ?? PermissionQueue.shared;
 
   final Future<PermissionStatus> Function(Permission permission)
   _requestPermission;
+
+  /// ダイアログを出さずに現在の状態だけを見る。
+  final Future<PermissionStatus> Function(Permission permission)
+  _checkPermission;
   final Future<NotificationPermission> Function() _checkNotificationPermission;
   final Future<NotificationPermission> Function()
   _requestNotificationPermission;
 
+  /// 他機能(BLE)の権限要求と同時にダイアログを出さないための順番待ち。
+  /// 既定は全機能で共有する[PermissionQueue.shared]。
+  final PermissionQueue _queue;
+
   static Future<PermissionStatus> _requestWithHandler(Permission permission) =>
       permission.request();
 
-  /// 位置情報(常に許可)とForeground Serviceの通知の権限を要求し、
-  /// すべて許可されたかどうかを返す。
-  ///
-  /// ポケットに入れたまま遊ぶ運用のため「常に許可」(バックグラウンド位置情報)まで
-  /// 必要とする。Android 11+では「使用中のみ許可」と同時には付与できないため、
-  /// まず使用中の許可を確定させてから、改めて常時許可をリクエストする。
-  /// 加えてForeground Serviceの通知(Android 13+)の権限も確認する。
-  Future<bool> ensureGranted() async {
-    final whileInUse = await _requestPermission(Permission.locationWhenInUse);
-    if (!whileInUse.isGranted) return false;
+  static Future<PermissionStatus> _statusWithHandler(Permission permission) =>
+      permission.status;
 
-    final always = await _requestPermission(Permission.locationAlways);
-    if (!always.isGranted) return false;
+  /// 位置情報とForeground Serviceの通知の権限を要求し、位置送信に必要な
+  /// 権限がそろったかどうかを返す。
+  ///
+  /// 必須なのは「使用中のみ許可」とForeground Serviceの通知(Android 13+)の
+  /// 2つ。ポケットに入れたまま遊ぶ運用のため「常に許可」(バックグラウンド
+  /// 位置情報)も続けて要求するが、**拒否されても false にはしない**。
+  /// Android 11+の「常に許可」はランタイムのダイアログでは直接付与されず
+  /// 設定画面への誘導になるため、要求した直後の戻り値はまず denied になる。
+  /// これを必須ゲートにしていたせいで、初回プレーだけ位置送信がまるごと
+  /// 始まらなかった(issue #66)。このアプリは画面表示中に
+  /// foregroundServiceType="location" のForeground Serviceを起動するので、
+  /// 「使用中のみ許可」があれば位置取得は継続できる。
+  ///
+  /// Android 11+では「使用中のみ許可」と「常に許可」は同時には付与できない
+  /// ため、まず使用中の許可を確定させてから、改めて常時許可をリクエストする
+  /// 順序は維持している。
+  /// どれが足りなかったかまで返す。位置情報と通知では直し方が違うため、
+  /// 単なるboolだと画面の案内を正しく出し分けられない(issue #66のレビュー
+  /// 指摘: 通知を拒否したのに「位置情報の許可を確認してください」と出て
+  /// しまい、設定を見に行っても直せない)。
+  Future<LocationPermissionResult> ensureGranted() =>
+      _queue.add(_ensureGranted);
+
+  Future<LocationPermissionResult> _ensureGranted() async {
+    final whileInUse = await _requestPermission(Permission.locationWhenInUse);
+    if (!whileInUse.isGranted) return LocationPermissionResult.locationDenied;
+
+    await _requestAlwaysIfStillAskable();
 
     var notification = await _checkNotificationPermission();
     if (notification != NotificationPermission.granted) {
       notification = await _requestNotificationPermission();
     }
-    return notification == NotificationPermission.granted;
+    return notification == NotificationPermission.granted
+        ? LocationPermissionResult.granted
+        : LocationPermissionResult.notificationDenied;
   }
+
+  /// 「常に許可」は、まだ聞ける状態(denied)のときだけ要求する。
+  ///
+  /// 戻り値は見ない(上のdocコメント参照)。後から設定で「常に許可」にして
+  /// もらうための導線として出すだけ。ただし**毎回無条件に要求してはいけない**:
+  /// Android 11+では未付与の状態でこれを要求すると設定画面へ飛ばされ、戻って
+  /// きた瞬間が `resumed` になる。復帰で位置送信を貼り直す仕組み
+  /// (useLocationRetryOnResume)と組み合わさると、設定画面へ飛ぶ→戻る→
+  /// また飛ぶ、のループになる(issue #66のレビュー指摘)。
+  /// granted(もう要らない)と permanentlyDenied(もう聞けない)では何もしない。
+  Future<void> _requestAlwaysIfStillAskable() async {
+    final status = await _checkPermission(Permission.locationAlways);
+    if (status != PermissionStatus.denied) return;
+    await _requestPermission(Permission.locationAlways);
+  }
+}
+
+/// [LocationPermissionService.ensureGranted]の結果。
+enum LocationPermissionResult {
+  /// 位置送信に必要な権限がそろっている。
+  granted,
+
+  /// 位置情報(使用中のみ)が許可されていない。
+  locationDenied,
+
+  /// 位置情報はあるが、Foreground Serviceの通知(Android 13+)が許可されて
+  /// いない。通知が無いとForeground Serviceを起動できない。
+  notificationDenied,
 }

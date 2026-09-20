@@ -16,11 +16,36 @@ final locationPermissionServiceProvider = Provider(
   (ref) => LocationPermissionService(),
 );
 
+/// 「自分の位置が送れていない」理由。画面の警告文はこれで出し分ける。
+///
+/// 当初はboolを2つ(permissionDenied / sendingFailed)持っていたが、実際には
+/// 同時に成り立たない排他の原因なので、両方trueという無い状態が表現できて
+/// しまい、原因が増えるたびに3箇所のcopyWithを手で揃える必要があった
+/// (issue #66のレビュー指摘)。1つの列挙にして、ありえない状態を作れない
+/// ようにしている。
+enum LocationFailure {
+  /// 問題なし。
+  none,
+
+  /// 端末の位置情報(GPS)自体がOFF。
+  serviceDisabled,
+
+  /// 位置情報の権限が無い。
+  locationPermission,
+
+  /// Foreground Serviceの通知(Android 13+)が許可されていない。位置情報の
+  /// 権限はあるので、設定で位置情報を見に行っても直らない。
+  notificationPermission,
+
+  /// 権限はそろっているのに、Foreground Serviceを起動できなかった。
+  sendingFailed,
+}
+
 @freezed
 abstract class LocationState with _$LocationState {
   const factory LocationState({
     @Default([]) List<UserLocation> locations,
-    @Default(false) bool permissionDenied,
+    @Default(LocationFailure.none) LocationFailure failure,
     @Default(false) bool isSending,
   }) = _LocationState;
 }
@@ -45,6 +70,15 @@ class LocationViewModel extends Notifier<LocationState> {
   /// 止めない」という事故になる。各awaitの後にこの値をチェックし、
   /// 自分より新しい呼び出しに追い越されていたら中断する。
   int _epoch = 0;
+
+  /// [stop]が最後に打ち切った世代。
+  ///
+  /// [_epoch]だけでは「離脱(stop)に追い越された」のか「もう一度start()に
+  /// 追い越された」のかが区別できない。後者でForeground Serviceを止めると、
+  /// **新しいstart()が今まさに起動したサービスを古い呼び出しが止めてしまう**
+  /// (画面は「送信中」なのに1件も送られない。issue #66のレビュー指摘)。
+  /// stop()に追い越されたときだけ後始末するために、stop側の世代を覚えておく。
+  int _stoppedEpoch = 0;
 
   // start()で最初に必要になったときに読み、以後はキャッシュを使う。
   //
@@ -73,80 +107,138 @@ class LocationViewModel extends Notifier<LocationState> {
 
   /// アプリを開いた直後に呼ぶ。位置送信は始めず、権限の要求だけを行う。
   /// ゲーム開始時にまとめて聞かれると場所の移動中に操作させることになるため、
-  /// 起動時に済ませておく。結果は permissionDenied に反映する。
+  /// 起動時に済ませておく。結果は failure に反映する。
   ///
   /// permission_handler / flutter_foreground_task 側の例外(Activity未接続、
-  /// 別のリクエストが進行中、等)を握りつぶさずpermissionDenied:trueとして
+  /// 別のリクエストが進行中、等)を握りつぶさず権限の失敗として
   /// 扱う。ここで例外を外へ投げると、呼び出し側がunawaitedで呼んでいる
   /// (main.dart)ため未処理の非同期エラーとして消え、画面には何も出ずに
   /// 送信だけが始まらない「無音の失敗」になってしまうため。
   Future<bool> ensurePermission() async {
     final seq = ++_permissionRequestSeq;
     try {
-      final granted = await ref
+      final result = await ref
           .read(locationPermissionServiceProvider)
           .ensureGranted();
       if (seq == _permissionRequestSeq) {
-        state = state.copyWith(permissionDenied: !granted);
+        state = state.copyWith(failure: _failureOf(result));
       }
-      return granted;
+      return result == LocationPermissionResult.granted;
     } on Object catch (e) {
       debugPrint('[LocationViewModel] 権限確認に失敗: $e');
       if (seq == _permissionRequestSeq) {
-        state = state.copyWith(permissionDenied: true);
+        state = state.copyWith(failure: LocationFailure.locationPermission);
       }
       return false;
     }
   }
 
+  static LocationFailure _failureOf(LocationPermissionResult result) {
+    switch (result) {
+      case LocationPermissionResult.granted:
+        return LocationFailure.none;
+      case LocationPermissionResult.locationDenied:
+        return LocationFailure.locationPermission;
+      case LocationPermissionResult.notificationDenied:
+        return LocationFailure.notificationPermission;
+    }
+  }
+
   /// ゲーム画面に入った時に呼ぶ。権限を確認し、位置送信を開始して
-  /// 他ユーザーの位置の購読を始める。権限が無ければ送信は行わず、
-  /// permissionDenied を立てるだけにとどめる。
+  /// 他ユーザーの位置の購読を始める。権限が無ければ送信は行わないが、
+  /// 他ユーザーの位置の購読は張る。失敗した理由は failure に入れる
+  /// (画面の警告文を出し分けるため)。
+  ///
+  /// 失敗した状態のままでも、設定で許可してアプリへ戻れば
+  /// useGameSession が復帰を拾って呼び直す。何度呼んでも安全なように
+  /// (_epochで世代管理しているため)作ってある。
   Future<void> start(String roomId) async {
     final epoch = ++_epoch;
     try {
+      // 他の参加者の位置の購読は、自分が送れるかどうかと無関係に張る。
+      // 権限が無い・送信を開始できない場合にここを飛ばすと、自分の位置が
+      // 出ないだけでなく**地図・Wi-Fi距離感・気圧の上下が全部空になる**
+      // (どれもlocationsを見ているため)。自分が送れないことと、相手の位置
+      // を見られないことは別(issue #66のレビュー指摘)。
+      await _watchLocations(roomId, epoch);
+      if (epoch != _epoch) return;
+
       // 端末の位置情報(GPS)自体がOFFだと権限があっても値が取れないため、
       // 送信を始める直前のここで確認する(起動時の権限要求では見ない)。
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       // このawaitの間にGamePageが離脱されてstop()が呼ばれているかもしれ
       // ない。追い越されていたら、ここから先の送信開始・状態更新はしない。
       if (epoch != _epoch) return;
-
-      if (!serviceEnabled || !await ensurePermission()) {
-        if (epoch == _epoch) {
-          state = state.copyWith(permissionDenied: true);
-        }
+      if (!serviceEnabled) {
+        state = state.copyWith(failure: LocationFailure.serviceDisabled);
         return;
       }
+
+      // 失敗の理由(位置情報か通知か)はensurePermission()がstateへ入れる。
+      final granted = await ensurePermission();
       if (epoch != _epoch) return;
+      if (!granted) return;
 
-      await _repo.startSendingLocation(roomId);
+      final started = await _repo.startSendingLocation(roomId);
       if (epoch != _epoch) {
-        // 送信開始が完了する前に離脱されていた。stop()側は「まだ何も
-        // 始まっていない」時点で素通りしているので、ここで止めないと
-        // Foreground Serviceが離脱後も送信し続けたままになる。
-        await _repo.stopSendingLocation();
+        // 追い越されていた。ただし後始末は「離脱(stop)に追い越された」
+        // ときだけ。新しいstart()に追い越された場合にここで止めると、
+        // その新しい呼び出しが起動したばかりのサービスを消してしまう。
+        if (_stoppedEpoch >= epoch) await _repo.stopSendingLocation();
         return;
       }
-      state = state.copyWith(permissionDenied: false, isSending: true);
-
-      await _locationsSub?.cancel();
-      _locationsSub = _repo.watchLocations(roomId).listen((locations) {
-        state = state.copyWith(locations: locations);
-      });
+      if (!started) {
+        // 権限はあるのにForeground Serviceを起動できなかった。以前はこの
+        // 失敗を無視してisSending:trueにしていたため、画面には「送信中」と
+        // 出たまま1件も送られない無音の失敗になっていた(issue #66)。
+        state = state.copyWith(
+          failure: LocationFailure.sendingFailed,
+          isSending: false,
+        );
+        return;
+      }
+      state = state.copyWith(
+        failure: LocationFailure.none,
+        isSending: true,
+      );
     } on Object catch (e) {
+      // ここへ来るのは測位サービスの確認・送信開始・購読の失敗。権限の確認
+      // 自体の失敗はensurePermission()が内部でfailureへ落とすので、ここで
+      // 権限のせいにすると原因を取り違えた文言が出てしまう。
       debugPrint('[LocationViewModel] 位置送信の開始に失敗: $e');
+      // 送信だけ始まっていて後段で失敗した場合、止めずに「開始できません
+      // でした」と出すと、通知バーには送信中の通知が出たまま画面の案内と
+      // 食い違う(issue #66のレビュー指摘)。_repoではなく_repoInstanceを
+      // 見るのは、まだ一度も作っていないなら止めるものも無いため
+      // (ここで作るとFirebaseに触れてしまう)。
+      await _repoInstance?.stopSendingLocation();
       if (epoch == _epoch) {
-        state = state.copyWith(permissionDenied: true, isSending: false);
+        state = state.copyWith(
+          failure: LocationFailure.sendingFailed,
+          isSending: false,
+        );
       }
     }
+  }
+
+  Future<void> _watchLocations(String roomId, int epoch) async {
+    await _locationsSub?.cancel();
+    if (epoch != _epoch) return;
+    _locationsSub = _repo.watchLocations(roomId).listen((locations) {
+      state = state.copyWith(locations: locations);
+    });
   }
 
   /// ゲーム画面を離れた時に呼ぶ。送信・購読を止める。
   void stop() {
     _epoch++;
+    _stoppedEpoch = _epoch;
     _disposeSubscriptions();
-    state = state.copyWith(isSending: false);
+    // 失敗の表示も一緒に畳む。locationViewModelProviderはアプリ生存期間の
+    // providerなので、消さないと次に入ったルームの初回描画にいきなり前の
+    // ルームの赤い警告が出る(しかも復帰時の再試行がそれを見て走り出す。
+    // issue #66のレビュー指摘)。
+    state = state.copyWith(isSending: false, failure: LocationFailure.none);
   }
 
   void _disposeSubscriptions() {
