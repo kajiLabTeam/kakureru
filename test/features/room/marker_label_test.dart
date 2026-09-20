@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
-import 'package:kakureru/features/room/view/game_page.dart';
+import 'package:kakureru/features/room/view/game/game_location_map.dart';
 
 void main() {
   group('markerLabelFor (issue #13: GPSピンが誰のものか分かるようにする)', () {
