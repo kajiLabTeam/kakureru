@@ -1,3 +1,4 @@
+import 'package:kakureru/core/utils/duration_format.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 
@@ -115,29 +116,45 @@ Set<String> uidsToNotifyOfDemonChange({
       .toSet();
 }
 
-/// 逃走者から見て、鬼の位置が可視性ディレイでまだ見えない理由の案内文。
+/// 相手の位置が可視性ディレイでまだ見えない理由の案内文。
 ///
-/// [isRoleVisible]がfalseを返す状況(逃走者→鬼、鬼放出前 or
-/// fugitiveInfoDelaySec経過前)に対応するメッセージを返す。それ以外の
-/// 状況(もう見えているはず)ではnull。
+/// [isRoleVisible]がfalseを返す状況に対応するメッセージを返す。もう
+/// 見えているはずの状況ではnull。
 ///
 /// UI改修モック(docs/ui-mockup-2a.html 2a-04)で、可視性ディレイ中に
 /// 何も表示されないと「壊れているのか仕様なのか分からない」という課題が
-/// 指摘されたための追加。
-String? fugitiveHiddenDemonReason({
+/// 指摘されたための追加。当初は逃走者→鬼の片側にしか無かったが、
+/// [isRoleVisible]の仕様上は鬼放出前は鬼→逃走者も見えないため、
+/// 鬼視点にも同じ案内を出せるよう[viewerRole]で分岐する(issue #30)。
+///
+/// 鬼視点の放出前は残り時間が刻々と変わるので、案内文にも
+/// カウントダウンを載せる。呼び出し側が毎秒リビルドしている前提
+/// (GamePageのtick)。
+String? hiddenOpponentReason({
+  required UserRole viewerRole,
   required GamePhase phase,
   required int? releasedAt,
   required int fugitiveInfoDelaySec,
   required int nowMillis,
 }) {
-  if (phase == GamePhase.beforeRelease) {
-    return '鬼の放出後、$fugitiveInfoDelaySec秒経つと表示されます';
+  switch (viewerRole) {
+    case UserRole.demon:
+      // 鬼→逃走者は、放出されるまでの間だけ見えない。
+      if (phase == GamePhase.released) return null;
+      if (releasedAt == null) return '鬼の放出を待っています';
+      final remainingSec = ((releasedAt - nowMillis) / 1000).ceil();
+      return '鬼の放出まで ${formatCountdown(remainingSec)}';
+    case UserRole.fugitive:
+      // 逃走者→鬼は、放出前に加えてfugitiveInfoDelaySecの間も見えない。
+      if (phase == GamePhase.beforeRelease) {
+        return '鬼の放出後、$fugitiveInfoDelaySec秒経つと表示されます';
+      }
+      if (releasedAt == null) return null;
+      final remainingMs = releasedAt + fugitiveInfoDelaySec * 1000 - nowMillis;
+      if (remainingMs <= 0) return null;
+      final remainingSec = (remainingMs / 1000).ceil();
+      return 'あと$remainingSec秒で表示されます';
   }
-  if (releasedAt == null) return null;
-  final remainingMs = releasedAt + fugitiveInfoDelaySec * 1000 - nowMillis;
-  if (remainingMs <= 0) return null;
-  final remainingSec = (remainingMs / 1000).ceil();
-  return 'あと$remainingSec秒で表示されます';
 }
 
 /// 結果画面へ遷移すべきタイミングかどうかを判定する。

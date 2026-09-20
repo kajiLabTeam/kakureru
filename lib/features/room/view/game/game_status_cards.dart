@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/duration_format.dart';
+import 'package:kakureru/features/room/opponent_roster_status.dart';
 
 /// 鬼放出前、逃走者に「いまのうちに離れる」ことを促すバナー
 /// (UI改修モック2a-04)。
@@ -35,15 +36,19 @@ class PreReleaseBanner extends StatelessWidget {
   }
 }
 
-/// 可視性ディレイ中、「なぜ相手が見えないか」を明示するカード
-/// (UI改修モック2a-04)。何も表示しないと不具合と区別が付かないため、
-/// `hiddenOpponentReason`(role_visibility.dart)で計算した理由を出す。
+/// 相手の一覧・詳細が出せないときに、その理由を明示するカード
+/// (UI改修モック2a-04)。何も表示しないと不具合と区別が付かない。
+///
+/// 出す理由は2種類あり、どちらも[GameStatusMessage]として呼び出し側が
+/// 組み立てる:
+/// - 可視性ディレイでまだ見えない(`hiddenOpponentReason`)
+/// - そもそも対象役割の相手がルームに居ない(`describeEmptyOpponentReason`)
 class HiddenOpponentCard extends StatelessWidget {
-  /// [reason]は表示する理由文。
-  const HiddenOpponentCard({super.key, required this.reason});
+  /// [message]に見出し・補足・アイコンをまとめて渡す。
+  const HiddenOpponentCard({super.key, required this.message});
 
-  /// 「まだ見えない」理由の案内文。
-  final String reason;
+  /// 表示する内容(アイコン・見出し・補足)。
+  final GameStatusMessage message;
 
   @override
   Widget build(BuildContext context) {
@@ -61,20 +66,24 @@ class HiddenOpponentCard extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Opacity(
+          Opacity(
             opacity: 0.35,
-            child: Text('👹', style: TextStyle(fontSize: 32)),
+            child: Text(message.emoji, style: const TextStyle(fontSize: 32)),
           ),
           const SizedBox(height: 8),
-          const Text(
-            '鬼の位置はまだ見えません',
-            style: TextStyle(fontSize: 13, color: appMuted),
-          ),
-          const SizedBox(height: 4),
           Text(
-            reason,
-            style: const TextStyle(fontSize: 11, color: Color(0xFFAAAAAA)),
+            message.headline,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: appMuted),
           ),
+          if (message.detail != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              message.detail!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 11, color: Color(0xFFAAAAAA)),
+            ),
+          ],
         ],
       ),
     );

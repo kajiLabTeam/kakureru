@@ -16,6 +16,7 @@ import 'package:kakureru/features/room/game_notifications.dart';
 import 'package:kakureru/features/room/game_over_navigation.dart';
 import 'package:kakureru/features/room/game_session.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/opponent_roster_status.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
@@ -246,28 +247,31 @@ class GamePage extends HookConsumerWidget {
                     .where((position) => isVisibleToMe(position.uid))
                     .toList();
 
-                // 逃走者から見て、可視性ディレイでまだ見えていない鬼がいるか
+                // 「対象の役割」(自分と逆の役割)。BLEの至近距離検知、相手
+                // 選択チップ、「まだ見えない理由」の3つで使う。
+                final opponentRole = myRole == UserRole.demon
+                    ? UserRole.fugitive
+                    : UserRole.demon;
+
+                // 可視性ディレイでまだ見えていない相手がいるか
                 // (UI改修モック2a-04)。何も表示しないと不具合と区別が付かない
-                // ため、理由を明示するカードに切り替える。
-                final anyDemonHiddenFromMe =
-                    myRole == UserRole.fugitive &&
+                // ため、理由を明示するカードに切り替える。鬼放出前は鬼からも
+                // 逃走者が見えない(role_visibility.dart)ので、逃走者視点だけ
+                // でなく鬼視点でも出す(issue #30)。
+                final anyOpponentHiddenFromMe =
+                    myRole != null &&
                     room.users.any(
-                      (u) => u.role == UserRole.demon && !isVisibleToMe(u.id),
+                      (u) => u.role == opponentRole && !isVisibleToMe(u.id),
                     );
-                final hiddenOpponentReason = anyDemonHiddenFromMe
-                    ? fugitiveHiddenDemonReason(
+                final hiddenReason = myRole == null || !anyOpponentHiddenFromMe
+                    ? null
+                    : hiddenOpponentReason(
+                        viewerRole: myRole,
                         phase: phase,
                         releasedAt: room.releasedAt,
                         fugitiveInfoDelaySec: room.setting.fugitiveInfoDelaySec,
                         nowMillis: now,
-                      )
-                    : null;
-
-                // 「対象の役割」(自分と逆の役割)。BLEの至近距離検知と、
-                // 下の相手選択チップの両方で使う。
-                final opponentRole = myRole == UserRole.demon
-                    ? UserRole.fugitive
-                    : UserRole.demon;
+                      );
 
                 // BLEで対象の役割の相手が至近距離(3m程度)にいるかどうか(issue #16)。
                 // 「捕まった」ボタン(常時表示・自己申告)とは別に、確実な捕捉を
@@ -379,14 +383,25 @@ class GamePage extends HookConsumerWidget {
                     // 常に1人だけに絞って詳細(上下判定+Wi-Fi距離感)を出す
                     // (issue #29フォローアップ)。
                     //
-                    // 逃走者から見て可視性ディレイでまだ鬼が見えていない間は、
-                    // チップ一覧・詳細カードの代わりに理由を明示するカードを
-                    // 出す(hiddenOpponentReason != null)。
-                    if (hiddenOpponentReason != null)
+                    // チップ一覧が出せないときは、その理由を明示するカードに
+                    // 差し替える。「可視性ディレイでまだ見えない」「対象役割
+                    // の相手がそもそも居ない」「居るがまだ検知できていない」
+                    // の3つは、以前は一律「検知なし」と出していて区別が付か
+                    // なかった(issue #30)。
+                    if (opponentRoster.isEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                         child: HiddenOpponentCard(
-                          reason: hiddenOpponentReason,
+                          message: emptyOpponentMessage(
+                            // 役割がまだ確定していない間の扱いは
+                            // opponentRoleの既定と揃える(鬼と確定するまで
+                            // 逃走者側として扱う)。
+                            viewerRole: myRole ?? UserRole.fugitive,
+                            opponentCountInRoom: room.users
+                                .where((u) => u.role == opponentRole)
+                                .length,
+                            hiddenReason: hiddenReason,
+                          ),
                         ),
                       )
                     else ...[
@@ -399,62 +414,35 @@ class GamePage extends HookConsumerWidget {
                           style: const TextStyle(color: appMuted, fontSize: 11),
                         ),
                       ),
-                      if (opponentRoster.isEmpty)
-                        // チップ一覧+詳細カードが出せる状態(下記else節)と
-                        // 高さの差が大きいと、対象が検知されるたびに地図の
-                        // 表示領域が急に縮んでガタつく。検知なし時も同程度の
-                        // 高さを確保しておく(issue #29フォローアップ、
-                        // 「下に広がることを考えたUI」の指摘対応)。
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                          child: Container(
-                            width: double.infinity,
-                            height: 200,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: appFaintBorder,
-                                width: 2,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              '検知なし',
-                              style: TextStyle(color: appMuted, fontSize: 13),
-                            ),
-                          ),
-                        )
-                      else ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: OpponentSelectorChips(
-                            roster: opponentRoster,
-                            entries: visibleWifiEntries,
-                            selectedUid: effectiveSelectedUid,
-                            onSelect: (uid) => selectedOpponentUid.value = uid,
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: OpponentSelectorChips(
+                          roster: opponentRoster,
+                          entries: visibleWifiEntries,
+                          selectedUid: effectiveSelectedUid,
+                          onSelect: (uid) => selectedOpponentUid.value = uid,
                         ),
-                        const SizedBox(height: 8),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: OpponentDetailCard(
-                            user: effectiveSelectedUid == null
-                                ? null
-                                : findUser(room.users, effectiveSelectedUid),
-                            pressureState: pressureState,
-                            isCalibrated: isCalibrated(room, myUid),
-                            verticalPosition: verticalFor(
-                              visibleVerticalPositions,
-                              effectiveSelectedUid,
-                            ),
-                            wifiLevel: levelFor(
-                              visibleWifiEntries,
-                              effectiveSelectedUid,
-                            ),
-                            comparisons: selectedComparisons,
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: OpponentDetailCard(
+                          user: effectiveSelectedUid == null
+                              ? null
+                              : findUser(room.users, effectiveSelectedUid),
+                          pressureState: pressureState,
+                          isCalibrated: isCalibrated(room, myUid),
+                          verticalPosition: verticalFor(
+                            visibleVerticalPositions,
+                            effectiveSelectedUid,
                           ),
+                          wifiLevel: levelFor(
+                            visibleWifiEntries,
+                            effectiveSelectedUid,
+                          ),
+                          comparisons: selectedComparisons,
                         ),
-                      ],
+                      ),
                     ],
                     const SizedBox(height: 8),
                   ],

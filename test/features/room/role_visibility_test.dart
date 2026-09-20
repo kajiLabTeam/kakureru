@@ -424,9 +424,10 @@ void main() {
     });
   });
 
-  group('fugitiveHiddenDemonReason', () {
+  group('hiddenOpponentReason(逃走者視点)', () {
     test('鬼放出前は、放出後の待ち時間を案内する', () {
-      final reason = fugitiveHiddenDemonReason(
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.fugitive,
         phase: GamePhase.beforeRelease,
         releasedAt: 100000,
         fugitiveInfoDelaySec: 30,
@@ -436,7 +437,8 @@ void main() {
     });
 
     test('放出後・ディレイ経過前は、残り秒数を案内する', () {
-      final reason = fugitiveHiddenDemonReason(
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.fugitive,
         phase: GamePhase.released,
         releasedAt: 100000,
         fugitiveInfoDelaySec: 30,
@@ -446,7 +448,8 @@ void main() {
     });
 
     test('ディレイ経過後はnull(もう見えているはず)', () {
-      final reason = fugitiveHiddenDemonReason(
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.fugitive,
         phase: GamePhase.released,
         releasedAt: 100000,
         fugitiveInfoDelaySec: 30,
@@ -456,13 +459,62 @@ void main() {
     });
 
     test('releasedAtが未確定ならnull', () {
-      final reason = fugitiveHiddenDemonReason(
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.fugitive,
         phase: GamePhase.released,
         releasedAt: null,
         fugitiveInfoDelaySec: 30,
         nowMillis: 0,
       );
       expect(reason, isNull);
+    });
+  });
+
+  // 鬼放出前は鬼からも逃走者が見えない(isRoleVisible)のに、以前は理由の
+  // 案内が逃走者側にしか無かった(issue #30)。
+  group('hiddenOpponentReason(鬼視点)', () {
+    test('鬼放出前は、放出までのカウントダウンを案内する', () {
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.demon,
+        phase: GamePhase.beforeRelease,
+        releasedAt: 151000,
+        fugitiveInfoDelaySec: 30,
+        nowMillis: 0,
+      );
+      expect(reason, '鬼の放出まで 2:31');
+    });
+
+    test('放出後はnull(逃走者が見えているはず)', () {
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.demon,
+        phase: GamePhase.released,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: 30,
+        nowMillis: 100001,
+      );
+      expect(reason, isNull);
+    });
+
+    test('放出前でreleasedAtが未確定なら、カウントダウン無しで待機を案内する', () {
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.demon,
+        phase: GamePhase.beforeRelease,
+        releasedAt: null,
+        fugitiveInfoDelaySec: 30,
+        nowMillis: 0,
+      );
+      expect(reason, '鬼の放出を待っています');
+    });
+
+    test('鬼視点の案内はfugitiveInfoDelaySecに左右されない', () {
+      String? reasonWithDelay(int delaySec) => hiddenOpponentReason(
+        viewerRole: UserRole.demon,
+        phase: GamePhase.beforeRelease,
+        releasedAt: 60000,
+        fugitiveInfoDelaySec: delaySec,
+        nowMillis: 0,
+      );
+      expect(reasonWithDelay(0), reasonWithDelay(120));
     });
   });
 }
