@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,9 +11,13 @@ import 'package:kakureru/core/utils/duration_format.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
+import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
+import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/async_action.dart';
+import 'package:kakureru/features/room/debug_mock_players.dart';
+import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/game_notifications.dart';
 import 'package:kakureru/features/room/game_over_navigation.dart';
 import 'package:kakureru/features/room/game_session.dart';
@@ -22,6 +27,7 @@ import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
+import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/game/become_demon_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_confirm_dialog.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
@@ -31,6 +37,7 @@ import 'package:kakureru/features/room/view/game/opponent_detail_card.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
+import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
 /// ゲーム中の画面。ゲーム内容自体はまだ無く、残り時間と参加者の位置表示のみ行う仮実装。
@@ -92,6 +99,12 @@ class GamePage extends HookConsumerWidget {
     // ウィジェット内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
     final selectedOpponentUid = useState<String?>(null);
 
+    // デバッグ用の偽プレイヤーを出しているかどうか(issue #67)。多人数での
+    // 見え方は端末を人数分集めないと確認できないため、デバッグビルドでだけ
+    // AppBarに出るボタンで切り替えられるようにしている。待機画面と同じ
+    // 状態を見る(画面をまたいで持ち回りたいのでRiverpod。AGENTS.md規約)。
+    final showMocks = kDebugMode && ref.watch(showDebugMockPlayersProvider);
+
     // ゲーム画面に滞在している間だけ、位置情報・気圧・Wi-Fi・BLEを動かす。
     useGameSession(ref, roomId: roomId, myUid: myUid);
 
@@ -128,6 +141,10 @@ class GamePage extends HookConsumerWidget {
       serverTimeOffset: offset,
       tick: tick.value,
       isShowingCaughtTransition: showCaughtTransition.value,
+      // 偽プレイヤーを出している間は「逃走者0人で即終了」を抑える。
+      // 1台で自分が鬼になって開始すると、RTDB上の逃走者は0人なので
+      // GamePageに入った瞬間に結果画面へ飛ばされてしまう(issue #67)。
+      debugMocksEnabled: showMocks,
     );
 
     // 「同じメンバーでもう一回」による巻き戻しの検知。ホストが結果画面
@@ -207,6 +224,11 @@ class GamePage extends HookConsumerWidget {
                     ),
                 ],
               ),
+              // デバッグビルド限定の、偽プレイヤーの表示/非表示トグル
+              // (issue #67)。RTDBには一切書かず、この端末の画面にだけ
+              // 偽の相手を足す。kDebugModeがfalseのリリースビルドでは
+              // このボタン自体が存在しない。
+              actions: const [if (kDebugMode) DebugMockPlayersToggle()],
             ),
             body: roomAsync.when(
               data: (room) {
@@ -233,13 +255,54 @@ class GamePage extends HookConsumerWidget {
                   );
                 }
 
-                final visibleLocations = locationState.locations
-                    .where((location) => isVisibleToMe(location.uid))
-                    .toList();
-                final visibleWifiEntries = ref
-                    .watch(wifiProximityLevelsProvider(roomId))
-                    .where((entry) => isVisibleToMe(entry.uid))
-                    .toList();
+                // デバッグ用の偽プレイヤー(issue #67)。表示用のリストに
+                // 「足すだけ」で、RTDB由来の値は書き換えないし、RTDBにも
+                // 一切書かない(他の参加者には影響しない)。kDebugModeが
+                // falseのリリースビルドでは、この分岐ごと落ちる
+                // (game_map_options.dartと同じ方針)。
+                var mockUsers = const <RoomUser>[];
+                var mockWifiEntries = const <WifiProximityEntry>[];
+                var mockVerticalPositions = const <RelativeVerticalPosition>[];
+                var mockLocations = const <UserLocation>[];
+                if (showMocks && myRole != null) {
+                  final center = debugMockCenterOf(
+                    locations: locationState.locations,
+                    myUid: myUid,
+                    fallbackLatitude:
+                        cachedPosition.value?.latitude ??
+                        fallbackMapCenter.latitude,
+                    fallbackLongitude:
+                        cachedPosition.value?.longitude ??
+                        fallbackMapCenter.longitude,
+                  );
+                  mockUsers = debugMockUsers(myRole: myRole);
+                  mockWifiEntries = debugMockWifiEntries();
+                  mockVerticalPositions = debugMockVerticalPositions();
+                  mockLocations = debugMockLocations(
+                    centerLatitude: center.latitude,
+                    centerLongitude: center.longitude,
+                  );
+                }
+                // 地図のピンのラベル・役割色と、詳細カードの名前は
+                // room.users(RTDB由来)から引くため、偽プレイヤーのぶんは
+                // ここで足した表示専用の一覧を渡す。可視性やBLEの判定には
+                // 使わない(そちらはRTDB由来のroom.usersのまま)。
+                final displayUsers = mockUsers.isEmpty
+                    ? room.users
+                    : [...room.users, ...mockUsers];
+
+                final visibleLocations = [
+                  ...locationState.locations.where(
+                    (location) => isVisibleToMe(location.uid),
+                  ),
+                  ...mockLocations,
+                ];
+                final visibleWifiEntries = [
+                  ...ref
+                      .watch(wifiProximityLevelsProvider(roomId))
+                      .where((entry) => isVisibleToMe(entry.uid)),
+                  ...mockWifiEntries,
+                ];
                 final rawNearestOpponentUid = ref.watch(
                   nearestOpponentUidProvider(roomId),
                 );
@@ -248,10 +311,12 @@ class GamePage extends HookConsumerWidget {
                         isVisibleToMe(rawNearestOpponentUid)
                     ? rawNearestOpponentUid
                     : null;
-                final visibleVerticalPositions = ref
-                    .watch(relativeVerticalPositionsProvider(roomId))
-                    .where((position) => isVisibleToMe(position.uid))
-                    .toList();
+                final visibleVerticalPositions = [
+                  ...ref
+                      .watch(relativeVerticalPositionsProvider(roomId))
+                      .where((position) => isVisibleToMe(position.uid)),
+                  ...mockVerticalPositions,
+                ];
 
                 // 「対象の役割」(自分と逆の役割)。BLEの至近距離検知、相手
                 // 選択チップ、「まだ見えない理由」の3つで使う。
@@ -312,14 +377,15 @@ class GamePage extends HookConsumerWidget {
                 // スキャン未着の相手が一覧から消えてしまう)。
                 final opponentRoster = myRole == null
                     ? const <RoomUser>[]
-                    : room.users
-                          .where(
-                            (u) =>
-                                u.role == opponentRole &&
-                                u.id != myUid &&
-                                isVisibleToMe(u.id),
-                          )
-                          .toList();
+                    : [
+                        ...room.users.where(
+                          (u) =>
+                              u.role == opponentRole &&
+                              u.id != myUid &&
+                              isVisibleToMe(u.id),
+                        ),
+                        ...mockUsers,
+                      ];
                 final rosterUids = opponentRoster.map((u) => u.id).toSet();
                 // 選択中のuidがまだ一覧に残っていればそれを使い、無ければ
                 // (未選択・退室・可視性が外れた等)既定で最も近い相手に戻す。
@@ -377,7 +443,7 @@ class GamePage extends HookConsumerWidget {
                     Expanded(
                       child: GameLocationMap(
                         locations: visibleLocations,
-                        users: room.users,
+                        users: displayUsers,
                         myUid: myUid,
                         cachedPosition: cachedPosition.value,
                         gameArea: room.setting.gameArea,
@@ -435,7 +501,7 @@ class GamePage extends HookConsumerWidget {
                         child: OpponentDetailCard(
                           user: effectiveSelectedUid == null
                               ? null
-                              : findUser(room.users, effectiveSelectedUid),
+                              : findUser(displayUsers, effectiveSelectedUid),
                           pressureState: pressureState,
                           isCalibrated: isCalibrated(room, myUid),
                           verticalPosition: verticalFor(
