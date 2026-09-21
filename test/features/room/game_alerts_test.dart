@@ -341,30 +341,43 @@ void main() {
   group('サーバー時刻のオフセット', () {
     test('オフセットが届くまでは、時刻で発火する判定を保留する', () {
       fakeAsync((async) {
-        // 端末の時計が5分進んでいる状況。オフセットを0とみなして判定すると
-        // まだ先の鬼放出を「もう過ぎた」と誤認して鳴らしてしまう。しかも
-        // 一度きりの通知はフラグで畳むので取り返せない。
+        // 端末の時計が5分進んでいて、サーバー時刻では放出が3分後、という状況。
+        // 放出時刻は「端末時刻の2分前」に置く(サーバー時刻の3分後 =
+        // 端末時刻 - 5分 + 3分)。オフセットを0とみなして端末時刻で判定する
+        // 旧実装だと、これを「もう過ぎた」と誤認して即座に鳴らしてしまう
+        // (+3分にしていた頃は旧実装でも鳴らず、テストが何も見ていなかった。
+        // PR #91のレビュー指摘)。しかも一度きりの通知はフラグで畳むので、
+        // 正しいオフセットが届いても取り返せない。
         final controller = StreamController<int>();
         addTearDown(controller.close);
         final container = containerWith(
-          room: roomWith(releasedAt: msFromNow(const Duration(minutes: 3))),
+          room: roomWith(releasedAt: msFromNow(const Duration(minutes: -2))),
           location: () => null,
           elapsedMillis: () => async.elapsed.inMilliseconds,
           offset: controller.stream,
         );
         container.read(gameAlertsProvider.notifier).start(roomId);
 
+        // オフセットが無い間は、時刻を見る判定を一切しない。
         async
           ..elapse(const Duration(seconds: 10))
           ..flushMicrotasks();
         expect(notificationCalls, isEmpty);
 
-        // 正しいオフセット(端末が5分進んでいる= -5分)が届いてもまだ先。
+        // 正しいオフセット(端末が5分進んでいる= -5分)が届く。サーバー時刻では
+        // 放出はまだ約3分先なので、ここでも鳴らない。
         controller.add(-const Duration(minutes: 5).inMilliseconds);
         async
           ..elapse(const Duration(seconds: 10))
           ..flushMicrotasks();
         expect(notificationCalls, isEmpty);
+
+        // 3分経つと、サーバー時刻で放出時刻を過ぎるので鳴る。
+        // 「保留しているだけで、届いた後は時刻どおりに動く」まで見る。
+        async
+          ..elapse(const Duration(minutes: 3))
+          ..flushMicrotasks();
+        expect(notificationCalls, contains('show'));
       });
     });
 
@@ -503,6 +516,37 @@ void main() {
   });
 
   group('開始と停止', () {
+    test('start→stop→start が同じ部屋で連続しても、古い遅延処理が状態を壊さない', () {
+      fakeAsync((async) {
+        // ビルドの外へ逃がした処理は、予約した順に後から実行される。
+        // 1回目のstart()の遅延処理が「同じ部屋だから」とガードを通過して
+        // 終了を検知し、続く2回目のstart()の遅延処理がstateを初期値へ戻すと、
+        // _notifiedGameOverは立ったまま isGameOver だけ false に固まって、
+        // 結果画面へ遷移できなくなる(PR #91のレビュー指摘)。
+        final container = containerWith(
+          room: roomWith(status: RoomStatus.finished),
+          location: () => null,
+          elapsedMillis: () => async.elapsed.inMilliseconds,
+        );
+        final notifier = container.read(gameAlertsProvider.notifier)
+          ..start(roomId)
+          ..stop()
+          ..start(roomId);
+        async
+          ..elapse(const Duration(seconds: 2))
+          ..flushMicrotasks();
+
+        expect(container.read(gameAlertsProvider).isGameOver, isTrue);
+        // 通知も1回だけ。
+        expect(notificationCalls.where((c) => c == 'show'), hasLength(1));
+
+        // 念のため、いま生きているstart()の世代で止めれば畳める。
+        notifier.stop();
+        async.elapse(Duration.zero);
+        expect(container.read(gameAlertsProvider), initialGameAlertsState);
+      });
+    });
+
     test('stop()で判定も振動も止まり、通知を消す', () {
       fakeAsync((async) {
         final container = containerWith(

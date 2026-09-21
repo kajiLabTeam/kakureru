@@ -53,6 +53,16 @@ class GameAlerts extends Notifier<GameAlertsState> {
   /// いま判定している部屋。[stop]後はnull。
   String? _roomId;
 
+  /// [start]/[stop]のたびに進む世代番号。ビルドの外へ逃がした遅延処理が、
+  /// 自分を予約した世代のまま実行されるときだけ`state`を書くためのもの。
+  ///
+  /// `_roomId`の一致だけでは足りない。`start('A') → stop() → start('A')`が
+  /// 1イベントループ内で続くと、1回目の遅延処理も同じ部屋なのでガードを
+  /// 通過し、`_notifiedGameOver`を立ててしまう。続く2回目の遅延処理が
+  /// `state`を初期値へ戻すと、**フラグは立っているのに`isGameOver`はfalse**
+  /// のまま固まり、結果画面へ遷移できなくなる(PR #91のレビュー指摘)。
+  int _generation = 0;
+
   /// 部屋とサーバー時刻オフセットの購読。**持っておくことに意味がある。**
   ///
   /// `StreamProvider`は誰も購読していないとストリームを読み始めず、
@@ -113,6 +123,7 @@ class GameAlerts extends Notifier<GameAlertsState> {
   /// (前の試合の「通知済み」を持ち越すと、次の試合の鬼放出が鳴らない)。
   void start(String roomId) {
     stop();
+    final generation = ++_generation;
     _roomId = roomId;
     _elapsed
       ..reset()
@@ -131,7 +142,9 @@ class GameAlerts extends Notifier<GameAlertsState> {
     // タイマーの初回発火は1秒後なので、ここで1回打っておかないと、画面に
     // 入った瞬間に既に終了している(再入場した等)場合に1秒待たされる。
     Future(() {
-      if (_disposed || _roomId != roomId) return;
+      // 自分を予約したstart()より後にstop()/start()が呼ばれていたら、
+      // その世代の処理に任せてここでは何もしない。
+      if (_disposed || generation != _generation) return;
       state = initialGameAlertsState;
       _evaluate();
     });
@@ -143,6 +156,7 @@ class GameAlerts extends Notifier<GameAlertsState> {
   /// 生存期間ずっと生きているので、残すと次の部屋へそのまま持ち越される
   /// (`LocationViewModel.stop`と同じ理由)。
   void stop() {
+    final generation = ++_generation;
     _disposeTimers();
     _roomId = null;
     _elapsed
@@ -156,7 +170,7 @@ class GameAlerts extends Notifier<GameAlertsState> {
     // [start]と同じくビルドの外へ逃がす。すぐ[start]が呼ばれた場合
     // (部屋を移った等)は、そちらの初期化に任せてここでは何もしない。
     Future(() {
-      if (_disposed || _roomId != null) return;
+      if (_disposed || generation != _generation) return;
       state = initialGameAlertsState;
     });
   }
