@@ -84,11 +84,13 @@ void main() {
     });
 
     // deviceId は廃止したが、廃止前に作られたルームのRTDBには値が残っている。
+    // RoomUser が持たないキー(廃止した deviceId、モデル化していない fcmToken)は
     // 未知フィールドとして黙って無視され、読み込みが落ちないこと。
     test('fromMap ignores unknown fields left by older clients', () {
       final Map<dynamic, dynamic> raw = {
         'displayName': 'host',
         'deviceId': 'TQ3A.230805.001',
+        'fcmToken': 'token-1',
         'isHost': true,
         'joinedAt': 10,
       };
