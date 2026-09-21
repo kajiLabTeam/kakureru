@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/features/room/error_message.dart';
+import 'package:kakureru/features/room/view/leave_room_action.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 /// 部屋の購読(roomStreamProvider)が失敗したときに、画面いっぱいに出す案内。
@@ -12,6 +13,12 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 ///
 /// 再読み込みはproviderのinvalidateで行う(autoDisposeのStreamProviderなので、
 /// 破棄して張り直すと購読がやり直される)。
+///
+/// 「ホームに戻る」も必ず添える。部屋が消えている・権限が無いといった原因では
+/// 再読み込みが何度やっても直らず、案内文も「ホームに戻ってやり直して」と
+/// 言うため、導線が無いとGamePage(`canPop: false`)で詰むのは同じ。戻るときは
+/// 退出も済ませる(結果画面のdisposeによる退出と二重に走ることがあるが、
+/// leaveRoomは同じ子ノードの削除なので二重でも害は無い)。
 class RoomStreamErrorView extends ConsumerWidget {
   /// [roomId]の購読が[error]で失敗したことを伝える表示を作る。
   const RoomStreamErrorView({
@@ -43,6 +50,16 @@ class RoomStreamErrorView extends ConsumerWidget {
             OutlinedButton(
               onPressed: () => ref.invalidate(roomStreamProvider(roomId)),
               child: const Text('再読み込み'),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => leaveRoomAndGoHome(
+                context,
+                ref.read(roomRepositoryProvider),
+                roomId,
+                tag: 'RoomStreamErrorView',
+              ),
+              child: const Text('ホームに戻る'),
             ),
           ],
         ),

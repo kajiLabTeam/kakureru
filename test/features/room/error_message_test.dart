@@ -62,6 +62,21 @@ void main() {
       );
     });
 
+    test('watchRoomが流す「ルームが存在しません」も「見つからない」にする', () {
+      // 部屋の購読が失敗する実質唯一の経路(room_repository.dartの
+      // watchRoomがaddErrorで流す実物)。ここを取りこぼすとunknown扱いになり、
+      // 画面には「時間をおいて、もう一度試してください」という、待っても
+      // 直らない案内が出る。
+      expect(
+        classifyUserFacingError(Exception('ルームが存在しません')),
+        UserFacingErrorKind.notFound,
+      );
+      expect(
+        userFacingErrorMessage(Exception('ルームが存在しません')),
+        userFacingErrorMessage(Exception('ルームが見つかりません')),
+      );
+    });
+
     test('not-foundのcodeも「見つからない」として分類する', () {
       expect(
         classifyUserFacingError(_firebaseError('not-found')),

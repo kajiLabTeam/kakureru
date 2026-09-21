@@ -26,10 +26,16 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 /// 参加者のroleをまとめて戻すことはできない(鬼の決定が`meta/pendingDemonUid`
 /// 経由の自己申告方式になっているのと同じ制約。docs/rtdb-schema.md参照)。
 /// そのため、各端末が自分でこのフックを通じて役割をリセットする。
+///
+/// [onNavigate]は待機画面へ遷移する直前に1度だけ呼ばれる。呼び出し側が
+/// 「この画面が破棄されたのは離脱ではない」と判断するために使う
+/// (GameResultPageのdisposeによる退出。room_waiting_page.dartの
+/// `hasNavigated`と同じ役割)。
 void useRestartRecovery(
   WidgetRef ref,
   BuildContext context, {
   required String roomId,
+  void Function()? onNavigate,
 }) {
   final hasHandled = useRef(false);
   final roomAsync = ref.watch(roomStreamProvider(roomId));
@@ -80,6 +86,7 @@ void useRestartRecovery(
         '[useRestartRecovery] postFrameCallback fired mounted=${context.mounted}',
       );
       if (!context.mounted) return;
+      onNavigate?.call();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => RoomWaitingPage(roomId: roomId),

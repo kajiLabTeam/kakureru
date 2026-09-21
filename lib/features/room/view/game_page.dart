@@ -235,8 +235,16 @@ class GamePage extends HookConsumerWidget {
         case AsyncActionStatus.succeeded:
           showCaughtTransition.value = true;
         case AsyncActionStatus.failed:
+          // 何の操作が失敗したのかは残す(SnackBarは画面の文脈から離れた
+          // 場所に出るため)。原因の説明だけをuserFacingErrorMessageに任せ、
+          // 例外そのものは埋め込まない(issue #95)。
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(userFacingErrorMessage(result.error!))),
+            SnackBar(
+              content: Text(
+                '「鬼になる」の送信に失敗しました。'
+                '${userFacingErrorMessage(result.error!)}',
+              ),
+            ),
           );
         case AsyncActionStatus.skipped:
           // 前の送信がまだ終わっていないだけなので、何も出さない。

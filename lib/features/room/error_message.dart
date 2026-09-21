@@ -63,10 +63,15 @@ UserFacingErrorKind classifyUserFacingError(Object error) {
       text.contains('failed host lookup')) {
     return UserFacingErrorKind.network;
   }
-  // リポジトリ層が投げる日本語の例外(`Exception('ルームが見つかりません')`
-  // 等)も、ここを通してユーザー向けの1文に揃える。`toString()`をそのまま
-  // 出すと`Exception: `の接頭辞が付いてしまうため。
-  if (text.contains('見つかりません') || text.contains('not found')) {
+  // リポジトリ層が投げる日本語の例外も、ここを通してユーザー向けの1文に
+  // 揃える(`toString()`をそのまま出すと`Exception: `の接頭辞が付く)。
+  // 対象は`Exception('ルームが見つかりません')`(joinRoom)と
+  // `Exception('ルームが存在しません')`(watchRoom)の2つで、後者は部屋の購読が
+  // 失敗する実質唯一の経路なので、取りこぼすと画面に出るのは「時間をおいて
+  // 再試行」という直らない案内になる。
+  if (text.contains('見つかりません') ||
+      text.contains('存在しません') ||
+      text.contains('not found')) {
     return UserFacingErrorKind.notFound;
   }
   return UserFacingErrorKind.unknown;

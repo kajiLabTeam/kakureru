@@ -24,7 +24,10 @@ class _FakeRoomRepository extends RoomRepository {
   Completer<void>? pendingRestart;
   int restartCalls = 0;
   final List<String> resetOwnRoleCalls = [];
-  int leaveRoomCalls = 0;
+
+  /// [leaveRoom]に渡されたroomId。回数だけでなくIDも見ることで、別の部屋を
+  /// 消していないことまで確かめる。
+  final List<String> leaveRoomCalls = [];
 
   /// trueにすると[leaveRoom]が失敗する(退出に失敗してもホームへ戻れること
   /// を確かめるため)。
@@ -45,7 +48,7 @@ class _FakeRoomRepository extends RoomRepository {
 
   @override
   Future<void> leaveRoom(String roomId) async {
-    leaveRoomCalls++;
+    leaveRoomCalls.add(roomId);
     if (leaveRoomFails) throw Exception('退出の失敗を模擬');
   }
 }
@@ -421,9 +424,56 @@ void main() {
       await tester.tap(find.widgetWithText(OutlinedButton, 'ホームに戻る'));
       await tester.pumpAndSettle();
 
-      expect(roomRepo.leaveRoomCalls, 1);
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
       expect(find.text('ホーム画面'), findsOneWidget);
       expect(find.byType(GameResultPage), findsNothing);
+    });
+
+    testWidgets('バックボタンで戻ったときもleaveRoomが呼ばれる', (tester) async {
+      // 結果画面にはPopScopeが無く、Androidのバックボタン/スワイプ戻るで
+      // そのままホームまで戻れてしまう。ボタン以外の経路でも幽霊参加者を
+      // 残さないため、画面の破棄時にも退出する(issue #94)。
+      final roomRepo = _FakeRoomRepository();
+      await _pumpResultPageOverHome(tester, roomRepo: roomRepo);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
+      expect(find.text('ホーム画面'), findsOneWidget);
+    });
+
+    testWidgets('巻き戻しで待機画面へ移るときは退出しない', (tester) async {
+      // 「同じメンバーでもう一回」による遷移でも結果画面は破棄されるが、
+      // これは離脱ではないので退出してはいけない(退出すると、戻った待機
+      // 画面に自分がいない)。
+      final roomRepo = _FakeRoomRepository();
+      final controller = await _pumpResultPage(
+        tester,
+        roomRepo: roomRepo,
+        myUid: _hostUid,
+        pressureViewModel: _FakePressureViewModel(),
+        initialRoom: _room(
+          status: RoomStatus.playing,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          ],
+        ),
+      );
+
+      controller.add(
+        _room(
+          status: RoomStatus.waiting,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('待機中'), findsOneWidget);
+      expect(roomRepo.leaveRoomCalls, isEmpty);
     });
 
     testWidgets('退出に失敗してもホームには戻れる', (tester) async {
@@ -433,7 +483,7 @@ void main() {
       await tester.tap(find.widgetWithText(OutlinedButton, 'ホームに戻る'));
       await tester.pumpAndSettle();
 
-      expect(roomRepo.leaveRoomCalls, 1);
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
       expect(find.text('ホーム画面'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
