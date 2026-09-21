@@ -123,6 +123,8 @@ Future<StreamController<Room>> _pumpResultPage(
 Future<StreamController<Room>> _pumpResultPageOverHome(
   WidgetTester tester, {
   required _FakeRoomRepository roomRepo,
+  String myUid = _hostUid,
+  Room? initialRoom,
 }) async {
   await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -133,7 +135,7 @@ Future<StreamController<Room>> _pumpResultPageOverHome(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        myUidProvider.overrideWithValue(_hostUid),
+        myUidProvider.overrideWithValue(myUid),
         roomRepositoryProvider.overrideWithValue(roomRepo),
         roomStreamProvider(_roomId).overrideWith((ref) => controller.stream),
       ],
@@ -161,10 +163,13 @@ Future<StreamController<Room>> _pumpResultPageOverHome(
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
   controller.add(
-    _room(
-      status: RoomStatus.finished,
-      users: const [RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true)],
-    ),
+    initialRoom ??
+        _room(
+          status: RoomStatus.finished,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          ],
+        ),
   );
   await tester.pump();
   return controller;
@@ -502,6 +507,40 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(roomRepo.leaveRoomCalls, [_roomId]);
+      expect(find.text('ホーム画面'), findsOneWidget);
+      expect(find.text('待機中'), findsNothing);
+    });
+
+    testWidgets('ホームへ戻る途中に巻き戻しが届いても、役割リセットを書き込まない', (tester) async {
+      // 鬼だった人が「ホームに戻る」を押すと、leaveRoomが`users/{uid}`を
+      // removeする。その直後に巻き戻し(WAITING)が届いたからといって役割
+      // リセットのupdateを出すと、removeの後に同じノードがroleだけ付いた形で
+      // 復活し、issue #94で消したはずの幽霊参加者に戻ってしまう
+      // (人数・キャリブレーション判定・鬼のランダム選出に混ざる)。
+      final roomRepo = _FakeRoomRepository();
+      const demonUsers = [
+        RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+        RoomUser(id: _memberUid, displayName: 'メンバー', role: UserRole.demon),
+      ];
+      final controller = await _pumpResultPageOverHome(
+        tester,
+        roomRepo: roomRepo,
+        myUid: _memberUid,
+        initialRoom: _room(
+          status: RoomStatus.finished,
+          users: demonUsers,
+        ),
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'ホームに戻る'));
+      await tester.pump();
+      controller.add(
+        _room(status: RoomStatus.waiting, users: demonUsers),
+      );
+      await tester.pumpAndSettle();
+
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
+      expect(roomRepo.resetOwnRoleCalls, isEmpty);
       expect(find.text('ホーム画面'), findsOneWidget);
       expect(find.text('待機中'), findsNothing);
     });

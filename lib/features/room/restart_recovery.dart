@@ -64,20 +64,14 @@ void useRestartRecovery(
     if (hasHandled.value) return null;
     final room = roomAsync.value;
     if (room == null || room.status != RoomStatus.waiting) return null;
-    hasHandled.value = true;
     debugPrint('[useRestartRecovery] waiting detected, will navigate');
 
+    // 役割リセットに必要な値だけ、refが確実に使えるここで読んでおく
+    // (書き込み自体は下のガードを通ってから行う)。
     final myUid = ref.read(myUidProvider);
     final myself = myUid == null ? null : _findUser(room.users, myUid);
-    if (myself?.role == UserRole.demon) {
-      unawaited(
-        writeOrLogFailure(
-          () => ref.read(roomRepositoryProvider).resetOwnRoleForRestart(roomId),
-          tag: 'useRestartRecovery',
-          field: '自分の役割のリセット',
-        ),
-      );
-    }
+    final shouldResetRole = myself?.role == UserRole.demon;
+    final roomRepo = ref.read(roomRepositoryProvider);
 
     // useEffectはビルド直後に同期実行されるため、ここで即座にNavigatorを
     // 操作すると「ビルド中にNavigator操作をした」というエラーになる。
@@ -93,6 +87,26 @@ void useRestartRecovery(
       // 参加者一覧に自分がいない待機画面から動けなくなる。加えて
       // pushReplacementがホームのルートを置き換えるため戻り先も失われる。
       if (ModalRoute.of(context)?.isActive != true) return;
+      // 巻き戻しに対応済みの印は、ガードを通ったここで初めて立てる。効果本体
+      // で立てると、pop中に弾かれた回を「対応済み」と見なしてしまう。
+      if (hasHandled.value) return;
+      hasHandled.value = true;
+
+      // 役割リセット(`users/{uid}`へのupdate)も同じくガードの後に出す。
+      // 「ホームに戻る」のleaveRoom(同じノードのremove)と競合すると、
+      // removeの後にupdateが着いてroleだけのノードが復活し、issue #94で
+      // 消したはずの幽霊参加者ができる。isActiveがfalseなら退出側が先に
+      // 動いているので、ここでは何も書かずに退出に任せる。
+      if (shouldResetRole) {
+        unawaited(
+          writeOrLogFailure(
+            () => roomRepo.resetOwnRoleForRestart(roomId),
+            tag: 'useRestartRecovery',
+            field: '自分の役割のリセット',
+          ),
+        );
+      }
+
       onNavigate?.call();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
