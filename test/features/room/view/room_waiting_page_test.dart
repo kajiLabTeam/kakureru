@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
+import 'package:kakureru/features/pressure/model/calibration_failure.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
@@ -14,6 +15,8 @@ import 'package:kakureru/features/room/repository/room_repository.dart';
 import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/room_waiting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
+import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
+import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
 const _roomId = 'room1';
 const _myUid = 'host';
@@ -100,6 +103,27 @@ class _FakePressureViewModel extends PressureViewModel {
   }
 }
 
+/// Wi-Fiプラグインを触らずに、スキャン可否の状態だけを再現する差し替え。
+class _FakeWifiScanStatusNotifier extends WifiScanStatusNotifier {
+  _FakeWifiScanStatusNotifier({this.initialStatus = WifiScanStatus.ok});
+
+  final WifiScanStatus initialStatus;
+
+  /// 「再確認」で確認し直したときの結果(nullなら状態を変えない)。
+  WifiScanStatus? nextStatus;
+  int refreshCalls = 0;
+
+  @override
+  WifiScanStatus build() => initialStatus;
+
+  @override
+  Future<void> refresh() async {
+    refreshCalls++;
+    final next = nextStatus;
+    if (next != null) state = next;
+  }
+}
+
 /// 気圧を取得済み・キャリブレーション未実施のホスト1人だけのルーム。
 Room _room({
   String? pendingDemonUid,
@@ -155,6 +179,7 @@ Future<StreamController<Room>> _pumpWaitingPage(
   required _FakeRoomRepository roomRepo,
   required _FakePressureViewModel pressureViewModel,
   Room? initialRoom,
+  _FakeWifiScanStatusNotifier? wifiScanStatus,
 }) async {
   // 既定の800x600では下部のボタンが画面外に出てタップできない。
   await tester.binding.setSurfaceSize(const Size(800, 1600));
@@ -169,6 +194,10 @@ Future<StreamController<Room>> _pumpWaitingPage(
         myUidProvider.overrideWithValue(_myUid),
         roomRepositoryProvider.overrideWithValue(roomRepo),
         pressureViewModelProvider.overrideWith(() => pressureViewModel),
+        // 実機のWi-Fiプラグインを呼ばせない(画面を開いた時点で1回確認しに行く)。
+        wifiScanStatusProvider.overrideWith(
+          () => wifiScanStatus ?? _FakeWifiScanStatusNotifier(),
+        ),
         roomStreamProvider(_roomId).overrideWith((ref) => controller.stream),
       ],
       child: const MaterialApp(home: RoomWaitingPage(roomId: _roomId)),
@@ -432,6 +461,144 @@ void main() {
             .onPressed,
         isNull,
       );
+    });
+  });
+
+  group('Wi-Fiスキャンの状態表示', () {
+    testWidgets('画面を開いた時点で1回だけ確認しに行く', (tester) async {
+      final wifi = _FakeWifiScanStatusNotifier();
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        wifiScanStatus: wifi,
+      );
+
+      expect(wifi.refreshCalls, 1);
+    });
+
+    testWidgets('スキャンできていればOKと出し、直し方も再確認も出さない', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+      );
+
+      expect(find.text('Wi-Fiスキャン: OK'), findsOneWidget);
+      expect(find.text('再確認'), findsNothing);
+    });
+
+    testWidgets('スロットル中なら、状態と開発者オプションでの直し方が出る', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        wifiScanStatus: _FakeWifiScanStatusNotifier(
+          initialStatus: WifiScanStatus.throttled,
+        ),
+      );
+
+      expect(find.text('Wi-Fiスキャン: スロットル中'), findsOneWidget);
+      expect(find.textContaining('開発者オプション'), findsOneWidget);
+      expect(find.text('再確認'), findsOneWidget);
+    });
+
+    testWidgets('位置情報OFFなら、位置情報をONにするよう出る', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        wifiScanStatus: _FakeWifiScanStatusNotifier(
+          initialStatus: WifiScanStatus.locationServiceDisabled,
+        ),
+      );
+
+      expect(find.text('Wi-Fiスキャン: 位置情報OFF'), findsOneWidget);
+      expect(
+        find.text(wifiScanStatusHint(WifiScanStatus.locationServiceDisabled)!),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('「再確認」を押すと確認し直し、直っていればOKに変わる', (tester) async {
+      final wifi = _FakeWifiScanStatusNotifier(
+        initialStatus: WifiScanStatus.locationServiceDisabled,
+      );
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        wifiScanStatus: wifi,
+      );
+      expect(find.text('再確認'), findsOneWidget);
+
+      // 設定で位置情報をONにして戻ってきた状況。
+      wifi.nextStatus = WifiScanStatus.ok;
+      await tester.tap(find.text('再確認'));
+      await tester.pump();
+
+      // 画面のマウント時の1回 + 押した1回。
+      expect(wifi.refreshCalls, 2);
+      expect(find.text('Wi-Fiスキャン: OK'), findsOneWidget);
+      expect(find.text('再確認'), findsNothing);
+    });
+  });
+
+  group('キャリブレーションの失敗表示', () {
+    testWidgets('書き込みに失敗したら、理由とやり直し方が画面に出る', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(
+          initialState: const PressureState(
+            sensorAvailability: PressureSensorAvailability.available,
+            myPressureHPa: 1013,
+            calibrationFailure: CalibrationFailure.writeFailed,
+          ),
+        ),
+      );
+
+      expect(
+        find.text(calibrationFailureMessage(CalibrationFailure.writeFailed)!),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('気圧が取れていない失敗も、その理由で出る', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(
+          initialState: const PressureState(
+            sensorAvailability: PressureSensorAvailability.available,
+            calibrationFailure: CalibrationFailure.noPressure,
+          ),
+        ),
+      );
+
+      expect(
+        find.text(calibrationFailureMessage(CalibrationFailure.noPressure)!),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('失敗していなければ何も出さない', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(
+          initialState: const PressureState(
+            sensorAvailability: PressureSensorAvailability.available,
+            myPressureHPa: 1013,
+          ),
+        ),
+      );
+
+      for (final failure in CalibrationFailure.values) {
+        final message = calibrationFailureMessage(failure);
+        if (message == null) continue;
+        expect(find.text(message), findsNothing, reason: '$failure');
+      }
     });
   });
 

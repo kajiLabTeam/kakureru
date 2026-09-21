@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/pressure/model/calibration_failure.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/repository/pressure_repository.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
@@ -37,8 +38,34 @@ class _FakePressureRepository extends PressureRepository {
     reported.add(available);
   }
 
+  /// 気圧センサーの値。既定では1件も流れない(取得できていない状態)。
+  Stream<double> pressureStream = const Stream<double>.empty();
+
   @override
-  Stream<double> watchMyPressure() => const Stream<double>.empty();
+  Stream<double> watchMyPressure() => pressureStream;
+
+  /// キャリブレーション時に投げさせたい例外(nullなら成功する)。
+  Object? calibrateError;
+  final List<double> calibratedBasePressures = [];
+  final List<double> calibratedOffsetSources = [];
+
+  @override
+  Future<void> calibrateAsHost(String roomId, double myPressureHPa) async {
+    final error = calibrateError;
+    if (error != null) throw error;
+    calibratedBasePressures.add(myPressureHPa);
+  }
+
+  @override
+  Future<void> calibrateAsParticipant(
+    String roomId,
+    double myPressureHPa,
+    double basePressureHPa,
+  ) async {
+    final error = calibrateError;
+    if (error != null) throw error;
+    calibratedOffsetSources.add(myPressureHPa - basePressureHPa);
+  }
 }
 
 ProviderContainer _container(_FakePressureRepository repo) {
@@ -109,6 +136,170 @@ void main() {
         container.read(pressureViewModelProvider).sensorAvailability,
         PressureSensorAvailability.available,
       );
+    });
+  });
+
+  group('PressureViewModel.calibrate (失敗を状態に残す)', () {
+    /// センサーの購読を始め、気圧が1件届いたところまで進めたViewModelを返す。
+    Future<PressureViewModel> readyNotifier(
+      ProviderContainer container,
+      _FakePressureRepository repo,
+    ) async {
+      repo.pressureStream = Stream<double>.value(1013);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+      await notifier.init('room1');
+      // watchMyPressureの1件目が状態に反映されるまで待つ。
+      await pumpEventQueue();
+      expect(container.read(pressureViewModelProvider).myPressureHPa, 1013);
+      return notifier;
+    }
+
+    test('ホスト: 気圧がまだ無ければnoPressureを残す', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+
+      // myPressureHPaがnullのまま(センサーの値が1件も来ていない)。
+      await container
+          .read(pressureViewModelProvider.notifier)
+          .calibrateAsHost('room1');
+
+      final state = container.read(pressureViewModelProvider);
+      expect(state.calibrationFailure, CalibrationFailure.noPressure);
+      expect(state.isCalibrating, isFalse);
+      expect(repo.calibratedBasePressures, isEmpty);
+    });
+
+    test('ホスト: 書き込みが失敗したらwriteFailedを残し、例外は投げない', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..calibrateError = Exception('RTDBの失敗を模擬');
+      final container = _container(repo);
+
+      final notifier = await readyNotifier(container, repo);
+      await notifier.calibrateAsHost('room1');
+
+      final state = container.read(pressureViewModelProvider);
+      expect(state.calibrationFailure, CalibrationFailure.writeFailed);
+      expect(state.isCalibrating, isFalse);
+    });
+
+    test('ホスト: 成功すれば失敗は残らない', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+
+      final notifier = await readyNotifier(container, repo);
+      await notifier.calibrateAsHost('room1');
+
+      final state = container.read(pressureViewModelProvider);
+      expect(state.calibrationFailure, CalibrationFailure.none);
+      expect(repo.calibratedBasePressures, [1013]);
+    });
+
+    test('ホスト: 一度失敗しても、やり直して成功すれば失敗は消える', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..calibrateError = Exception('RTDBの失敗を模擬');
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      await notifier.calibrateAsHost('room1');
+      expect(
+        container.read(pressureViewModelProvider).calibrationFailure,
+        CalibrationFailure.writeFailed,
+      );
+
+      repo.calibrateError = null;
+      await notifier.calibrateAsHost('room1');
+
+      expect(
+        container.read(pressureViewModelProvider).calibrationFailure,
+        CalibrationFailure.none,
+      );
+    });
+
+    test('参加者: 気圧がまだ無ければnoPressureを残す', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+
+      await container
+          .read(pressureViewModelProvider.notifier)
+          .calibrateAsParticipant('room1', 1013);
+
+      expect(
+        container.read(pressureViewModelProvider).calibrationFailure,
+        CalibrationFailure.noPressure,
+      );
+    });
+
+    test('参加者: ホストの基準値がまだ無ければnoBasePressureを残す', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+
+      final notifier = await readyNotifier(container, repo);
+      await notifier.calibrateAsParticipant('room1', null);
+
+      expect(
+        container.read(pressureViewModelProvider).calibrationFailure,
+        CalibrationFailure.noBasePressure,
+      );
+      expect(repo.calibratedOffsetSources, isEmpty);
+    });
+
+    test('参加者: 書き込みが失敗したらwriteFailedを残し、例外は投げない', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..calibrateError = Exception('RTDBの失敗を模擬');
+      final container = _container(repo);
+
+      final notifier = await readyNotifier(container, repo);
+      await notifier.calibrateAsParticipant('room1', 1010);
+
+      final state = container.read(pressureViewModelProvider);
+      expect(state.calibrationFailure, CalibrationFailure.writeFailed);
+      expect(state.isCalibrating, isFalse);
+    });
+
+    test('参加者: 成功すれば失敗は残らない', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+
+      final notifier = await readyNotifier(container, repo);
+      await notifier.calibrateAsParticipant('room1', 1010);
+
+      expect(
+        container.read(pressureViewModelProvider).calibrationFailure,
+        CalibrationFailure.none,
+      );
+      expect(repo.calibratedOffsetSources, [closeTo(3, 0.0001)]);
+    });
+  });
+
+  group('calibrationFailureMessage', () {
+    test('失敗していなければ文言は出さない', () {
+      expect(calibrationFailureMessage(CalibrationFailure.none), isNull);
+    });
+
+    test('理由ごとに、次に何をすればよいかが分かる文言を返す', () {
+      expect(
+        calibrationFailureMessage(CalibrationFailure.noPressure),
+        contains('気圧'),
+      );
+      expect(
+        calibrationFailureMessage(CalibrationFailure.noBasePressure),
+        contains('ホスト'),
+      );
+      expect(
+        calibrationFailureMessage(CalibrationFailure.writeFailed),
+        contains('もう一度'),
+      );
+    });
+
+    test('none以外は必ず文言がある', () {
+      for (final failure in CalibrationFailure.values) {
+        if (failure == CalibrationFailure.none) continue;
+        expect(
+          calibrationFailureMessage(failure),
+          isNotEmpty,
+          reason: '$failure',
+        );
+      }
     });
   });
 }

@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
+import 'package:kakureru/features/pressure/model/calibration_failure.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/pressure_math.dart';
@@ -24,6 +26,7 @@ abstract class PressureState with _$PressureState {
     PressureSensorAvailability sensorAvailability,
     double? myPressureHPa,
     @Default(false) bool isCalibrating,
+    @Default(CalibrationFailure.none) CalibrationFailure calibrationFailure,
   }) = _PressureState;
 }
 
@@ -94,13 +97,27 @@ class PressureViewModel extends Notifier<PressureState> {
   }
 
   /// ホストが自分の気圧を基準値として書き込む。
+  ///
+  /// 失敗しても例外は投げず、理由を[PressureState.calibrationFailure]に
+  /// 残す(押した本人が画面で理由を読めるようにするため。issue #98)。
   Future<void> calibrateAsHost(String roomId) async {
     final myPressure = state.myPressureHPa;
-    if (myPressure == null) return;
+    if (myPressure == null) {
+      state = state.copyWith(calibrationFailure: CalibrationFailure.noPressure);
+      return;
+    }
 
-    state = state.copyWith(isCalibrating: true);
+    state = state.copyWith(
+      isCalibrating: true,
+      calibrationFailure: CalibrationFailure.none,
+    );
     try {
       await _repo.calibrateAsHost(roomId, myPressure);
+    } on Object catch (e) {
+      debugPrint('[PressureViewModel] calibrateAsHost failed: $e');
+      state = state.copyWith(
+        calibrationFailure: CalibrationFailure.writeFailed,
+      );
     } finally {
       state = state.copyWith(isCalibrating: false);
     }
@@ -108,16 +125,35 @@ class PressureViewModel extends Notifier<PressureState> {
 
   /// 参加者が「自分の気圧 - 基準値」をoffsetとして書き込む。
   /// basePressureHPa はホストがキャリブレーション済みでないとnull。
+  ///
+  /// [calibrateAsHost]と同じく、失敗の理由は状態に残す(issue #98)。
   Future<void> calibrateAsParticipant(
     String roomId,
     double? basePressureHPa,
   ) async {
     final myPressure = state.myPressureHPa;
-    if (myPressure == null || basePressureHPa == null) return;
+    if (myPressure == null) {
+      state = state.copyWith(calibrationFailure: CalibrationFailure.noPressure);
+      return;
+    }
+    if (basePressureHPa == null) {
+      state = state.copyWith(
+        calibrationFailure: CalibrationFailure.noBasePressure,
+      );
+      return;
+    }
 
-    state = state.copyWith(isCalibrating: true);
+    state = state.copyWith(
+      isCalibrating: true,
+      calibrationFailure: CalibrationFailure.none,
+    );
     try {
       await _repo.calibrateAsParticipant(roomId, myPressure, basePressureHPa);
+    } on Object catch (e) {
+      debugPrint('[PressureViewModel] calibrateAsParticipant failed: $e');
+      state = state.copyWith(
+        calibrationFailure: CalibrationFailure.writeFailed,
+      );
     } finally {
       state = state.copyWith(isCalibrating: false);
     }
