@@ -63,6 +63,9 @@ class RoomWaitingPage extends HookConsumerWidget {
         try {
           await action();
         } on Object catch (e) {
+          // 画面にはuserFacingErrorMessageの1文しか出さないため、原因を追える
+          // のはこのログだけになる(useAsyncActionと同じ方針。issue #95)。
+          debugPrint('[RoomWaitingPage] 鬼の指名/取り消しに失敗: $e');
           demonActionError.value = e;
         } finally {
           demonActionUid.value = null;
