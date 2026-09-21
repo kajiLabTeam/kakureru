@@ -55,8 +55,13 @@ void useGameSession(
   // 進む**ように、ウィジェットの再描画ではなく自前のタイマーで回している
   // (issue #71)。センサー4種と同じく、ゲーム画面の滞在に紐づけて開始/停止する。
   useEffect(() {
-    ref.read(gameAlertsProvider.notifier).start(roomId);
-    return () => ref.read(gameAlertsProvider.notifier).stop();
+    // 後始末で`ref.read`を呼ばないよう、生きているうちにnotifierを掴んで
+    // おく。widgetのunmount中にrefへ触るのはhooks_riverpodでは不正
+    // (「Using "ref" when a widget is about to or has been unmounted is
+    // unsafe」)で、画面を離れるときに例外になる。
+    final alerts = ref.read(gameAlertsProvider.notifier);
+    alerts.start(roomId);
+    return alerts.stop;
   }, [roomId]);
 
   // BLEの広告・スキャン(issue #16)。myUidが確定するまで

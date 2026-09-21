@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:clock/clock.dart';
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -457,6 +459,49 @@ void main() {
     });
   });
 
+  group('ウィジェットのライフサイクルから呼んでも安全', () {
+    testWidgets('ビルド中にstart/stopしても「ビルド中にproviderを変更した」にならない', (
+      tester,
+    ) async {
+      // [start]を呼ぶ`useGameSession`のuseEffectは**ビルド中に同期実行される**。
+      // そこで`state`を書くとRiverpodが
+      // 「Tried to modify a provider while the widget tree was building」を
+      // 投げ、ゲーム画面がまったく開けなくなる(実機で発生)。
+      //
+      // 既に終了している部屋を渡して、初回の判定で必ず`state`が変わる状況に
+      // する。逃がし忘れるとここで落ちる。
+      // ProviderScopeは本番(main.dart)と同じく出しっぱなしにして、中身だけを
+      // 差し替える。スコープごと外すと、後始末の`ref.read`が
+      // 「widgetがunmountされる最中にrefを使った」で別の例外になってしまう。
+      Widget scopeWith(Widget child) => ProviderScope(
+        overrides: [
+          myUidProvider.overrideWithValue(myUid),
+          serverTimeOffsetProvider.overrideWith((ref) => Stream.value(0)),
+          roomStreamProvider(roomId).overrideWith(
+            (ref) => Stream.value(roomWith(status: RoomStatus.finished)),
+          ),
+          locationViewModelProvider.overrideWith(
+            () => _StubLocationViewModel(() => null),
+          ),
+        ],
+        child: MaterialApp(home: child),
+      );
+
+      await tester.pumpWidget(scopeWith(const _StartsGameAlerts()));
+      expect(tester.takeException(), isNull);
+
+      // 初回の判定(ビルドの外へ逃がしたぶん)が走る。
+      await tester.pump(const Duration(seconds: 2));
+      expect(tester.takeException(), isNull);
+      expect(find.text('終了'), findsOneWidget);
+
+      // 離脱(useEffectの後始末)も同じライフサイクルの中で起きる。
+      await tester.pumpWidget(scopeWith(const SizedBox()));
+      await tester.pump(const Duration(seconds: 1));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('開始と停止', () {
     test('stop()で判定も振動も止まり、通知を消す', () {
       fakeAsync((async) {
@@ -473,8 +518,14 @@ void main() {
         expect(container.read(gameAlertsProvider).isOutsideAreaWarning, isTrue);
 
         notifier.stop();
+        // 通知の取り消しはすぐ出るが、**状態のリセットは1回ぶん遅れる**。
+        // 離脱はウィジェットのライフサイクル(useEffectの後始末)の中で起きる
+        // ため、ビルド中にproviderを書き換えないようビルドの外へ逃がして
+        // いる(Riverpodが例外を投げる)。
         async.flushMicrotasks();
         expect(notificationCalls, contains('cancel'));
+
+        async.elapse(Duration.zero);
         expect(container.read(gameAlertsProvider), initialGameAlertsState);
 
         // 以後は何秒経っても何も起きない(タイマーが残っていない)。
@@ -542,5 +593,25 @@ class _StubLocationViewModel extends LocationViewModel {
   LocationState _current() {
     final location = _read();
     return LocationState(locations: location == null ? const [] : [location]);
+  }
+}
+
+/// GamePage(`useGameSession`)と同じ形で[GameAlerts]を開始・停止し、結果を
+/// `ref.watch`するだけのウィジェット。
+class _StartsGameAlerts extends HookConsumerWidget {
+  const _StartsGameAlerts();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    useEffect(() {
+      // 後始末で`ref.read`を呼ばない。widgetのunmount中にrefへ触るのは
+      // hooks_riverpodでは不正(「Using "ref" when a widget is about to or
+      // has been unmounted is unsafe」)なので、生きているうちに掴んでおく。
+      final alerts = ref.read(gameAlertsProvider.notifier);
+      alerts.start('room1');
+      return alerts.stop;
+    }, const []);
+    final alerts = ref.watch(gameAlertsProvider);
+    return Text(alerts.isGameOver ? '終了' : '進行中');
   }
 }

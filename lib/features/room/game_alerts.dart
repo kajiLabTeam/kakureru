@@ -92,9 +92,17 @@ class GameAlerts extends Notifier<GameAlertsState> {
   /// エリア外の猶予判定が持ち越す状態。
   var _warning = initialOutsideAreaWarningState;
 
+  /// providerが破棄されたか。ビルドの外へ逃がした処理が、破棄後に
+  /// `state`へ書いて「Cannot use ref after dispose」にならないためのガード。
+  bool _disposed = false;
+
   @override
   GameAlertsState build() {
-    ref.onDispose(_disposeTimers);
+    _disposed = false;
+    ref.onDispose(() {
+      _disposed = true;
+      _disposeTimers();
+    });
     return initialGameAlertsState;
   }
 
@@ -112,9 +120,21 @@ class GameAlerts extends Notifier<GameAlertsState> {
     _roomSub = ref.listen(roomStreamProvider(roomId), (_, _) {});
     _offsetSub = ref.listen(serverTimeOffsetProvider, (_, _) {});
     _evaluateTimer = Timer.periodic(_evaluateInterval, (_) => _evaluate());
-    // タイマーの初回発火は1秒後。画面に入った瞬間に既に終了している
-    // (再入場した等)場合にその1秒を待たせないよう、ここで1回打つ。
-    _evaluate();
+
+    // **状態の初期化と初回の判定はビルドの外でやる。**
+    //
+    // [start]を呼ぶ`useGameSession`のuseEffectは**ビルド中に同期実行される**
+    // ため、ここで`state`を書くと「ビルド中にproviderを変更した」という
+    // Riverpodの例外になる(実機で確認)。位置・気圧のViewModelが無事なのは、
+    // あちらの`start()`がasyncで、最初のawaitの後まで`state`を書かないから。
+    //
+    // タイマーの初回発火は1秒後なので、ここで1回打っておかないと、画面に
+    // 入った瞬間に既に終了している(再入場した等)場合に1秒待たされる。
+    Future(() {
+      if (_disposed || _roomId != roomId) return;
+      state = initialGameAlertsState;
+      _evaluate();
+    });
   }
 
   /// ゲーム画面を離れた時に呼ぶ。タイマーを畳み、エリア外の通知も消す。
@@ -131,7 +151,14 @@ class GameAlerts extends Notifier<GameAlertsState> {
     _notifiedDemonRelease = false;
     _notifiedGameOver = false;
     _warning = initialOutsideAreaWarningState;
-    state = initialGameAlertsState;
+
+    // 離脱もウィジェットのライフサイクル(useEffectの後始末)の中で起きるので、
+    // [start]と同じくビルドの外へ逃がす。すぐ[start]が呼ばれた場合
+    // (部屋を移った等)は、そちらの初期化に任せてここでは何もしない。
+    Future(() {
+      if (_disposed || _roomId != null) return;
+      state = initialGameAlertsState;
+    });
   }
 
   void _disposeTimers() {
@@ -150,6 +177,7 @@ class GameAlerts extends Notifier<GameAlertsState> {
   void evaluateForTest() => _evaluate();
 
   void _evaluate() {
+    if (_disposed) return;
     final roomId = _roomId;
     if (roomId == null) return;
 
