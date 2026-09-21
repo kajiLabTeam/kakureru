@@ -88,7 +88,9 @@ class PressureViewModel extends Notifier<PressureState> {
     final available = await _repo.checkSensorAvailable();
     unawaited(_repo.reportSensorAvailability(roomId, available: available));
 
-    // 待っている間に画面を離れていたら、購読も判定結果の保存もしない。
+    // 待っている間に画面を離れていたら、ローカルstateへの反映も購読の開始も
+    // しない(RTDBへの記録は上で済ませている。端末にセンサーがあるかどうかは
+    // 画面を離れても変わらない事実なので、書いて困らない)。
     // **状態をcheckingのまま残すのが大事**で、ここでavailabilityを書くと
     // 上のガードに引っかかって`_checkAndStart`が二度と走らず、次に
     // ゲームへ入ったとき気圧が永久に取れなくなる。

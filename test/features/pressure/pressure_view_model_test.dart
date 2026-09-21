@@ -131,7 +131,7 @@ void main() {
       await initializing;
 
       expect(repo.watchCalls, 0);
-      // 判定結果も残さない。残すと次にゲームへ入ったとき再判定が走らず、
+      // ローカルの判定結果も残さない。残すと次にゲームへ入ったとき再判定が走らず、
       // 購読が始まらないまま気圧が永久に取れなくなる。
       expect(
         container.read(pressureViewModelProvider).sensorAvailability,
