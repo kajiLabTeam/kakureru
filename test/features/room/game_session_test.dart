@@ -85,10 +85,15 @@ class _RecordingBleViewModel extends BleViewModel {
   }
 }
 
-/// [GameAlerts]は本物だとRTDB(部屋・サーバー時刻)を購読しに行くため、
-/// このテストでは何もしないものに差し替える。停止が呼ばれることは
-/// `game_alerts_test.dart`の`_StartsGameAlerts`が見ている。
-class _NoopGameAlerts extends GameAlerts {
+/// [GameAlerts]の開始/停止の呼び出し回数だけを記録する差し替え。本物は
+/// RTDB(部屋・サーバー時刻)を購読しに行く。
+///
+/// センサー4種ではないが、同じ[useGameSession]の中で同じ形で止めている
+/// (issue #71)ので、一緒に見ておく。`game_alerts_test.dart`が見ているのは
+/// [GameAlerts]単体の振る舞いで、**フックが停止を呼ぶこと**は見ていない。
+class _RecordingGameAlerts extends GameAlerts {
+  int stopCalls = 0;
+
   @override
   GameAlertsState build() => initialGameAlertsState;
 
@@ -96,7 +101,9 @@ class _NoopGameAlerts extends GameAlerts {
   void start(String roomId) {}
 
   @override
-  void stop() {}
+  void stop() {
+    stopCalls++;
+  }
 }
 
 /// [useLocationRetryOnResume]だけを貼ったテスト用ウィジェット。
@@ -160,6 +167,7 @@ typedef _Sensors = ({
   _RecordingPressureViewModel pressure,
   _RecordingWifiScanRepository wifi,
   _RecordingBleViewModel ble,
+  _RecordingGameAlerts alerts,
 });
 
 /// [_GameSessionHarness]をマウントし、差し替えたセンサーを返す。
@@ -169,6 +177,7 @@ Future<_Sensors> _pumpGameSession(WidgetTester tester) async {
     pressure: _RecordingPressureViewModel(),
     wifi: _RecordingWifiScanRepository(),
     ble: _RecordingBleViewModel(),
+    alerts: _RecordingGameAlerts(),
   );
   await tester.pumpWidget(
     ProviderScope(
@@ -177,7 +186,7 @@ Future<_Sensors> _pumpGameSession(WidgetTester tester) async {
         pressureViewModelProvider.overrideWith(() => sensors.pressure),
         wifiScanRepositoryProvider.overrideWithValue(sensors.wifi),
         bleViewModelProvider.overrideWith(() => sensors.ble),
-        gameAlertsProvider.overrideWith(_NoopGameAlerts.new),
+        gameAlertsProvider.overrideWith(() => sensors.alerts),
       ],
       child: const _GameSessionHarness(),
     ),
@@ -199,8 +208,10 @@ void main() {
   // Wi-Fiスキャン・BLEの発信が残り続けていた(issue #93)。例外はhooksが
   // 握るので画面には何も出ず、気づけるのはこの形のテストだけ。
   //
-  // **4種を1つのテストにまとめない。** どれか1つが止まらなくなったときに、
-  // どのセンサーなのかがテスト名で分かるようにするため。
+  // **4種を1つのテストにまとめない。** stopの呼び出しを消す・別のものを
+  // 返すといった回帰が起きたときに、どのセンサーが止まらなくなったのかが
+  // テスト名で分かるようにするため(上の`ref.read`のやり方に戻した場合は、
+  // 例外が同じpumpの中でまとめて流れるので4本とも落ちる)。
   group('useGameSession: 画面を離れたら止まる', () {
     testWidgets('位置情報の送信を止める', (tester) async {
       final sensors = await _pumpGameSession(tester);
@@ -236,6 +247,15 @@ void main() {
       await _leaveGameScreen(tester);
 
       expect(sensors.ble.stopCalls, 1);
+    });
+
+    testWidgets('時間で発火する判定(GameAlerts)を止める', (tester) async {
+      final sensors = await _pumpGameSession(tester);
+      expect(sensors.alerts.stopCalls, 0);
+
+      await _leaveGameScreen(tester);
+
+      expect(sensors.alerts.stopCalls, 1);
     });
   });
 

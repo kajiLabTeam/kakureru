@@ -17,13 +17,12 @@ class WifiScanRepository {
     : _dbOverride = db,
       _authOverride = auth;
 
-  /// Firebaseの解決は**コンストラクタではなく使うときに**行う。
-  /// `FirebaseDatabase.instance`/`FirebaseAuth.instance`は
-  /// `Firebase.initializeApp()`前に触ると例外になるため、生成しただけで
-  /// 落ちると、このリポジトリを差し替えたテスト(送信しない偽物)まで
-  /// Firebaseの初期化を要求してしまう。
-  FirebaseDatabase get _db => _dbOverride ?? FirebaseDatabase.instance;
-  FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
+  // `.instance` の解決を遅延させる理由は RoomRepository・PressureRepository
+  // と同じ(メソッドを丸ごとoverrideするテスト用のサブクラスが、暗黙の
+  // `super()` を通るだけでFirebase未初期化の例外を踏まないようにするため)。
+  // 詳しい経緯は room_repository.dart のコメントを参照。
+  late final FirebaseDatabase _db = _dbOverride ?? FirebaseDatabase.instance;
+  late final FirebaseAuth _auth = _authOverride ?? FirebaseAuth.instance;
 
   String get _uid => _auth.currentUser!.uid;
 
