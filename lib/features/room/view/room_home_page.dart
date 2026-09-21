@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -6,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/features/room/player_name_validation.dart';
 import 'package:kakureru/features/room/room_code_validation.dart';
+import 'package:kakureru/features/room/room_create_error.dart';
 import 'package:kakureru/features/room/room_join_error.dart';
 import 'package:kakureru/features/room/view/room_waiting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
@@ -69,6 +69,13 @@ class RoomHomePage extends HookConsumerWidget {
       if (!next.isLoading) {
         isCreating.value = false;
         isJoining.value = false;
+      }
+      // 画面には日本語の定型文しか出さないぶん、原因を追えるよう生の失敗を
+      // ログに残す。表示側(build)ではなくここで出すのは、buildは入力の
+      // 1打鍵ごとに走るため同じ行が何度も出てしまうため。
+      final error = next.error;
+      if (error != null && _actionErrorIsUnexpected(error)) {
+        debugPrint('[RoomHomePage] 想定外の失敗: $error');
       }
       final roomId = next.value;
       if (roomId != null) {
@@ -226,12 +233,19 @@ String _actionErrorMessage(Object? error) {
       return 'そのコードの部屋が見つかりません';
     case RoomJoinError.finished:
       return 'この部屋は終了しています';
+    case RoomJoinError.invalidCode:
+      return 'ルームコードは$roomCodeLength桁の数字です';
+    case RoomCreateError.codeExhausted:
+      return 'ルームコードが空いていません。少し待ってからもう一度お試しください';
     default:
-      // 画面から原文が消えるため、調査できるようログにだけ残す。
-      debugPrint('[RoomHomePage] 想定外の失敗: $error');
       return '通信に失敗しました。電波の良い場所でもう一度お試しください';
   }
 }
+
+/// [_actionErrorMessage]が「通信に失敗しました」に丸めてしまう失敗かどうか。
+/// 丸めた失敗だけをログに出すために使う。
+bool _actionErrorIsUnexpected(Object error) =>
+    error is! RoomJoinError && error is! RoomCreateError;
 
 String? _nameErrorMessage(PlayerNameError? error) {
   switch (error) {

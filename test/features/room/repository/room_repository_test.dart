@@ -122,15 +122,29 @@ class _FakeAuth implements FirebaseAuth {
 /// テストの「現在時刻」。端末時計をこの時刻に固定して使う。
 const _nowMillis = 1000000;
 
+/// ホスト(鬼)と逃走者が1人ずついる、ゲームが成立している参加者。
+///
+/// [hasFugitive]をfalseにすると全員が鬼、つまり逃走者が全員捕まって
+/// 決着した後の状態になる。
+Map<String, Object?> _usersWith({bool hasFugitive = true}) => <String, Object?>{
+  'host': <String, Object?>{'displayName': 'ホスト', 'role': 'DEMON'},
+  'other': <String, Object?>{
+    'displayName': 'ほか',
+    'role': hasFugitive ? 'FUGITIVE' : 'DEMON',
+  },
+};
+
 /// コード`1234`が`room-1`を指し、そのstatusが[status]のRTDBを作る。
 ///
 /// [status]がnullなら`meta/status`自体が無い状態(書き込み途中など)。
 /// [endsAt]はゲームの終了時刻(未設定なら待機中でまだ始まっていない)。
 /// [serverTimeOffset]は端末時計とサーバー時刻のズレ。
+/// [users]を省略すると[_usersWith]の既定(逃走者あり)になる。
 Map<String, Object?> _rtdbWith({
   String? status = 'WAITING',
   int? endsAt,
   int serverTimeOffset = 0,
+  Map<String, Object?>? users,
 }) => <String, Object?>{
   '.info': <String, Object?>{'serverTimeOffset': serverTimeOffset},
   'roomCodes': <String, Object?>{
@@ -144,6 +158,7 @@ Map<String, Object?> _rtdbWith({
         'status': ?status,
         'endsAt': ?endsAt,
       },
+      'users': users ?? _usersWith(),
     },
   },
 };
@@ -191,7 +206,7 @@ void main() {
       );
 
       // 参加者として残ってしまうと、他の端末の一覧にも出てしまう。
-      expect(_usersOf(db), isNull);
+      expect(_usersOf(db), isNot(contains('me')));
     });
 
     test('存在しないコードはnotFoundになり、ルームを読みにいかない', () async {
@@ -207,7 +222,7 @@ void main() {
         throwsA(RoomJoinError.notFound),
       );
 
-      expect(_usersOf(db), isNull);
+      expect(_usersOf(db), isNot(contains('me')));
       expect(db.readPaths, isNot(contains(startsWith('rooms/'))));
     });
 
@@ -231,7 +246,23 @@ void main() {
       expect(_usersOf(db), isNull);
     });
 
+    test('待機中のルームでは参加者を読みにいかない', () async {
+      // 逃走者が居るかどうかはPLAYING中しか効かないので、待機中に
+      // usersまで読むのは無駄なラウンドトリップになる。
+      final db = _FakeDatabase(_rtdbWith());
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await repo.joinRoom(
+        code: '1234',
+        displayName: 'たろう',
+        deviceId: 'device-1',
+      );
+
+      expect(db.readPaths, isNot(contains('rooms/room-1/users')));
+    });
+
     test('進行中のルームには従来どおり途中参加できる', () async {
+      // 逃走者がまだ残っている(=まだ決着していない)ルーム。
       final db = _FakeDatabase(_rtdbWith(status: 'PLAYING'));
       final repo = RoomRepository(db: db, auth: _FakeAuth());
 
@@ -282,7 +313,7 @@ void main() {
         throwsA(RoomJoinError.finished),
       );
 
-      expect(_usersOf(db), isNull);
+      expect(_usersOf(db), isNot(contains('me')));
     });
 
     test('終了時刻の前なら途中参加できる', () async {
@@ -328,6 +359,80 @@ void main() {
 
     test('「もう一回」で待機中に巻き戻ったルーム(endsAtなし)には参加できる', () async {
       final db = _FakeDatabase(_rtdbWith());
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      expect(
+        await _atFixedNow(
+          () => repo.joinRoom(
+            code: '1234',
+            displayName: 'たろう',
+            deviceId: 'device-1',
+          ),
+        ),
+        'room-1',
+      );
+    });
+  });
+
+  group('RoomRepository.joinRoom 逃走者0人の判定', () {
+    // 全員が捕まって決着したルームは、statusがPLAYINGのままendsAtも未来。
+    // ここで弾かないと、参加者はrole=FUGITIVEで書き込まれるため、既に
+    // 結果画面を見ている全員の勝敗が「逃げ切り1人」に反転する。
+    test('全員が捕まったルームには、終了時刻の前でも参加しない', () async {
+      final db = _FakeDatabase(
+        _rtdbWith(
+          status: 'PLAYING',
+          endsAt: _nowMillis + 60000,
+          users: _usersWith(hasFugitive: false),
+        ),
+      );
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await expectLater(
+        _atFixedNow(
+          () => repo.joinRoom(
+            code: '1234',
+            displayName: 'たろう',
+            deviceId: 'device-1',
+          ),
+        ),
+        throwsA(RoomJoinError.finished),
+      );
+
+      expect(_usersOf(db), isNot(contains('me')));
+    });
+
+    test('誰も残っていない進行中のルームにも参加しない', () async {
+      final rtdb = _rtdbWith(status: 'PLAYING', endsAt: _nowMillis + 60000);
+      ((rtdb['rooms']! as Map)['room-1']! as Map).remove('users');
+      final db = _FakeDatabase(rtdb);
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await expectLater(
+        _atFixedNow(
+          () => repo.joinRoom(
+            code: '1234',
+            displayName: 'たろう',
+            deviceId: 'device-1',
+          ),
+        ),
+        throwsA(RoomJoinError.finished),
+      );
+    });
+
+    test('roleが未設定の参加者は逃走者として扱い、参加できる', () async {
+      // RoomUserの既定(役割不明ならFUGITIVE)と揃える。書き込み途中の
+      // 参加者が居るだけで「全員捕まった」と誤判定しないため。
+      final db = _FakeDatabase(
+        _rtdbWith(
+          status: 'PLAYING',
+          endsAt: _nowMillis + 60000,
+          users: <String, Object?>{
+            'host': <String, Object?>{'displayName': 'ホスト', 'role': 'DEMON'},
+            'other': <String, Object?>{'displayName': 'ほか'},
+          },
+        ),
+      );
       final repo = RoomRepository(db: db, auth: _FakeAuth());
 
       expect(

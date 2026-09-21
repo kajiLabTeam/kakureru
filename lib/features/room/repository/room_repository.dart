@@ -7,6 +7,9 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
+import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/role_visibility.dart';
+import 'package:kakureru/features/room/room_create_error.dart';
 import 'package:kakureru/features/room/room_join_error.dart';
 
 /// ルームの作成・参加・監視といったRTDB操作をまとめたリポジトリ。
@@ -123,7 +126,7 @@ class RoomRepository {
         rethrow;
       }
     }
-    throw Exception('ルームコードの発行に失敗しました');
+    throw RoomCreateError.codeExhausted;
   }
 
   /// ルームを終了状態にする(解散)。
@@ -272,18 +275,21 @@ class RoomRepository {
   /// コードからルームに参加する。
   ///
   /// 終了したルームもその`roomCodes/{code}`も削除されない運用のため、
-  /// コードが引けただけでは参加させず、`meta`を読んで次の3つを確認する
+  /// コードが引けただけでは参加させず、次の2つを確認する
   /// (終了済みのルームに入ると待機画面や結果画面で行き止まりになるため)。
   ///
   /// 1. `meta`が存在すること。`rooms`だけをコンソールで削除した後や、
   ///    [createRoom]が`meta`の書き込み前に失敗して[_rollbackRoom]でも
   ///    `roomCodes/{code}`を消せなかった(ルール上、`meta/hostUserId`が
   ///    無いと消せない)後には、行き先の無いコードだけが残る
-  /// 2. `status`が[RoomStatus.finished]でないこと
-  /// 3. `endsAt`(ゲーム終了時刻)を過ぎていないこと。**現状こちらが本命**で、
-  ///    `status`を`FINISHED`にする[finishRoom]はまだ呼ばれておらず、遊び
-  ///    終えたルームは`PLAYING`のまま`endsAt`だけが過去になる。「先週の
-  ///    コードを打つと終わった部屋に入ってしまう」のはこの状態
+  /// 2. そのルームがまだ終わっていないこと。判定は画面側と同じ[isGameOver]
+  ///    に任せる(終了条件をここで書き直すと、片方だけ条件が増えたときに
+  ///    「画面では終わっているのに参加できる」ズレが生まれるため)
+  ///
+  /// 実際に効くのは`status`が`FINISHED`になる経路ではなく、残りの2つ。
+  /// `status`を`FINISHED`にする[finishRoom]はまだ呼ばれておらず、遊び
+  /// 終えたルームは`PLAYING`のまま`endsAt`が過去になるか、全員が捕まって
+  /// 逃走者0人になるかのどちらかで終わる。
   ///
   /// まだ終わっていない進行中([RoomStatus.playing])のルームへの途中参加は
   /// 従来どおり許可する。失敗理由は[RoomJoinError]で投げる(画面側で日本語に
@@ -302,12 +308,18 @@ class RoomRepository {
     final meta = metaSnapshot.value as Map<dynamic, dynamic>?;
     if (meta == null) throw RoomJoinError.notFound;
 
-    if (RoomStatus.fromRaw(meta['status']?.toString()) == RoomStatus.finished) {
-      throw RoomJoinError.finished;
-    }
+    final status = RoomStatus.fromRaw(meta['status']?.toString());
+    // 逃走者の有無が終了判定に効くのはPLAYING中だけ([isGameOver]参照)なので、
+    // そのときだけ`users`を追加で読む(待機中のルームでは無駄読みしない)。
+    final hasFugitives =
+        status != RoomStatus.playing || await _hasFugitives(roomId);
 
-    final endsAt = (meta['endsAt'] as num?)?.toInt();
-    if (endsAt != null && await _serverNowMillis() >= endsAt) {
+    if (isGameOver(
+      status: status,
+      endsAt: (meta['endsAt'] as num?)?.toInt(),
+      nowMillis: await _serverNowMillis(),
+      hasFugitives: hasFugitives,
+    )) {
       throw RoomJoinError.finished;
     }
 
@@ -322,20 +334,32 @@ class RoomRepository {
     return roomId;
   }
 
-  /// 現在のサーバー時刻(エポックミリ秒)。
+  /// ルームに逃走者が1人でも残っているか。
   ///
-  /// `.info/serverTimeOffset`はSDKがローカルに持つ値なので、購読すれば
-  /// すぐに届く。それでも届かない場合に参加そのものを止めてしまわないよう、
-  /// 短いタイムアウトでオフセット0(=端末時計)にフォールバックする。
-  Future<int> _serverNowMillis() async {
-    final offset = await _db
-        .ref('.info/serverTimeOffset')
-        .onValue
-        .map((event) => (event.snapshot.value as num?)?.toInt() ?? 0)
-        .first
-        .timeout(const Duration(seconds: 3), onTimeout: () => 0);
-    return serverNowMillis(offset);
+  /// 全員が捕まって決着したルームは`status`が`PLAYING`のままで`endsAt`も
+  /// まだ未来なので、この判定が無いと参加できてしまう。参加者は
+  /// `role: FUGITIVE`で書き込まれるため、入れてしまうと全員の結果画面が
+  /// 「逃げ切り1人」に反転する。
+  ///
+  /// 役割の読み取りは[RoomUser]に任せる(未設定や未知の値をFUGITIVE扱い
+  /// にする既定を画面側と揃えるため)。誰も居ないルームは逃走者0人として
+  /// 扱う。
+  Future<bool> _hasFugitives(String roomId) async {
+    final snapshot = await _db.ref('rooms/$roomId/users').get();
+    final users = snapshot.value as Map<dynamic, dynamic>?;
+    if (users == null) return false;
+    for (final entry in users.entries) {
+      final raw = entry.value;
+      if (raw is! Map) continue;
+      final user = RoomUser.fromMap(entry.key.toString(), raw);
+      if (user.role == UserRole.fugitive) return true;
+    }
+    return false;
   }
+
+  /// 現在のサーバー時刻(エポックミリ秒)。
+  Future<int> _serverNowMillis() async =>
+      serverNowMillis(await fetchServerTimeOffset(_db));
 
   /// ルームの状態をリアルタイムで監視する
   Stream<Room> watchRoom(String roomId) {

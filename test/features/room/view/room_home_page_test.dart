@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/room/room_create_error.dart';
 import 'package:kakureru/features/room/room_join_error.dart';
 import 'package:kakureru/features/room/view/room_home_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
@@ -221,6 +222,23 @@ void main() {
       expect(find.text('そのコードの部屋が見つかりません'), findsOneWidget);
       // `Exception: `の接頭辞や英文が見えないこと。
       expect(find.textContaining('Exception'), findsNothing);
+    });
+
+    testWidgets('コードの形式エラーも日本語の理由が出る', (tester) async {
+      // 参加ボタンの無効化をすり抜けた場合の保険(ViewModel側の検証)。
+      await _tapJoinAndFail(tester, RoomJoinError.invalidCode);
+
+      expect(find.text('ルームコードは4桁の数字です'), findsOneWidget);
+    });
+
+    testWidgets('ルーム作成側の失敗理由も日本語で出る', (tester) async {
+      // コードが埋まって発行できなかったのに「電波が悪い」と案内しない。
+      await _tapJoinAndFail(tester, RoomCreateError.codeExhausted);
+
+      expect(
+        find.text('ルームコードが空いていません。少し待ってからもう一度お試しください'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('想定外の失敗でも生の例外文は出さない', (tester) async {
