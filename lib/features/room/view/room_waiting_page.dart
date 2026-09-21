@@ -72,7 +72,15 @@ class RoomWaitingPage extends HookConsumerWidget {
     }
 
     useEffect(() {
-      ref.read(pressureViewModelProvider.notifier).init(roomId);
+      final pressureNotifier = ref.read(pressureViewModelProvider.notifier);
+      pressureNotifier.init(roomId);
+      // 前のルームで出たキャリブレーションの失敗表示を持ち越さない
+      // (providerは画面をまたいで生き続ける)。ビルド中は状態を書き換え
+      // られないので、このフレームが確定してから消す。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        pressureNotifier.clearCalibrationFailure();
+      });
       return null;
     }, const []);
 
@@ -807,8 +815,11 @@ class _WifiScanStatusRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(wifiScanStatusProvider);
     final isProblem = isWifiScanProblem(status);
+    // 非対応の端末は直しようがないので、警告色にも「再確認」の対象にもしない
+    // (押しても永久に変わらないボタンを出さない)。
+    final isFixable = isWifiScanFixable(status);
     final hint = wifiScanStatusHint(status);
-    final color = isProblem ? _pendingColor : appMuted;
+    final color = isFixable ? _pendingColor : appMuted;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -824,7 +835,7 @@ class _WifiScanStatusRow extends ConsumerWidget {
                 style: TextStyle(
                   color: color,
                   fontSize: 12,
-                  fontWeight: isProblem ? FontWeight.w600 : FontWeight.normal,
+                  fontWeight: isFixable ? FontWeight.w600 : FontWeight.normal,
                 ),
               ),
               if (hint != null)
@@ -838,7 +849,7 @@ class _WifiScanStatusRow extends ConsumerWidget {
             ],
           ),
         ),
-        if (isProblem)
+        if (isFixable)
           TextButton(
             style: TextButton.styleFrom(
               minimumSize: const Size(0, 28),

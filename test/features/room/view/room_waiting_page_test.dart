@@ -83,6 +83,9 @@ class _FakePressureViewModel extends PressureViewModel {
   /// キャリブレーションの完了を制御するCompleter(呼ばれるまでnull)。
   Completer<void>? pendingCalibration;
 
+  /// キャリブレーションの結果として状態に残す失敗(noneなら成功扱い)。
+  CalibrationFailure calibrateFailure = CalibrationFailure.none;
+
   @override
   PressureState build() => initialState;
 
@@ -98,7 +101,10 @@ class _FakePressureViewModel extends PressureViewModel {
     try {
       await completer.future;
     } finally {
-      state = state.copyWith(isCalibrating: false);
+      state = state.copyWith(
+        isCalibrating: false,
+        calibrationFailure: calibrateFailure,
+      );
     }
   }
 }
@@ -109,18 +115,20 @@ class _FakeWifiScanStatusNotifier extends WifiScanStatusNotifier {
 
   final WifiScanStatus initialStatus;
 
-  /// 「再確認」で確認し直したときの結果(nullなら状態を変えない)。
+  /// 「再確認」で確認し直したときの結果(nullなら今の状態のまま)。
   WifiScanStatus? nextStatus;
   int refreshCalls = 0;
 
   @override
   WifiScanStatus build() => initialStatus;
 
+  /// 本物の`refresh()`は必ず状態を書き換える(まず「確認中」にする)ので、
+  /// ここでも毎回書く。ビルド中に呼び出す実装へ戻したときに、テストが
+  /// 「ビルド中にproviderを書き換えた」で落ちるようにするため。
   @override
   Future<void> refresh() async {
     refreshCalls++;
-    final next = nextStatus;
-    if (next != null) state = next;
+    state = nextStatus ?? state;
   }
 }
 
@@ -520,6 +528,21 @@ void main() {
       );
     });
 
+    testWidgets('非対応の端末では、直しようがないので再確認を出さない', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        wifiScanStatus: _FakeWifiScanStatusNotifier(
+          initialStatus: WifiScanStatus.notSupported,
+        ),
+      );
+
+      expect(find.text('Wi-Fiスキャン: 非対応'), findsOneWidget);
+      expect(find.textContaining('GPS・気圧だけで遊べます'), findsOneWidget);
+      expect(find.text('再確認'), findsNothing);
+    });
+
     testWidgets('「再確認」を押すと確認し直し、直っていればOKに変わる', (tester) async {
       final wifi = _FakeWifiScanStatusNotifier(
         initialStatus: WifiScanStatus.locationServiceDisabled,
@@ -546,6 +569,61 @@ void main() {
 
   group('キャリブレーションの失敗表示', () {
     testWidgets('書き込みに失敗したら、理由とやり直し方が画面に出る', (tester) async {
+      final pressureViewModel = _FakePressureViewModel(
+        initialState: const PressureState(
+          sensorAvailability: PressureSensorAvailability.available,
+          myPressureHPa: 1013,
+        ),
+      )..calibrateFailure = CalibrationFailure.writeFailed;
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: pressureViewModel,
+      );
+
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'キャリブレーションする(未実施)'),
+      );
+      await tester.pump();
+      pressureViewModel.pendingCalibration!.complete();
+      await tester.pump();
+
+      expect(
+        find.text(calibrationFailureMessage(CalibrationFailure.writeFailed)!),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('成功したときは何も出さない', (tester) async {
+      final pressureViewModel = _FakePressureViewModel(
+        initialState: const PressureState(
+          sensorAvailability: PressureSensorAvailability.available,
+          myPressureHPa: 1013,
+        ),
+      );
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: pressureViewModel,
+      );
+
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'キャリブレーションする(未実施)'),
+      );
+      await tester.pump();
+      pressureViewModel.pendingCalibration!.complete();
+      await tester.pump();
+
+      for (final failure in CalibrationFailure.values) {
+        final message = calibrationFailureMessage(failure);
+        if (message == null) continue;
+        expect(find.text(message), findsNothing, reason: '$failure');
+      }
+    });
+
+    testWidgets('前のルームで失敗していても、入り直したら失敗表示は残らない', (tester) async {
+      // providerはルームをまたいで生き続けるため、失敗したまま退出して
+      // 別のルームの待機画面を開くと、何も押していないのに失敗文が出ていた。
       await _pumpWaitingPage(
         tester,
         roomRepo: _FakeRoomRepository(),
@@ -560,45 +638,8 @@ void main() {
 
       expect(
         find.text(calibrationFailureMessage(CalibrationFailure.writeFailed)!),
-        findsOneWidget,
+        findsNothing,
       );
-    });
-
-    testWidgets('気圧が取れていない失敗も、その理由で出る', (tester) async {
-      await _pumpWaitingPage(
-        tester,
-        roomRepo: _FakeRoomRepository(),
-        pressureViewModel: _FakePressureViewModel(
-          initialState: const PressureState(
-            sensorAvailability: PressureSensorAvailability.available,
-            calibrationFailure: CalibrationFailure.noPressure,
-          ),
-        ),
-      );
-
-      expect(
-        find.text(calibrationFailureMessage(CalibrationFailure.noPressure)!),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('失敗していなければ何も出さない', (tester) async {
-      await _pumpWaitingPage(
-        tester,
-        roomRepo: _FakeRoomRepository(),
-        pressureViewModel: _FakePressureViewModel(
-          initialState: const PressureState(
-            sensorAvailability: PressureSensorAvailability.available,
-            myPressureHPa: 1013,
-          ),
-        ),
-      );
-
-      for (final failure in CalibrationFailure.values) {
-        final message = calibrationFailureMessage(failure);
-        if (message == null) continue;
-        expect(find.text(message), findsNothing, reason: '$failure');
-      }
     });
   });
 

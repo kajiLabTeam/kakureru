@@ -106,6 +106,25 @@ void main() {
     });
   });
 
+  group('isWifiScanFixable', () {
+    test('非対応は問題ではあるが、直せないので対象外(再確認を出さない)', () {
+      expect(isWifiScanProblem(WifiScanStatus.notSupported), isTrue);
+      expect(isWifiScanFixable(WifiScanStatus.notSupported), isFalse);
+    });
+
+    test('設定で直せる状態は対象', () {
+      expect(isWifiScanFixable(WifiScanStatus.locationServiceDisabled), isTrue);
+      expect(isWifiScanFixable(WifiScanStatus.permissionDenied), isTrue);
+      expect(isWifiScanFixable(WifiScanStatus.throttled), isTrue);
+      expect(isWifiScanFixable(WifiScanStatus.failed), isTrue);
+    });
+
+    test('ok・確認中は対象外', () {
+      expect(isWifiScanFixable(WifiScanStatus.ok), isFalse);
+      expect(isWifiScanFixable(WifiScanStatus.checking), isFalse);
+    });
+  });
+
   group('isWifiScanProblem', () {
     test('ok・checkingは問題扱いにしない', () {
       expect(isWifiScanProblem(WifiScanStatus.ok), isFalse);

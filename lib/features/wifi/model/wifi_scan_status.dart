@@ -115,3 +115,11 @@ String? wifiScanStatusHint(WifiScanStatus status) {
 /// このままでは相手との距離感がWi-Fiで測れない状態かどうか(表示の色分け用)。
 bool isWifiScanProblem(WifiScanStatus status) =>
     status != WifiScanStatus.checking && status != WifiScanStatus.ok;
+
+/// 設定などを直せばスキャンできるようになる状態かどうか
+/// (「再確認」ボタンと警告色を出す対象)。
+///
+/// 非対応の端末([WifiScanStatus.notSupported])は問題ではあるが利用者には
+/// どうしようもないため、押しても変わらないボタンを出さない。
+bool isWifiScanFixable(WifiScanStatus status) =>
+    isWifiScanProblem(status) && status != WifiScanStatus.notSupported;

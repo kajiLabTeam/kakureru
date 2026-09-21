@@ -76,6 +76,20 @@ ProviderContainer _container(_FakePressureRepository repo) {
   return container;
 }
 
+/// センサーの購読を始め、気圧が1件届いたところまで進めたViewModelを返す。
+Future<PressureViewModel> readyNotifier(
+  ProviderContainer container,
+  _FakePressureRepository repo,
+) async {
+  repo.pressureStream = Stream<double>.value(1013);
+  final notifier = container.read(pressureViewModelProvider.notifier);
+  await notifier.init('room1');
+  // watchMyPressureの1件目が状態に反映されるまで待つ。
+  await pumpEventQueue();
+  expect(container.read(pressureViewModelProvider).myPressureHPa, 1013);
+  return notifier;
+}
+
 void main() {
   group('PressureViewModel.init', () {
     test('センサー非搭載なら、2回目以降は再判定しない', () async {
@@ -140,20 +154,6 @@ void main() {
   });
 
   group('PressureViewModel.calibrate (失敗を状態に残す)', () {
-    /// センサーの購読を始め、気圧が1件届いたところまで進めたViewModelを返す。
-    Future<PressureViewModel> readyNotifier(
-      ProviderContainer container,
-      _FakePressureRepository repo,
-    ) async {
-      repo.pressureStream = Stream<double>.value(1013);
-      final notifier = container.read(pressureViewModelProvider.notifier);
-      await notifier.init('room1');
-      // watchMyPressureの1件目が状態に反映されるまで待つ。
-      await pumpEventQueue();
-      expect(container.read(pressureViewModelProvider).myPressureHPa, 1013);
-      return notifier;
-    }
-
     test('ホスト: 気圧がまだ無ければnoPressureを残す', () async {
       final repo = _FakePressureRepository(available: true);
       final container = _container(repo);
@@ -268,6 +268,39 @@ void main() {
         CalibrationFailure.none,
       );
       expect(repo.calibratedOffsetSources, [closeTo(3, 0.0001)]);
+    });
+  });
+
+  group('PressureViewModel.clearCalibrationFailure', () {
+    test('別のルームに入り直したときに、前の失敗表示を持ち越さない', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..calibrateError = Exception('write failed');
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      await notifier.calibrateAsHost('room1');
+      expect(
+        container.read(pressureViewModelProvider).calibrationFailure,
+        CalibrationFailure.writeFailed,
+      );
+
+      notifier.clearCalibrationFailure();
+
+      expect(
+        container.read(pressureViewModelProvider).calibrationFailure,
+        CalibrationFailure.none,
+      );
+    });
+
+    test('失敗していなければ何も変えない', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+      final before = container.read(pressureViewModelProvider);
+
+      notifier.clearCalibrationFailure();
+
+      expect(container.read(pressureViewModelProvider), before);
     });
   });
 
