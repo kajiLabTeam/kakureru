@@ -6,10 +6,12 @@ import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
 import 'package:kakureru/features/room/async_action.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/game_outcome.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
+import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 const _demonColor = Color(0xFFE5484D);
@@ -170,7 +172,7 @@ class GameResultPage extends HookConsumerWidget {
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(
-                            '${restart.error}',
+                            userFacingErrorMessage(restart.error!),
                             style: const TextStyle(color: _demonColor),
                           ),
                         ),
@@ -180,6 +182,28 @@ class GameResultPage extends HookConsumerWidget {
                           debugPrint(
                             '[GameResultPage] home button pressed '
                             'canPop=${Navigator.of(context).canPop()}',
+                          );
+                          // 結果画面へはGamePageからのpushReplacementで来る
+                          // ため、待機画面のdisposeによる退出を通らない。
+                          // ここで消さないと、ホストが「同じメンバーでもう
+                          // 一回」を押したときに、帰ったはずの人が幽霊参加者
+                          // として人数・キャリブレーション判定・鬼のランダム
+                          // 選出に混ざる(issue #94)。
+                          //
+                          // awaitせずに投げっぱなしにするのは、退出の成否で
+                          // ホームへ戻れなくならないようにするため(RTDBの
+                          // 往復が遅い/失敗する状況でも画面を詰まらせない)。
+                          // 失敗はログだけに留める(ユーザーはもう画面を
+                          // 離れているので、出しても対処できない)。
+                          unawaited(
+                            ref
+                                .read(roomRepositoryProvider)
+                                .leaveRoom(roomId)
+                                .catchError((Object e) {
+                                  debugPrint(
+                                    '[GameResultPage] leaveRoom 失敗: $e',
+                                  );
+                                }),
                           );
                           Navigator.of(
                             context,
@@ -195,7 +219,7 @@ class GameResultPage extends HookConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('エラー: $e')),
+          error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
         ),
       ),
     );

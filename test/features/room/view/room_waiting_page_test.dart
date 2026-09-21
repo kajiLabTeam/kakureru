@@ -7,6 +7,7 @@ import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -227,7 +228,13 @@ void main() {
       roomRepo.pendingAction!.completeError(Exception('指名の失敗を模擬'));
       await tester.pump();
 
-      expect(find.textContaining('指名の失敗を模擬'), findsOneWidget);
+      // 生の例外文ではなくユーザー向けの案内を出す(issue #95)。文言自体の
+      // 網羅はerror_message_test.dart側で見る。
+      expect(find.textContaining('指名の失敗を模擬'), findsNothing);
+      expect(
+        find.text(userFacingErrorMessage(Exception('指名の失敗を模擬'))),
+        findsOneWidget,
+      );
       expect(
         find.descendant(
           of: find.byType(ActionChip),

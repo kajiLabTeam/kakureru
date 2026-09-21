@@ -340,8 +340,12 @@ class RoomRepository {
     return controller.stream;
   }
 
-  /// ルームから退出する。RoomWaitingPage/GamePageの`PopScope`から、
-  /// 戻る操作(ハードウェア/AppBarの戻るボタン)で画面を離れたときに呼ばれる。
+  /// ルームから退出する。呼び出し元は2つ:
+  ///
+  /// - RoomWaitingPageのdispose(戻る操作で待機画面を離れたとき。ゲーム開始に
+  ///   伴う遷移は離脱ではないので`hasNavigated`で除外している)
+  /// - GameResultPageの「ホームに戻る」(結果画面へはpushReplacementで来る
+  ///   ため、待機画面のdisposeによる退出を通らない。issue #94)
   ///
   /// users/{uid} を消すだけでは locations/{uid} が残り、他の参加者の
   /// 地図に離脱後もピンが残り続けてしまうため、自分の位置情報も合わせて

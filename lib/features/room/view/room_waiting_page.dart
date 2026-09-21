@@ -13,6 +13,7 @@ import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/calibration_status.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/left_user_notifications.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -21,6 +22,7 @@ import 'package:kakureru/features/room/single_flight_action.dart';
 import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
+import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 const _demonColor = Color(0xFFE5484D);
@@ -339,7 +341,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
-                    '${demonActionError.value}',
+                    userFacingErrorMessage(demonActionError.value!),
                     style: const TextStyle(color: _demonColor),
                   ),
                 ),
@@ -596,7 +598,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Text(
-                    '${startGame.error}',
+                    userFacingErrorMessage(startGame.error!),
                     style: const TextStyle(color: _demonColor),
                   ),
                 ),
@@ -604,7 +606,7 @@ class RoomWaitingPage extends HookConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('エラー: $e')),
+        error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
       ),
     );
   }
