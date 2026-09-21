@@ -74,9 +74,37 @@ Future<void> showDemonReleasedNotification() {
   );
 }
 
+/// ゲーム終了の瞬間に出す通知(issue #71)。失敗してもログに残すだけ。
+///
+/// チャンネルは鬼放出と同じ`kakureru_release`にする。どちらも「ゲームの
+/// 進行が切り替わった一度きりの合図」で性格が同じなので、端末側で通知の
+/// 設定をいじるときも1つにまとまっていた方が扱いやすい。エリア外警告
+/// (`kakureru_area`)だけは「戻るまで消えない警告」で性格が違うため分けている。
+Future<void> showGameOverNotification() {
+  const androidDetails = AndroidNotificationDetails(
+    'kakureru_release',
+    '鬼放出の通知',
+    channelDescription: '鬼が放出されたタイミングで通知します',
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+  return _runOrLogFailure(
+    () => _plugin.show(
+      id: _gameOverNotificationId,
+      title: 'かくれんぼ',
+      body: 'ゲームが終了しました',
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    ),
+    what: 'ゲーム終了の通知',
+  );
+}
+
 /// エリア外警告の通知ID。鬼放出の通知(id: 0)とは別に取る。同じidだと
 /// 互いに上書きし合ってしまう。
 const _outsideAreaNotificationId = 1;
+
+/// ゲーム終了の通知ID。鬼放出(0)・エリア外(1)とも別に取る。
+const _gameOverNotificationId = 2;
 
 /// プレイエリアの外に出ている間、出しっぱなしにする通知(issue #61)。
 ///
@@ -110,10 +138,10 @@ Future<void> showOutsideAreaNotification() {
     () => _plugin.show(
       id: _outsideAreaNotificationId,
       title: 'プレイエリアの外です',
-      // バナー(outsideAreaBannerSubtitle)と同じ限定を付ける。画面を消して
-      // いる間は検知が止まるため(別issue #71)、「戻るまで続く」とだけ書くと
-      // 過剰な約束になる。
-      body: 'アプリを開いている間、エリアに戻るまで振動と通知が続きます',
+      // バナー(outsideAreaBannerSubtitle)と同じ文言にする。以前は「アプリを
+      // 開いている間」と限定していたが、判定を画面の描画から切り離した
+      // (issue #71)ので、画面を消していても検知・解除されるようになった。
+      body: 'エリアに戻るまで振動と通知が続きます',
       notificationDetails: const NotificationDetails(android: androidDetails),
     ),
     what: 'エリア外警告の通知',

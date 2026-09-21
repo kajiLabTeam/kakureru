@@ -110,14 +110,15 @@ void main() {
     expect(decoration.color, outsideAreaAlertColor);
   });
 
-  testWidgets('補足行は「続くのは画面を開いている間」と分かる文言で、モックと同じ不透明度で出す', (
-    tester,
-  ) async {
+  testWidgets('補足行は「戻るまで続く」と言い切り、モックと同じ不透明度で出す', (tester) async {
     await tester.pumpWidget(host(const Center(child: OutsideAreaBanner())));
 
-    // 「戻るまでずっと」とだけ言うと、画面を消している間も続く約束に
-    // なってしまう(判定はGamePageの再描画で回っている)。
-    expect(outsideAreaBannerSubtitle, contains('アプリを開いている間'));
+    // 以前は「アプリを開いている間」と限定していた。判定がGamePageの再描画で
+    // 回っていて、画面を消すと止まっていたため。issue #71 で判定をGameAlerts
+    // の自前タイマーへ移し、画面が消えていても検知・解除されるようになった
+    // ので、限定を外してモック2a-07の文言に戻している。
+    expect(outsideAreaBannerSubtitle, contains('戻るまで'));
+    expect(outsideAreaBannerSubtitle, isNot(contains('開いている間')));
 
     final subtitle = tester.widget<Text>(find.text(outsideAreaBannerSubtitle));
     // モック2a-07の opacity:.85。Colors.white70 だとこの赤の上で
