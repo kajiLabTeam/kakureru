@@ -4,6 +4,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/repository/room_repository.dart';
+import 'package:kakureru/features/room/room_create_error.dart';
 import 'package:kakureru/features/room/room_join_error.dart';
 
 /// RTDBの代わりに、パス→値のツリーをメモリ上に持つだけのfake。
@@ -13,10 +14,14 @@ import 'package:kakureru/features/room/room_join_error.dart';
 /// (`ref()` / `get()` / `set()` / `onValue`)だけを実装する。未実装のメンバを
 /// 呼んだ場合はNoSuchMethodErrorで落ちるので、テストが黙って通ることはない。
 class _FakeDatabase implements FirebaseDatabase {
-  _FakeDatabase(this.root);
+  _FakeDatabase(this.root, {this.allRoomCodesTaken = false});
 
   /// RTDBのツリーをネストしたMapで持つ。
   final Map<String, Object?> root;
+
+  /// trueにすると、どの4桁コードを引いても既に使われている状態になる
+  /// (コードが枯渇したときの[RoomCreateError]の検証に使う)。
+  final bool allRoomCodesTaken;
 
   /// リポジトリが`get()`で読んだパス。「そもそも読みにいかない」ことを
   /// 検証するために記録する(テスト側から直接[read]した分は含めない)。
@@ -26,6 +31,9 @@ class _FakeDatabase implements FirebaseDatabase {
   DatabaseReference ref([String? path]) => _FakeReference(this, path ?? '');
 
   Object? read(String path) {
+    if (allRoomCodesTaken && path.startsWith('roomCodes/')) {
+      return <String, Object?>{'roomId': 'someone-else'};
+    }
     Object? node = root;
     for (final segment in _segments(path)) {
       if (node is! Map) return null;
@@ -72,9 +80,41 @@ class _FakeReference implements DatabaseReference {
   @override
   Future<void> set(Object? value) async => _db.write(_path, value);
 
+  /// `push()`は新しい子への参照を返すだけなので、キーが毎回変わることだけ
+  /// 再現できればよい。
+  @override
+  DatabaseReference push() => _FakeReference(_db, '$_path/${_pushCounter++}');
+
+  @override
+  String? get key => _path.split('/').last;
+
+  @override
+  Future<TransactionResult> runTransaction(
+    TransactionHandler handler, {
+    bool applyLocally = true,
+  }) async {
+    final result = handler(_db.read(_path));
+    if (result.aborted) return _FakeTransactionResult(committed: false);
+    _db.write(_path, result.value);
+    return _FakeTransactionResult(committed: true);
+  }
+
   @override
   Stream<DatabaseEvent> get onValue =>
       Stream.value(_FakeEvent(_FakeSnapshot(_db.read(_path))));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// `push()`が返すキーの連番。値そのものに意味は無い。
+int _pushCounter = 0;
+
+class _FakeTransactionResult implements TransactionResult {
+  _FakeTransactionResult({required this.committed});
+
+  @override
+  final bool committed;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -444,6 +484,21 @@ void main() {
           ),
         ),
         'room-1',
+      );
+    });
+  });
+
+  group('RoomRepository.createRoom', () {
+    test('コードが全部埋まっているとcodeExhaustedになる', () async {
+      // 遊び終えたルームのroomCodesは消されない運用なので、いつか必ず
+      // 起きる(docs/rtdb-schema.md「Phase 1の限界」)。生の例外文ではなく
+      // 画面で日本語に変換できる理由を投げる。
+      final db = _FakeDatabase(<String, Object?>{}, allRoomCodesTaken: true);
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await expectLater(
+        repo.createRoom(displayName: 'たろう', deviceId: 'device-1'),
+        throwsA(RoomCreateError.codeExhausted),
       );
     });
   });

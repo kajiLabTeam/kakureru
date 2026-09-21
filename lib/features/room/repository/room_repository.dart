@@ -294,6 +294,16 @@ class RoomRepository {
   /// まだ終わっていない進行中([RoomStatus.playing])のルームへの途中参加は
   /// 従来どおり許可する。失敗理由は[RoomJoinError]で投げる(画面側で日本語に
   /// 変換する)。
+  ///
+  /// 分かっている限界が2つある。
+  /// - 読み取りと`users/{uid}`の書き込みの間に最後の逃走者が捕まると、
+  ///   終了したルームに入れてしまう。`rooms/{roomId}`をまたぐ原子的な
+  ///   読み書きはルール上できない(docs/rtdb-schema.md参照)ため、窓を
+  ///   狭めることしかできない
+  /// - デバッグ用の偽プレイヤー(`showDebugMockPlayersProvider`)を出して
+  ///   1台で始めたルームは、RTDB上の逃走者が0人なので途中参加できない
+  ///   (ゲーム画面側は偽プレイヤーを逃走者ありに倒しているが、参加時は
+  ///   相手の端末の設定を知りようがないため)
   Future<String> joinRoom({
     required String code,
     required String displayName,

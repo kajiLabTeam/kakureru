@@ -231,8 +231,11 @@ void main() {
       expect(find.text('ルームコードは4桁の数字です'), findsOneWidget);
     });
 
-    testWidgets('ルーム作成側の失敗理由も日本語で出る', (tester) async {
-      // コードが埋まって発行できなかったのに「電波が悪い」と案内しない。
+    testWidgets('ルームコードを発行できなかった失敗も日本語で出る', (tester) async {
+      // 作成と参加は同じproviderの状態を共有しているため、表示の変換も
+      // 共通。ここでは変換だけを確認する(発行の失敗そのものは
+      // room_repository_testで検証)。コードが埋まって発行できなかったのに
+      // 「電波が悪い」と案内しない。
       await _tapJoinAndFail(tester, RoomCreateError.codeExhausted);
 
       expect(

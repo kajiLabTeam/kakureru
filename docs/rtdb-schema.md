@@ -116,9 +116,9 @@ RTDBの `.read`/`.write` 権限は、**アクセス先のパス自身か、そ�
 
 そのため `RoomRepository.finishRoom` は `meta/status` を `"FINISHED"` にし `meta/endedAt` を記録するだけで、`users` / `setting` / それ以外の `meta` / `roomCodes` の実データは削除しない。これらの削除は **Phase 2 の `finishGame` Cloud Function**（Admin SDK でルールをバイパスして全参加者分をまとめて消せる）に任せる。
 
-**参加時のガード**: 残り続けるコードで終わった部屋に入ってしまわないよう、`RoomRepository.joinRoom` は `roomCodes/{code}` を引いた後に `rooms/{roomId}/meta` を読み、(1) `meta` が無い（ルームだけ手動削除された等）なら `notFound`、(2) そのルームが終了済みなら `finished` として参加させない。終了したかどうかの判定は画面側と同じ `isGameOver`（`status` が `"FINISHED"` / `endsAt` を過ぎた / `PLAYING` 中に逃走者が0人）に任せる——判定をここで書き直すと、片方だけ条件が増えたときに「画面では終わっているのに参加できる」ズレが生まれるため。`finishRoom` はまだどこからも呼ばれておらず、遊び終えた部屋は `status` が `"PLAYING"` のままなので、実際に効くのは残り2つ（時間切れ・全員捕まった）である。逃走者の有無を見るために `PLAYING` のときだけ `rooms/{roomId}/users` も読む。
+**参加時のガード**: 残り続けるコードで終わった部屋に入ってしまわないよう、`RoomRepository.joinRoom` は `roomCodes/{code}` を引いた後に `rooms/{roomId}/meta` を読み、(1) `meta` が無い（ルームだけ手動削除された等）なら `notFound`、(2) そのルームが終了済みなら `finished` として参加させない。終了したかどうかの判定は画面側と同じ `isGameOver`（`status` が `"FINISHED"` / `endsAt` を過ぎた / `PLAYING` 中に逃走者が0人）に任せる——判定をここで書き直すと、片方だけ条件が増えたときに「画面では終わっているのに参加できる」ズレが生まれるため。`finishRoom` はまだどこからも呼ばれておらず、遊び終えた部屋は `status` が `"PLAYING"` のままなので、実際に効くのは残り2つ（時間切れ・全員捕まった）である。逃走者の有無を見るために `PLAYING` のときだけ `rooms/{roomId}/users` も読む。なおこのガードは完全な保証ではない: 読み取りから `users/{uid}` の書き込みまでの間に最後の逃走者が捕まるレースは残る（`rooms/{roomId}` をまたぐ原子的な読み書きが上記の理由でできないため）。
 
-**Phase 1 の間の既知の制約**: 削除処理が無いため、遊び終わったあとも `roomCodes/{code}` が残り続ける。4桁コードは10000通りしかないので、開発中に何度もルームを作り直していると枯渇しうる。Phase 2 実装までは、開発中に溜まった `roomCodes` / `rooms` を手動（Firebase Console）または簡単なクリーンアップスクリプトで消す運用が必要。
+**Phase 1 の間の既知の制約**: 削除処理が無いため、遊び終わったあとも `roomCodes/{code}` が残り続ける。4桁コードは9000通り(1000〜9999)しかないので、開発中に何度もルームを作り直していると枯渇しうる。Phase 2 実装までは、開発中に溜まった `roomCodes` / `rooms` を手動（Firebase Console）または簡単なクリーンアップスクリプトで消す運用が必要。
 
 ### Phase 1 の暫定措置: `locations/` をルームメンバーに開放
 
