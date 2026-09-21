@@ -53,14 +53,16 @@ class GameAlerts extends Notifier<GameAlertsState> {
   /// いま判定している部屋。[stop]後はnull。
   String? _roomId;
 
-  /// 部屋の購読。**持っておくことに意味がある。**
+  /// 部屋とサーバー時刻オフセットの購読。**持っておくことに意味がある。**
   ///
-  /// `roomStreamProvider`は`autoDispose`なので、`ref.read`で覗くだけだと
-  /// 読んだ直後に破棄され、ストリームが最初の値を出す前に消えてしまう
-  /// (毎回`AsyncLoading`が返る)。GamePageが`ref.watch`している間はたまたま
-  /// 生き残るが、**判定が画面の都合に依存してしまう**。それではこの
-  /// クラスを作った意味が無いので、ここで自分の購読を持つ。
+  /// `StreamProvider`は誰も購読していないとストリームを読み始めず、
+  /// `ref.read`で覗くだけでは永遠に`AsyncLoading`が返る(`roomStreamProvider`
+  /// は`autoDispose`なので、読んだ直後に破棄までされる)。GamePageが
+  /// `ref.watch`している間はたまたま値が入るが、**それでは判定が画面の
+  /// 都合に依存してしまう**。画面が消えていても動かすためのクラスなので、
+  /// ここで自分の購読を持つ。
   ProviderSubscription<AsyncValue<Room>>? _roomSub;
+  ProviderSubscription<AsyncValue<int>>? _offsetSub;
 
   /// 猶予時間の計測に使う単調増加の時計。
   ///
@@ -108,6 +110,7 @@ class GameAlerts extends Notifier<GameAlertsState> {
       ..reset()
       ..start();
     _roomSub = ref.listen(roomStreamProvider(roomId), (_, _) {});
+    _offsetSub = ref.listen(serverTimeOffsetProvider, (_, _) {});
     _evaluateTimer = Timer.periodic(_evaluateInterval, (_) => _evaluate());
     // タイマーの初回発火は1秒後。画面に入った瞬間に既に終了している
     // (再入場した等)場合にその1秒を待たせないよう、ここで1回打つ。
@@ -136,6 +139,8 @@ class GameAlerts extends Notifier<GameAlertsState> {
     _evaluateTimer = null;
     _roomSub?.close();
     _roomSub = null;
+    _offsetSub?.close();
+    _offsetSub = null;
     _stopVibration();
   }
 
@@ -153,11 +158,25 @@ class GameAlerts extends Notifier<GameAlertsState> {
     // いたが、画面が消えている間はそもそも本文が無い。ここではroomが
     // 無いことをそのまま「判定に使える情報が無い」として扱う。
     final room = _roomSub?.read().value;
-    final offset = ref.read(serverTimeOffsetProvider).value ?? 0;
+
+    // **オフセットが届くまで何も判定しない。** 以前は `?? 0` で端末時計を
+    // そのままサーバー時刻として使っていたが、端末の時計が進んでいると
+    // 鬼放出やゲーム終了を早く通知してしまう。しかも一度きりの通知は
+    // フラグで畳んでしまうので、正しいオフセットが届いても取り返せない
+    // (PR #91のレビュー指摘)。エリア外判定の`updatedAt`の比較も同じ。
+    //
+    // `.info/serverTimeOffset`はFirebaseのローカル擬似ノードで、オフライン
+    // でもすぐ値が来る(同期前は0)。待ち続けて何も鳴らない、にはならない。
+    final offset = _offsetSub?.read().value;
+    if (offset == null) return;
     final nowMillis = serverNowMillis(offset);
 
-    _evaluateDemonRelease(room, nowMillis);
+    // 終了の判定を先にやる。終わっていたら以降は何も見ない
+    // (_evaluateGameOverがタイマーごと畳んでいる)。
     _evaluateGameOver(room, nowMillis);
+    if (_notifiedGameOver) return;
+
+    _evaluateDemonRelease(room, nowMillis);
     _evaluateOutsideArea(room, nowMillis);
   }
 
@@ -194,10 +213,20 @@ class GameAlerts extends Notifier<GameAlertsState> {
 
     _notifiedGameOver = true;
     unawaited(showGameOverNotification());
-    state = (
-      isOutsideAreaWarning: state.isOutsideAreaWarning,
-      isGameOver: true,
-    );
+
+    // 終わったらもう何も判定しない。**特にエリア外の振動を止めるのが重要**。
+    // 画面が消えている間は結果画面への遷移が起きず、遷移に紐づく
+    // `useGameSession`の後始末(=stop())も走らないため、ここで止めないと
+    // ゲームが終わった後もポケットの中で振動と通知が続く
+    // (PR #91のレビュー指摘)。このPRが直そうとしているバグと同じ形。
+    //
+    // stop()は呼べない。あちらは isGameOver ごと畳んでしまい、画面を点けた
+    // ときの結果画面への遷移が起きなくなる。
+    _evaluateTimer?.cancel();
+    _evaluateTimer = null;
+    _stopVibration();
+    _warning = initialOutsideAreaWarningState;
+    state = (isOutsideAreaWarning: false, isGameOver: true);
   }
 
   /// エリア外の判定。警告に入ったら振動と通知を繰り返し、戻ったら止める。

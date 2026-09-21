@@ -123,11 +123,14 @@ void main() {
     required Room? room,
     required UserLocation? Function() location,
     required int Function() elapsedMillis,
+    Stream<int>? offset,
   }) {
     final container = ProviderContainer(
       overrides: [
         myUidProvider.overrideWithValue(myUid),
-        serverTimeOffsetProvider.overrideWith((ref) => Stream.value(0)),
+        serverTimeOffsetProvider.overrideWith(
+          (ref) => offset ?? Stream.value(0),
+        ),
         roomStreamProvider(roomId).overrideWith(
           (ref) =>
               room == null ? const Stream<Room>.empty() : Stream.value(room),
@@ -329,6 +332,127 @@ void main() {
           container.read(gameAlertsProvider).isOutsideAreaWarning,
           isFalse,
         );
+      });
+    });
+  });
+
+  group('サーバー時刻のオフセット', () {
+    test('オフセットが届くまでは、時刻で発火する判定を保留する', () {
+      fakeAsync((async) {
+        // 端末の時計が5分進んでいる状況。オフセットを0とみなして判定すると
+        // まだ先の鬼放出を「もう過ぎた」と誤認して鳴らしてしまう。しかも
+        // 一度きりの通知はフラグで畳むので取り返せない。
+        final controller = StreamController<int>();
+        addTearDown(controller.close);
+        final container = containerWith(
+          room: roomWith(releasedAt: msFromNow(const Duration(minutes: 3))),
+          location: () => null,
+          elapsedMillis: () => async.elapsed.inMilliseconds,
+          offset: controller.stream,
+        );
+        container.read(gameAlertsProvider.notifier).start(roomId);
+
+        async
+          ..elapse(const Duration(seconds: 10))
+          ..flushMicrotasks();
+        expect(notificationCalls, isEmpty);
+
+        // 正しいオフセット(端末が5分進んでいる= -5分)が届いてもまだ先。
+        controller.add(-const Duration(minutes: 5).inMilliseconds);
+        async
+          ..elapse(const Duration(seconds: 10))
+          ..flushMicrotasks();
+        expect(notificationCalls, isEmpty);
+      });
+    });
+
+    test('オフセットが届いた後は、通常どおり判定する', () {
+      fakeAsync((async) {
+        final controller = StreamController<int>();
+        addTearDown(controller.close);
+        final container = containerWith(
+          room: roomWith(releasedAt: msFromNow(const Duration(seconds: 3))),
+          location: () => null,
+          elapsedMillis: () => async.elapsed.inMilliseconds,
+          offset: controller.stream,
+        );
+        container.read(gameAlertsProvider.notifier).start(roomId);
+
+        controller.add(0);
+        async
+          ..elapse(const Duration(seconds: 5))
+          ..flushMicrotasks();
+
+        expect(notificationCalls, contains('show'));
+      });
+    });
+  });
+
+  group('ゲームが終わった後', () {
+    test('エリア外の振動と通知が止まる(画面が消えていてもポケットで鳴り続けない)', () {
+      fakeAsync((async) {
+        // エリアの外にいる状態で、20秒後にゲームが終わる部屋。猶予(10秒)を
+        // 過ぎて警告に入ったあと、終了時刻をまたぐ流れをそのまま再現する。
+        final container = containerWith(
+          room: roomWith(
+            gameArea: area,
+            endsAt: msFromNow(const Duration(seconds: 20)),
+          ),
+          location: () => locationAt(outside: true),
+          elapsedMillis: () => async.elapsed.inMilliseconds,
+        );
+        container.read(gameAlertsProvider.notifier).start(roomId);
+
+        // まずエリア外の警告に入る。
+        async
+          ..elapse(const Duration(seconds: 13))
+          ..flushMicrotasks();
+        expect(container.read(gameAlertsProvider).isOutsideAreaWarning, isTrue);
+
+        // ここでゲームが終わる。画面が消えていると結果画面への遷移が起きず、
+        // 遷移に紐づく stop() も走らないので、ここで止められないと振動と
+        // 通知がポケットの中で鳴り続ける(PR #91のレビュー指摘)。
+        notificationCalls.clear();
+        async
+          ..elapse(const Duration(seconds: 10))
+          ..flushMicrotasks();
+
+        expect(container.read(gameAlertsProvider).isGameOver, isTrue);
+        expect(
+          container.read(gameAlertsProvider).isOutsideAreaWarning,
+          isFalse,
+        );
+        expect(notificationCalls, contains('cancel'));
+
+        // 以後は何分経っても鳴らない(判定のタイマーごと畳んでいる)。
+        notificationCalls.clear();
+        async
+          ..elapse(const Duration(minutes: 1))
+          ..flushMicrotasks();
+        expect(notificationCalls, isEmpty);
+      });
+    });
+
+    test('終了後に入り直しても、鬼放出の通知は鳴らさない', () {
+      fakeAsync((async) {
+        // 終わった部屋に入り直したとき、過ぎた放出時刻を見て「鬼が放出され
+        // ました」と鳴らすのは嘘になる。終了の判定を先に済ませて打ち切る。
+        final container = containerWith(
+          room: roomWith(
+            status: RoomStatus.finished,
+            releasedAt: msFromNow(const Duration(seconds: -60)),
+          ),
+          location: () => null,
+          elapsedMillis: () => async.elapsed.inMilliseconds,
+        );
+        container.read(gameAlertsProvider.notifier).start(roomId);
+        async
+          ..elapse(const Duration(seconds: 5))
+          ..flushMicrotasks();
+
+        // 出るのは終了の通知1件だけ。
+        expect(notificationCalls.where((c) => c == 'show'), hasLength(1));
+        expect(container.read(gameAlertsProvider).isGameOver, isTrue);
       });
     });
   });
