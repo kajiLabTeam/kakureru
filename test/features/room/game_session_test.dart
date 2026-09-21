@@ -161,7 +161,7 @@ class _GameSessionHarness extends HookConsumerWidget {
   }
 }
 
-/// [useGameSession]が動かす4種のセンサーの差し替え一式。
+/// [useGameSession]が動かすもの(センサー4種 + [GameAlerts])の差し替え一式。
 typedef _Sensors = ({
   _RecordingLocationViewModel location,
   _RecordingPressureViewModel pressure,
@@ -170,7 +170,7 @@ typedef _Sensors = ({
   _RecordingGameAlerts alerts,
 });
 
-/// [_GameSessionHarness]をマウントし、差し替えたセンサーを返す。
+/// [_GameSessionHarness]をマウントし、差し替えたものを返す。
 Future<_Sensors> _pumpGameSession(WidgetTester tester) async {
   final sensors = (
     location: _RecordingLocationViewModel(const LocationState()),
@@ -179,7 +179,27 @@ Future<_Sensors> _pumpGameSession(WidgetTester tester) async {
     ble: _RecordingBleViewModel(),
     alerts: _RecordingGameAlerts(),
   );
-  await tester.pumpWidget(
+  await _pumpUnderScope(tester, sensors, const _GameSessionHarness());
+  return sensors;
+}
+
+/// ゲーム画面を離れた状態(unmount)を作る。
+///
+/// **[ProviderScope]は差し替えずに残す。** 本番でゲーム画面を離れるときは
+/// アプリ直下のProviderScopeが生き続けるので、notifierは破棄されない。
+/// ここでScopeごと捨ててしまうと、後始末とコンテナの破棄が同時に起きる
+/// 別の条件になり、「フックが停止を呼んだか」だけを見られなくなる。
+Future<void> _leaveGameScreen(WidgetTester tester, _Sensors sensors) async {
+  await _pumpUnderScope(tester, sensors, const SizedBox.shrink());
+  await tester.pump();
+}
+
+Future<void> _pumpUnderScope(
+  WidgetTester tester,
+  _Sensors sensors,
+  Widget child,
+) {
+  return tester.pumpWidget(
     ProviderScope(
       overrides: [
         locationViewModelProvider.overrideWith(() => sensors.location),
@@ -188,17 +208,9 @@ Future<_Sensors> _pumpGameSession(WidgetTester tester) async {
         bleViewModelProvider.overrideWith(() => sensors.ble),
         gameAlertsProvider.overrideWith(() => sensors.alerts),
       ],
-      child: const _GameSessionHarness(),
+      child: child,
     ),
   );
-  return sensors;
-}
-
-/// ゲーム画面を離れた状態(unmount)を作る。ProviderScopeごと差し替えるので、
-/// 実際に別画面へ遷移したときと同じ順序で後始末が走る。
-Future<void> _leaveGameScreen(WidgetTester tester) async {
-  await tester.pumpWidget(const SizedBox());
-  await tester.pump();
 }
 
 void main() {
@@ -208,16 +220,16 @@ void main() {
   // Wi-Fiスキャン・BLEの発信が残り続けていた(issue #93)。例外はhooksが
   // 握るので画面には何も出ず、気づけるのはこの形のテストだけ。
   //
-  // **4種を1つのテストにまとめない。** stopの呼び出しを消す・別のものを
-  // 返すといった回帰が起きたときに、どのセンサーが止まらなくなったのかが
-  // テスト名で分かるようにするため(上の`ref.read`のやり方に戻した場合は、
-  // 例外が同じpumpの中でまとめて流れるので4本とも落ちる)。
+  // **1つのテストにまとめない。** stopの呼び出しを消す・別のものを返すと
+  // いった回帰が起きたときに、どれが止まらなくなったのかがテスト名で
+  // 分かるようにするため(ただし`ref.read`のやり方に戻した場合は、例外が
+  // 同じpumpの中でまとめて流れるので全部が落ちる)。
   group('useGameSession: 画面を離れたら止まる', () {
     testWidgets('位置情報の送信を止める', (tester) async {
       final sensors = await _pumpGameSession(tester);
       expect(sensors.location.stopCalls, 0);
 
-      await _leaveGameScreen(tester);
+      await _leaveGameScreen(tester, sensors);
 
       expect(sensors.location.stopCalls, 1);
     });
@@ -226,7 +238,7 @@ void main() {
       final sensors = await _pumpGameSession(tester);
       expect(sensors.pressure.stopCalls, 0);
 
-      await _leaveGameScreen(tester);
+      await _leaveGameScreen(tester, sensors);
 
       expect(sensors.pressure.stopCalls, 1);
     });
@@ -235,7 +247,7 @@ void main() {
       final sensors = await _pumpGameSession(tester);
       expect(sensors.wifi.stopCalls, 0);
 
-      await _leaveGameScreen(tester);
+      await _leaveGameScreen(tester, sensors);
 
       expect(sensors.wifi.stopCalls, 1);
     });
@@ -244,7 +256,7 @@ void main() {
       final sensors = await _pumpGameSession(tester);
       expect(sensors.ble.stopCalls, 0);
 
-      await _leaveGameScreen(tester);
+      await _leaveGameScreen(tester, sensors);
 
       expect(sensors.ble.stopCalls, 1);
     });
@@ -253,7 +265,7 @@ void main() {
       final sensors = await _pumpGameSession(tester);
       expect(sensors.alerts.stopCalls, 0);
 
-      await _leaveGameScreen(tester);
+      await _leaveGameScreen(tester, sensors);
 
       expect(sensors.alerts.stopCalls, 1);
     });
