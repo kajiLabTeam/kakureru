@@ -9,7 +9,6 @@ part of 'room_user.dart';
 _RoomUser _$RoomUserFromJson(Map<String, dynamic> json) => _RoomUser(
   id: json['id'] as String,
   displayName: json['displayName'] as String? ?? '',
-  deviceId: json['deviceId'] as String? ?? '',
   isHost: json['isHost'] as bool? ?? false,
   role:
       $enumDecodeNullable(
@@ -28,7 +27,6 @@ _RoomUser _$RoomUserFromJson(Map<String, dynamic> json) => _RoomUser(
 Map<String, dynamic> _$RoomUserToJson(_RoomUser instance) => <String, dynamic>{
   'id': instance.id,
   'displayName': instance.displayName,
-  'deviceId': instance.deviceId,
   'isHost': instance.isHost,
   'role': _$UserRoleEnumMap[instance.role]!,
   'pressureOffset': instance.pressureOffset,
