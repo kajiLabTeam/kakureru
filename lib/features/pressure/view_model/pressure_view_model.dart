@@ -40,6 +40,14 @@ class PressureViewModel extends Notifier<PressureState> {
   /// なので下のガードをすり抜けてしまうため、実行中のものに相乗りさせる。
   Future<void>? _initInFlight;
 
+  /// [stopSendingAndDispose]のたびに進む世代番号。センサーの有無の判定
+  /// (最大3秒)を待っている最中にゲーム画面を離れると、待ちが明けたときには
+  /// もう`disposeSensor()`が済んでいる。そこで購読を始めてしまうと、
+  /// **誰も止めないセンサー購読**が残る(issue #93と同じ「画面を離れたのに
+  /// 止まらない」)。LocationViewModel・BleViewModelと同じやり方で、
+  /// 自分を始めた世代のままかどうかを見る。
+  int _epoch = 0;
+
   /// 待機画面・ゲーム画面に入った時に呼ぶ。センサーの有無を確認し、使える
   /// なら気圧の購読を始める(何度呼んでも安全)。判定結果は他の参加者にも
   /// 伝わるようroomIdのRTDBへ記録する(待機画面の一覧・集計表示用)。
@@ -76,8 +84,16 @@ class PressureViewModel extends Notifier<PressureState> {
   }
 
   Future<void> _checkAndStart(String roomId) async {
+    final epoch = _epoch;
     final available = await _repo.checkSensorAvailable();
     unawaited(_repo.reportSensorAvailability(roomId, available: available));
+
+    // 待っている間に画面を離れていたら、購読も判定結果の保存もしない。
+    // **状態をcheckingのまま残すのが大事**で、ここでavailabilityを書くと
+    // 上のガードに引っかかって`_checkAndStart`が二度と走らず、次に
+    // ゲームへ入ったとき気圧が永久に取れなくなる。
+    if (epoch != _epoch) return;
+
     if (!available) {
       state = state.copyWith(
         sensorAvailability: PressureSensorAvailability.unavailable,
@@ -134,6 +150,7 @@ class PressureViewModel extends Notifier<PressureState> {
 
   /// ゲーム画面を離れる時に呼ぶ。送信とセンサー購読を止める。
   void stopSendingAndDispose() {
+    _epoch++;
     _repo.disposeSensor();
   }
 }

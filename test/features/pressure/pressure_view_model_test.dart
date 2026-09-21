@@ -15,6 +15,7 @@ class _FakePressureRepository extends PressureRepository {
 
   final bool available;
   int checkCalls = 0;
+  int watchCalls = 0;
   final List<bool> reported = [];
 
   /// 判定の完了をテストから制御したいときに使う(同時呼び出しの検証用)。
@@ -38,7 +39,10 @@ class _FakePressureRepository extends PressureRepository {
   }
 
   @override
-  Stream<double> watchMyPressure() => const Stream<double>.empty();
+  Stream<double> watchMyPressure() {
+    watchCalls++;
+    return const Stream<double>.empty();
+  }
 }
 
 ProviderContainer _container(_FakePressureRepository repo) {
@@ -105,6 +109,52 @@ void main() {
       await Future.wait([first, second]);
 
       expect(repo.checkCalls, 1);
+      expect(
+        container.read(pressureViewModelProvider).sensorAvailability,
+        PressureSensorAvailability.available,
+      );
+    });
+
+    // センサーの有無の判定は実機で最大3秒かかる。その間にゲーム画面を離れる
+    // と、以前は待ちが明けた後にセンサー購読が始まり、**それを止める人が
+    // もう居ない**状態で残っていた(画面を離れてもセンサーが止まらない、
+    // issue #93と同じ症状)。
+    test('判定を待っている間に画面を離れたら、センサー購読を始めない', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..gate = Completer<void>();
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      final initializing = notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      repo.gate!.complete();
+      await initializing;
+
+      expect(repo.watchCalls, 0);
+      // 判定結果も残さない。残すと次にゲームへ入ったとき再判定が走らず、
+      // 購読が始まらないまま気圧が永久に取れなくなる。
+      expect(
+        container.read(pressureViewModelProvider).sensorAvailability,
+        PressureSensorAvailability.checking,
+      );
+    });
+
+    test('画面を離れた後でも、入り直せば判定と購読をやり直す', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..gate = Completer<void>();
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      final initializing = notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      repo.gate!.complete();
+      await initializing;
+
+      repo.gate = null;
+      await notifier.init('room1');
+
+      expect(repo.checkCalls, 2);
+      expect(repo.watchCalls, 1);
       expect(
         container.read(pressureViewModelProvider).sensorAvailability,
         PressureSensorAvailability.available,
