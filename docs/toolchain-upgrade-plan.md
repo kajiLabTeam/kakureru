@@ -23,8 +23,9 @@
    Gradle定数やパッケージの依存関係を直接読める
 
 > **結論を先に**: 推奨は **案B(KGP先行)**。
-> ①いま緑のPRを取り込む(順序に注意——**#88 は #105 より先**)→ ②KGP警告の残りを潰す →
-> ③`compileSdk = 37` の明示 → permission_handler 13 → ④Flutter 3.47.5 → very_good_analysis 11。
+> いま緑のPRを取り込む(順序に注意——**#88 は #105 より先**)→ KGP警告の残りを潰す →
+> `compileSdk = 37` の明示 → permission_handler 13 → Flutter 3.47.5 → very_good_analysis 11。
+> **実行手順の正は3節末尾の「案Bで最初にやること」**(8ステップ)で、他の箇所はその要約。
 >
 > 調査の過程で、**issue #92 / #100 の前提2つが誤りであることが実測で分かった**。
 > 結論に直接効くので先に挙げる。
@@ -32,8 +33,8 @@
 > - **Flutter 3.47.5 に上げても compileSdk は 36 のままで、permission_handler 13 は解けない**(F3)。
 >   「Flutterを上げれば compileSdk 37 が付いてくる」は成り立たない。両者は**独立した作業**
 > - **「上流未対応と見られる」とされた flutter_ble_peripheral / sensors_plus / wifi_scan には
->   新版があり、いまのFlutterのまま上げられる**(F9)。PRが立たないのは上流の都合ではなく、
->   `dependabot.yml:14` の同時PR上限が滞留PRで埋まっているため(1-4節)
+>   新版があり、いまのFlutterのままでも pub の依存解決は通る**(F9)。PRが立たないのは
+>   上流の都合ではなく、`dependabot.yml:14` の同時PR上限が滞留PRで埋まっているため(1-4節)
 
 ---
 
@@ -46,7 +47,7 @@
 | ファイル:行 | 固定している値 | 変えると何が動くか |
 |---|---|---|
 | `.metadata:7-8` | `revision: "058e0af2c2b57e369d905a03ac9748b0ebf543c6"` / `channel: stable` | **ビルドには影響しない。** `flutter migrate` が参照する記録用。同`:4` に `should not be manually edited` とあり、手で書き換えず `flutter` コマンド経由で更新する。`:16-23` の `create_revision` / `base_revision` も同じSHA |
-| `.github/workflows/ci.yml:19` | `FLUTTER_VERSION: "3.44.8"` | **CIのFlutter。** `:31`(checkジョブ)と `:85`(buildジョブ)の2箇所から参照。`:14-18` のコメントが固定理由(`dart format` の出力がSDKで変わること、KGP警告の5プラグイン)を書いている |
+| `.github/workflows/ci.yml:19` | `FLUTTER_VERSION: "3.44.8"` | **CIのFlutter。** `:31`(checkジョブ)と `:85`(buildジョブ)の2箇所から参照。`:15-18` のコメントが固定理由(`dart format` の出力がSDKで変わること、KGP警告の5プラグイン)を書いている |
 | `night-run/docker/Dockerfile:7` | `ARG FLUTTER_VERSION=3.44.8` | **夜間実行コンテナのFlutter。** `:37` の `git clone --branch "$FLUTTER_VERSION"` で使う。`:6` に「`.metadata` / ローカル `flutter --version` と一致させること」とある |
 | `pubspec.yaml:21-22` | `environment: sdk: ^3.12.2` | **Dart SDKの下限。** これが pub の解決可能範囲を決める。`pubspec.lock` 末尾の実効値は `dart: ">=3.12.2 <4.0.0"` / `flutter: ">=3.44.0"` |
 | `android/app/build.gradle.kts:20` | `compileSdk = flutter.compileSdkVersion` | **数値の明示が無く、値はFlutter SDKが供給する。** 実測では Flutter **3.44.8 も 3.47.5 も 36**(F3)。37にするには**ここに数値を直書きするしかない** |
@@ -125,7 +126,8 @@ Add the following to /home/runner/work/kakureru/kakureru/android/app/build.gradl
 - **必須なのは `android/app/build.gradle.kts:20` への `compileSdk = 37` の明示**。
   Flutterのメッセージはこれしか要求していない
 - AGP 9.0.1 の上限36は **"maximum *recommended*"** であり、`Recommended action:` も**推奨**。
-  **AGPの更新が必須だとはどちらのメッセージも言っていない**(仮説H1)
+  **AGPの更新が必須だとはどちらのメッセージも言っていない**(ここまではログから読める事実＝F4。
+  そのうえで実際にビルドが通るかどうかが仮説H1)
 - **そして issue #92 / #100 が想定していた「Flutterを上げれば解ける」は成り立たない。**
   Flutter 3.47.5 の `compileSdkVersion` も 36 だから(F3)
 
@@ -201,7 +203,7 @@ Future versions of Flutter will fail to build if your app uses plugins that appl
 - `device_info_plus` のKGPを解消するには、**推移依存であっても 13.2.0 に上げる必要がある**。
   上の制約 `>=9.0.2 <14.0.0` は 13.2.0 を許すので、上げること自体は可能
 - ただし **#105 が先に入ると device_info_plus は直接依存でなくなり、Dependabotが #88 を
-  自動クローズする可能性が高い**。そうなると 13.2.0 へ上げる手段が
+  自動クローズすると考えられる(仮説H9)**。そうなると 13.2.0 へ上げる手段が
   「`flutter pub upgrade` で lock を動かす」等に変わり、ひと手間増える
 - → **#88 を #105 より先にマージする**のが素直。lock が 13.2.0 になった状態で
   #105 が種別だけを transitive に変えるので、KGP解消が保たれる
@@ -216,10 +218,18 @@ Future versions of Flutter will fail to build if your app uses plugins that appl
 | flutter_ble_peripheral | 2.1.1 | **3.1.0** | 3.1.0 |
 | sensors_plus | 6.1.2 | **7.1.0** | 7.1.0 |
 | wifi_scan | 0.4.1+2 | **0.5.0** | 0.5.0 |
+| (比較)permission_handler | 11.4.0 | 13.0.2 | 13.0.2 |
 
-**3つとも、Flutterを上げないまま新しいメジャー版に上げられる**(`Resolvable` 列が
-`Latest` と一致している＝現在の `sdk: ^3.12.2` 制約の下で解決できる)。
-「上流未対応で手が出せない」という前提は**成り立たない**。
+**3つとも `Resolvable` 列が `Latest` と一致している**——つまり現在の `sdk: ^3.12.2` 制約の下で、
+**Flutterを上げないまま pub の依存解決は通る**。
+
+ただし **`Resolvable` が保証するのはそこまで**で、Androidビルド側(AARメタデータの
+`compileSdk` 要求、Gradle/AGP互換)は一切見ていない。**同じ出力の中に反例がある**:
+`permission_handler` も `Resolvable` は 13.0.2 だが、実際には
+`:app:checkDebugAarMetadata` でビルドが落ちる(F2)。
+
+それでも「上流未対応で手が出せない」という前提は、**少なくとも依存解決の段階では成り立たない**。
+先へ進めるかどうかは、実際にPRを出してAPKビルドを見るまで分からない。
 
 その新版がKGP警告を解消するかどうかは未検証(仮説H2)。ただし
 **確かめる方法は用意されている**——上げてPRを出せば `ci.yml:106` のAPKビルドが警告を出力するので、
@@ -234,8 +244,9 @@ Future versions of Flutter will fail to build if your app uses plugins that appl
   **滞留したPRによって機能しなくなっている**状態
 - 対策は枠を空けること(＝3節の第1ステップ)。上限値を上げる手もあるが、まず滞留の解消が先
 - (現在6本開いており上限5を超えている理由は特定できていない。Dependabotが上限を見るのは
-  新規作成時なので、作成後に本数が変動したものと思われる。いずれにせよ**いま新規PRが
-  作られない状況にあること**は変わらない)
+  新規作成時なので、作成後に本数が変動したものと思われる。上限超過の説明がつかない以上、
+  **この因果は推論の域を出ない**。確実なのは「新版が3本出ているのにPRが無い」という事実だけで、
+  枠を空ければ原因がこれだったのかどうかも同時に分かる)
 
 ---
 
@@ -247,32 +258,33 @@ Future versions of Flutter will fail to build if your app uses plugins that appl
 |---|---|---|
 | F1 | very_good_analysis 11.0.0 は Dart SDK `^3.13.0` を要求し、pub が Flutter **3.47.5** を名指しする。現在は Dart 3.12.2 | #87 の check / build ログ |
 | F2 | permission_handler 13.0.2 は `:app` に **compileSdk 37以上**を要求し、現在は android-36 でビルドしている。Flutterのツールは対処として **`android/app/build.gradle.kts` に `compileSdk = 37` を足すことだけ**を指示している | #90 の build ログ(job 106095302778) |
-| F3 | **Flutter 3.47.5 の `compileSdkVersion` は 36 で、3.44.8 と同値。`minSdkVersion` 24 / `targetSdkVersion` 36 も両バージョンで同一** | `flutter/flutter` タグ 3.44.8 / 3.47.5 の `packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt:23,26,31` を `raw.githubusercontent.com` から取得して比較 |
+| F3 | **Flutter 3.47.5 の `compileSdkVersion` は 36 で、3.44.8 と同値。`minSdkVersion` 24 / `targetSdkVersion` 36 も両バージョンで同一** | `flutter/flutter` タグ 3.44.8 / 3.47.5 の `packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt:23,26,34` を `raw.githubusercontent.com` から取得して比較 |
 | F4 | AGP 9.0.1 の **推奨**compileSdk上限は36(`maximum recommended`)。ただし更新が**必須**とはログのどこにも書かれていない | #90 の build ログ |
 | F5 | main相当(#82)のKGP警告は **5プラグイン** | #82 の build ログ |
 | F6 | **device_info_plus 13.2.0 はKGP警告を解消する** | #88 の build ログ(警告からdevice_info_plusが消える) |
 | F7 | **flutter_foreground_task 11.0.3 はKGP警告を解消する** | #89 の build ログ |
 | F8 | **geolocator 14.0.2 は `package_info_plus` を持ち込み、KGP警告を6件に増やす** | #85 の build ログ |
-| F9 | flutter_ble_peripheral 3.1.0 / sensors_plus 7.1.0 / wifi_scan 0.5.0 は、**現在のFlutter 3.44.8のまま解決できる** | コンテナでの `flutter pub outdated` |
+| F9 | flutter_ble_peripheral 3.1.0 / sensors_plus 7.1.0 / wifi_scan 0.5.0 は、**現在のFlutter 3.44.8のまま pub の依存解決が通る**(`Resolvable` = `Latest`)。**ビルドが通るかは別問題**——同じ出力で permission_handler 13.0.2 も `Resolvable` だが、実際にはF2のとおり落ちる | コンテナでの `flutter pub outdated` |
 | F10 | #88, #89, #82, #83, #84, #85, #86, #105 は `check` も `build` も **SUCCESS** | `gh pr checks` |
 | F11 | #83〜#86, #90 の `review` ジョブの失敗は **コードの問題ではない**(`Workflow initiated by non-human actor: dependabot (type: Bot)` でブロックされている) | #90 の review ログ |
 | F12 | `ci.yml:45` は `--no-fatal-infos` なので、**vga 11 でinfoが増えてもCIは赤くならない**(新しいerror/warningだけが落とす) | `ci.yml:40-45` |
 | F13 | **PR #105 は `device_info_plus` をビルドから外さない。** `pubspec.yaml` の直接依存を消すだけで、lock 上は `transitive` に変わり、`vibration → vibration_platform_interface 0.1.2 → device_info_plus` の経路で残る。**#105 自身のCIビルドでもKGP警告は5件のまま** | `gh pr diff 105`、`flutter pub deps --style=compact`、#105 の build ログ(job 106476077840) |
 | F14 | `vibration_platform_interface` は最新 0.1.2 でも `device_info_plus: >=9.0.2 <14.0.0` に依存する(＝13.2.0 は許容される)。`vibration` は 3.2.1(#86)でも依存先は同じ | pub.dev API |
-| F15 | #83 / #84 の対象である `actions/cache@v4` / `actions/setup-java@v4` には、既に **Node.js 20 非推奨の警告**が出ている | #90 の build ログ末尾 |
+| F15 | #83 / #84 の対象である `actions/setup-java@v4` / `actions/cache@v4` には、既に **Node.js 20 非推奨の警告**が出ている | #90 の build ログ末尾 |
 
 ### 2-2. 未検証の仮説
 
 | # | 仮説 | 外れたときどうなるか | 確かめ方 |
 |---|---|---|---|
 | H1 | **AGP 9.0.1 のまま `compileSdk = 37` を明示すれば、警告付きでAPKビルドは通る** | 外れるとAGPの更新(＋連動してGradle / google-services)が先に必要になり、#90 は1行では済まなくなる | **`compileSdk = 37` を1行足したPRを出し、`ci.yml:106` のAPKビルドを見るだけ。実機不要**。案Bで最初に潰すべき仮説 |
-| H2 | flutter_ble_peripheral 3.1.0 / sensors_plus 7.1.0 / wifi_scan 0.5.0 はKGP警告を解消する | 外れるとKGP警告は3件残り、上流待ちに戻る(ただしF9より、上げること自体は可能) | 1本ずつPRを出してAPKビルドログのKGP警告を読む。実機不要 |
+| H2 | flutter_ble_peripheral 3.1.0 / sensors_plus 7.1.0 / wifi_scan 0.5.0 はKGP警告を解消する | 外れるとKGP警告が残る。**KGPを解消しないだけでなく、permission_handler 13 と同様に `compileSdk` 要求でビルド自体が落ちる可能性もある**(F9の注記) | 1本ずつPRを出してAPKビルドログを読む。KGPが減ったかも、ビルドが通るかも、同じログで分かる。実機不要 |
 | H3 | H1が外れた場合に備え、**compileSdk 37 を正式に扱えるAGPが既にリリースされている** | 外れると permission_handler 13 は上流待ちになる | AGPのリリースノート / Google Maven の `maven-metadata.xml`。**このコンテナからは `dl.google.com` に到達できず未確認** |
 | H4 | KGP警告がエラーに変わるのは Flutter 3.47 より後である | 外れると 3.47 へ上げた時点でAPKビルドが落ちる。ただし復旧路はある(3節の推奨理由を参照) | Flutterのリリースノート / `migrate-to-built-in-kotlin` のドキュメント |
 | H5 | 3プラグインのKGP対応後に `android.builtInKotlin` / `android.newDsl`(`android/gradle.properties:4,6`)を `true` にできる | 外れてもビルドは壊れない(フラグは `false` のままでよい)。移行の完了だけが先送りになる | KGPが0件になった後に切り替えてAPKビルド。実機不要 |
 | H6 | flutter_foreground_task 11(メジャー更新)が、実機のフォアグラウンドサービス(位置・センサーの常時取得)で従来どおり動く | CIは緑でも**実機で位置更新が止まる**可能性がある。このアプリの根幹機能 | **実機確認が必須**(この環境では不可) |
 | H7 | geolocator 14(メジャー更新)が実機の測位で従来どおり動く | 同上。`docs/gps-location-stability.md` の平滑化まわりに影響しうる | 実機確認 |
 | H8 | Flutter更新に伴う `dart format` の出力差分が、既存コードに広く発生する | `ci.yml:15-16` が明記している既知のリスク。外れれば差分が小さくて済むだけ | Flutter更新PRの `dart format` ジョブ |
+| H9 | #105 が先にマージされると、device_info_plus が直接依存でなくなるためDependabotが **#88 を自動クローズする** | **外れても損はしない**(#88 の順序を気にしなくてよくなるだけ)。当たった場合だけ、13.2.0 へ上げ直す手間が増える | #105 をマージして #88 の状態を見る。ただし順序を逆にすれば検証自体が不要になる |
 
 **F3により、以前「Flutterを上げれば minSdk が黙って上がるかもしれない」という懸念は
 3.47.5 に関しては消えている**(24で不変)。より先のバージョンへ上げるときは再確認が要る。
@@ -283,18 +295,20 @@ Future versions of Flutter will fail to build if your app uses plugins that appl
 
 **F3(Flutter 3.47.5 でも compileSdk は36)により、3つの軸はほぼ独立**になった。
 
-- **KGP** … プラグインを上げる。Flutterともcompile Sdkとも無関係
+- **KGP** … プラグインを上げる。**いまのFlutterのままでも着手できる**(F9)
 - **compileSdk 37 → permission_handler 13** … `build.gradle.kts:20` に1行。Flutterと無関係
 - **Flutter 3.47.5 → very_good_analysis 11** … 上2つと無関係
 
-したがって論点は「どれを**先に**やるか」だけで、依存関係による強制順序は無い。
+したがって論点は主に「どれを**先に**やるか」であり、**確定した強制順序は無い**。
+ただし H4(KGP警告がエラー化するFlutterのバージョン)が外れた場合に限り、
+「KGP → Flutter」の順序が強制される。推奨案がこの順になっているのはそのためでもある。
 
 | | **案A: Flutter先行** | **案B: KGP先行(推奨)** | **案C: compileSdk先行** |
 |---|---|---|---|
 | **順序** | ① Flutter 3.47.5(`.metadata`/`ci.yml:19`/`Dockerfile:7`)→ ② vga 11(#87)→ ③ compileSdk 37 → permission_handler 13(#90)→ ④ KGP | ① 緑のPRを取り込む(#82,#83,#84,#86 → **#88 → #105**)→ ② #89 → ③ KGP残り3つ → ④ compileSdk 37 → #90 → ⑤ Flutter 3.47.5 → #87 → ⑥ #85 | ① compileSdk 37 → permission_handler 13(#90)→ ② Flutter 3.47.5 → vga 11 → ③ KGP |
 | **最初の一手で解けるブロッカー** | vga 11(#87) | KGP警告 5→4(F6)＋Dependabotの枠が空く(1-4) | permission_handler 13(#90) |
 | **最初の一手の大きさ** | **中**。Android SDK値は動かない(F3)が、`.metadata`/CI/Dockerfileの3箇所同時＋`dart format` 差分(H8)が1本に載る | **小**。1PR＝1プラグイン。どれも既にCIで緑(F10)か、CIログで即判定できる(H2) | **小**。`build.gradle.kts:20` に1行。ただしH1が外れるとAGP/Gradle更新へ膨らむ |
-| **依拠する仮説** | H4, H8 | H2(外れてもCIログで即分かる)、H6 | **H1**(外れるとH3へ連鎖) |
+| **最初の一手が依拠する仮説** | H4, H8 | H2(外れてもCIログで即分かる)、H6。④まで進めばH1も | **H1**(外れるとH3へ連鎖) |
 | **CIだけで検証できるか** | 可。ただし失敗時に**どの要素が原因か切り分けにくい** | **可**。1ステップ＝1PRで、APKビルドとKGP警告ログが毎回判定する | 可。1行なので切り分けは容易 |
 | **失敗したときの戻し方** | Flutter更新PR全体をまとめて revert。中間状態が無い | **1本ずつ revert できる** | 1行を revert |
 | **最大のリスク** | H4が外れると、**Flutter更新PRの中でKGPがエラー化する**。同じPRにformat差分も同居しているため、何が原因で落ちたのか読み解くコストが高い | ②③が空振り(H2)しても、①の成果(KGP 5→4、枠の解放、Node 20非推奨の解消)は残る | ブロッカーは1つ解けるが、**期限のあるKGP(H4)に一切手を付けないまま時間が経つ** |
@@ -336,7 +350,8 @@ KGPがエラー化しても、F9のとおりプラグインを上げれば前進
 7. **Flutter 3.47.5**(`.metadata` / `ci.yml:19` / `Dockerfile:7` の3箇所同時)→ #87(vga 11)
 8. **#85(geolocator 14)** … `package_info_plus` のKGP(F8)を受け入れるかを判断してから
 
-⑥と⑦は互いに独立なので、手が足りれば並行できる。
+**6 と 7 は互いに独立**(F3のとおり compileSdk と Flutter は連動しない)なので、
+手が足りれば並行できる。
 
 ---
 
@@ -350,7 +365,7 @@ KGPがエラー化しても、F9のとおりプラグインを上げれば前進
 | **#86** | vibration 3.2.0 → 3.2.1 | 緑 / 緑 | **すぐ取り込む** | パッチ更新。KGP警告に影響なし(依存先の `vibration_platform_interface` は変わらない — F14) |
 | **#88** | device_info_plus 11.5.0 → 13.2.0 | 緑 / 緑 | **すぐ取り込む(#105 より先に)** | KGP警告を解消する(F6)。**#105 は device_info_plus を消さない**(F13)ので、#88 は不要にならない。ただし #105 が先に入ると直接依存でなくなりDependabotが自動クローズしうるため、**順序が重要**(1-3節) |
 | **#89** | flutter_foreground_task 10.0.0 → 11.0.3 | 緑 / 緑 | **実機確認のうえ取り込む** | KGP警告を解消する(F7)＝案Bの本命の1本。ただしメジャー更新で、位置・センサーの常時取得を担うフォアグラウンドサービスそのもの(H6)。CI緑だけで入れない |
-| **#85** | geolocator 13.0.4 → 14.0.2 | 緑 / 緑 | **待つ**(KGP片付け後) | CIは緑だが `package_info_plus` を持ち込んでKGP警告を6件に増やす(F8)。KGPを潰し切る前に入れると逆行する。加えてメジャー更新で測位挙動に直結(H7) |
+| **#85** | geolocator 13.0.4 → 14.0.2 | 緑 / 緑 | **待つ**(KGP片付け後) | CIは緑だが `package_info_plus` を持ち込んでKGP警告を6件に増やす(F8)。KGPを潰し切る前に入れると逆行する。加えてメジャー更新で測位挙動に直結(H7)。なお上流は既に 14.0.3 が出ており、Dependabotのrebaseで対象版は動きうる |
 | **#87** | very_good_analysis 10.3.0 → 11.0.0 | **赤 / 赤** | **待つ**(Flutter 3.47.5 後) | Dart 3.13.0 が要る(F1)。こちらでは解決不能。取り込むのはFlutter更新の直後。infoが増えてもCIは落ちない(F12)ので、Flutterさえ上がれば素直に入るはず |
 | **#90** | permission_handler 11.4.0 → 13.0.2 | 緑 / **赤** | **待つ**(`compileSdk = 37` の明示後) | `build.gradle.kts:20` に `compileSdk = 37` を足せば解ける見込み(F2)。**Flutter更新では解けない**(F3)。AGP更新が要るかは未確定(F4, H1) |
 
