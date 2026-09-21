@@ -8,14 +8,22 @@ import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
 class WifiScanRepository {
-  final FirebaseDatabase _db;
-  final FirebaseAuth _auth;
+  final FirebaseDatabase? _dbOverride;
+  final FirebaseAuth? _authOverride;
   Timer? _scanTimer;
   StreamSubscription<List<WiFiAccessPoint>>? _resultsSub;
 
   WifiScanRepository({FirebaseDatabase? db, FirebaseAuth? auth})
-    : _db = db ?? FirebaseDatabase.instance,
-      _auth = auth ?? FirebaseAuth.instance;
+    : _dbOverride = db,
+      _authOverride = auth;
+
+  /// Firebaseの解決は**コンストラクタではなく使うときに**行う。
+  /// `FirebaseDatabase.instance`/`FirebaseAuth.instance`は
+  /// `Firebase.initializeApp()`前に触ると例外になるため、生成しただけで
+  /// 落ちると、このリポジトリを差し替えたテスト(送信しない偽物)まで
+  /// Firebaseの初期化を要求してしまう。
+  FirebaseDatabase get _db => _dbOverride ?? FirebaseDatabase.instance;
+  FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
 
   String get _uid => _auth.currentUser!.uid;
 
