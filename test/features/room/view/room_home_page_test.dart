@@ -3,8 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/room/room_join_error.dart';
 import 'package:kakureru/features/room/view/room_home_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
+
+Finder _nameField() => find.byType(TextField).first;
+
+Finder _codeField() => find.byType(TextField).last;
 
 FilledButton _createRoomButton(WidgetTester tester) =>
     tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ルームを作る'));
@@ -62,6 +67,39 @@ Future<void> _pumpHomePageWithSavedName(
   await _deliverSavedDisplayName(tester, completer, savedDisplayName);
 }
 
+/// joinRoomが必ず[error]で失敗するRoomViewModel。本物はFirebaseを叩くため
+/// widgetテストでは呼べないので、失敗の中身だけを注入する。
+class _FailingRoomViewModel extends RoomViewModel {
+  _FailingRoomViewModel(this.error);
+
+  final Object error;
+
+  @override
+  Future<void> joinRoom(String code, String displayName) async {
+    state = AsyncError(error, StackTrace.empty);
+  }
+}
+
+/// 名前とコードを埋めて「ルームに参加」を押し、[error]で失敗させる。
+Future<void> _tapJoinAndFail(WidgetTester tester, Object error) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        savedDisplayNameProvider.overrideWith((ref) async => 'たろう'),
+        roomViewModelProvider.overrideWith(() => _FailingRoomViewModel(error)),
+      ],
+      child: const MaterialApp(home: RoomHomePage()),
+    ),
+  );
+  await tester.pump();
+
+  await tester.enterText(_codeField(), '1234');
+  await tester.pump();
+
+  await tester.tap(find.widgetWithText(OutlinedButton, 'ルームに参加'));
+  await tester.pump();
+}
+
 void main() {
   group('名前の復元とボタンの有効/無効', () {
     testWidgets('保存済みの名前がある場合、入力欄に触れなくてもボタンが押せる', (tester) async {
@@ -69,9 +107,11 @@ void main() {
 
       expect(find.text('たろう'), findsOneWidget);
       expect(_createRoomButton(tester).onPressed, isNotNull);
-      expect(_joinRoomButton(tester).onPressed, isNotNull);
+      // 参加はルームコードも要るので、名前だけ復元された時点ではまだ押せない。
+      expect(_joinRoomButton(tester).onPressed, isNull);
       // 復元直後でも赤字のエラー表示は出ない。
       expect(find.text('名前を入力してください'), findsNothing);
+      expect(find.text('ルームコードを入力してください'), findsNothing);
     });
 
     testWidgets('保存済みの名前が無い(初回起動)場合、ボタンは無効のまま', (tester) async {
@@ -99,13 +139,96 @@ void main() {
       final completer = await _pumpHomePage(tester);
 
       // 保存名が届く前にユーザーが入力を始める。
-      await tester.enterText(find.byType(TextField).first, 'じろう');
+      await tester.enterText(_nameField(), 'じろう');
       await tester.pump();
 
       await _deliverSavedDisplayName(tester, completer, 'たろう');
 
       expect(find.text('じろう'), findsOneWidget);
       expect(find.text('たろう'), findsNothing);
+    });
+  });
+
+  group('ルームコードの入力', () {
+    testWidgets('名前があってもコードが4桁そろうまで参加ボタンは押せない', (tester) async {
+      await _pumpHomePageWithSavedName(tester, 'たろう');
+
+      await tester.enterText(_codeField(), '12');
+      await tester.pump();
+      expect(_joinRoomButton(tester).onPressed, isNull);
+
+      await tester.enterText(_codeField(), '1234');
+      await tester.pump();
+      expect(_joinRoomButton(tester).onPressed, isNotNull);
+
+      // 「ルームを作る」側はコードと無関係に押せるままであること。
+      expect(_createRoomButton(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('コードが4桁でも名前が無ければ参加ボタンは押せない', (tester) async {
+      await _pumpHomePageWithSavedName(tester, null);
+
+      await tester.enterText(_codeField(), '1234');
+      await tester.pump();
+
+      expect(_joinRoomButton(tester).onPressed, isNull);
+    });
+
+    testWidgets('数字以外は入力されず、5桁目も入らない', (tester) async {
+      await _pumpHomePageWithSavedName(tester, 'たろう');
+
+      await tester.enterText(_codeField(), '12a3');
+      await tester.pump();
+      expect(tester.widget<TextField>(_codeField()).controller!.text, '123');
+
+      await tester.enterText(_codeField(), '12345');
+      await tester.pump();
+      expect(tester.widget<TextField>(_codeField()).controller!.text, '1234');
+      expect(_joinRoomButton(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('コード欄に触れるまでは赤字を出さず、触れた後は理由が出る', (tester) async {
+      await _pumpHomePageWithSavedName(tester, 'たろう');
+
+      expect(find.text('ルームコードを入力してください'), findsNothing);
+      expect(find.text('ルームコードは4桁の数字です'), findsNothing);
+
+      await tester.enterText(_codeField(), '12');
+      await tester.pump();
+      expect(find.text('ルームコードは4桁の数字です'), findsOneWidget);
+
+      await tester.enterText(_codeField(), '');
+      await tester.pump();
+      expect(find.text('ルームコードを入力してください'), findsOneWidget);
+
+      await tester.enterText(_codeField(), '1234');
+      await tester.pump();
+      expect(find.text('ルームコードは4桁の数字です'), findsNothing);
+      expect(find.text('ルームコードを入力してください'), findsNothing);
+    });
+  });
+
+  group('参加に失敗したときの表示', () {
+    testWidgets('終了したルームには日本語の理由が出る', (tester) async {
+      await _tapJoinAndFail(tester, RoomJoinError.finished);
+
+      expect(find.text('この部屋は終了しています'), findsOneWidget);
+    });
+
+    testWidgets('存在しないコードには日本語の理由が出る', (tester) async {
+      await _tapJoinAndFail(tester, RoomJoinError.notFound);
+
+      expect(find.text('そのコードの部屋が見つかりません'), findsOneWidget);
+      // `Exception: `の接頭辞や英文が見えないこと。
+      expect(find.textContaining('Exception'), findsNothing);
+    });
+
+    testWidgets('想定外の失敗でも生の例外文は出さない', (tester) async {
+      await _tapJoinAndFail(tester, Exception('permission-denied'));
+
+      expect(find.textContaining('permission-denied'), findsNothing);
+      expect(find.textContaining('Exception'), findsNothing);
+      expect(find.text('通信に失敗しました。電波の良い場所でもう一度お試しください'), findsOneWidget);
     });
   });
 }

@@ -6,6 +6,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
+import 'package:kakureru/features/room/room_join_error.dart';
 
 /// ルームの作成・参加・監視といったRTDB操作をまとめたリポジトリ。
 class RoomRepository {
@@ -48,7 +49,7 @@ class RoomRepository {
     try {
       debugPrint('[createRoom] step2 rooms/$roomId/meta set 開始');
       await _db.ref('rooms/$roomId/meta').set({
-        'status': 'WAITING',
+        'status': RoomStatus.waiting.raw,
         'hostUserId': _uid,
         'roomCode': code,
         'createdAt': ServerValue.timestamp,
@@ -127,7 +128,7 @@ class RoomRepository {
   /// ルームを終了状態にする(解散)。
   Future<void> finishRoom(String roomId) async {
     await _db.ref('rooms/$roomId/meta').update({
-      'status': 'FINISHED',
+      'status': RoomStatus.finished.raw,
       'endedAt': ServerValue.timestamp,
     });
   }
@@ -147,7 +148,7 @@ class RoomRepository {
     );
 
     await _db.ref('rooms/$roomId/meta').update({
-      'status': 'PLAYING',
+      'status': RoomStatus.playing.raw,
       'releasedAt': startedAt + setting.releaseWaitSec * 1000,
       'endsAt': startedAt + setting.gameDurationSec * 1000,
     });
@@ -166,7 +167,7 @@ class RoomRepository {
   /// FUGITIVEに戻す処理は[resetOwnRoleForRestart]を参照。
   Future<void> restartRoom(String roomId) async {
     await _db.ref('rooms/$roomId/meta').update({
-      'status': 'WAITING',
+      'status': RoomStatus.waiting.raw,
       'startedAt': null,
       'releasedAt': null,
       'endsAt': null,
@@ -267,16 +268,30 @@ class RoomRepository {
     });
   }
 
-  /// コードからルームに参加する
+  /// コードからルームに参加する。
+  ///
+  /// 終了したルームの`roomCodes/{code}`は削除されない運用のため、
+  /// コードが引けただけでは参加させず、`meta/status`が[RoomStatus.finished]
+  /// でないことまで確認する(終了済みのルームに入ると待機画面で
+  /// 永久に待つことになるため)。進行中([RoomStatus.playing])のルームへの
+  /// 途中参加は従来どおり許可する。
+  ///
+  /// 失敗理由は[RoomJoinError]で投げる(画面側で日本語に変換する)。
   Future<String> joinRoom({
     required String code,
     required String displayName,
     required String deviceId,
   }) async {
     final snapshot = await _db.ref('roomCodes/$code').get();
-    if (!snapshot.exists) throw Exception('ルームが見つかりません');
+    if (!snapshot.exists) throw RoomJoinError.notFound;
 
     final roomId = (snapshot.value as Map)['roomId'] as String;
+
+    final statusSnapshot = await _db.ref('rooms/$roomId/meta/status').get();
+    if (RoomStatus.fromRaw(statusSnapshot.value as String?) ==
+        RoomStatus.finished) {
+      throw RoomJoinError.finished;
+    }
 
     await _db.ref('rooms/$roomId/users/$_uid').set({
       'displayName': displayName,

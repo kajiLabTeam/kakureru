@@ -4,6 +4,7 @@ import '../model/room.dart';
 import '../player_name_validation.dart';
 import '../repository/player_preferences_repository.dart';
 import '../repository/room_repository.dart';
+import '../room_code_validation.dart';
 
 final roomRepositoryProvider = Provider((ref) => RoomRepository());
 
@@ -47,11 +48,12 @@ class RoomViewModel extends AsyncNotifier<String?> {
 
   Future<void> joinRoom(String code, String displayName) async {
     final normalized = normalizePlayerName(displayName);
+    final normalizedCode = normalizeRoomCode(code);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final deviceId = await ref.read(deviceIdProvider.future);
       final roomId = await _repo.joinRoom(
-        code: code,
+        code: normalizedCode,
         displayName: normalized,
         deviceId: deviceId,
       );

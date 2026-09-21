@@ -68,7 +68,7 @@ void main() {
     expect(joinButton.onPressed, isNull);
   });
 
-  testWidgets('名前を入力すればボタンが有効化される', (tester) async {
+  testWidgets('名前を入力すればルーム作成ボタンが有効化される', (tester) async {
     await tester.pumpWidget(
       const ProviderScope(child: MaterialApp(home: RoomHomePage())),
     );
@@ -84,7 +84,8 @@ void main() {
       find.widgetWithText(OutlinedButton, 'ルームに参加'),
     );
     expect(createButton.onPressed, isNotNull);
-    expect(joinButton.onPressed, isNotNull);
+    // 参加にはルームコード(4桁)も要るので、名前だけではまだ押せない。
+    expect(joinButton.onPressed, isNull);
   });
 
   testWidgets('名前を入力してから空に戻すとエラーが表示され、ボタンは無効のまま', (tester) async {
@@ -157,7 +158,9 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('ルームを作る'), findsOneWidget);
-    expect(find.textContaining('boom'), findsOneWidget);
+    // 生の例外文(`Exception: boom`)ではなく日本語の案内が出る。
+    expect(find.textContaining('boom'), findsNothing);
+    expect(find.text('通信に失敗しました。電波の良い場所でもう一度お試しください'), findsOneWidget);
   });
 
   testWidgets('「ルームに参加」を押すと送信中はスピナーが出る', (tester) async {
@@ -174,6 +177,7 @@ void main() {
     await tester.pump();
 
     await tester.enterText(find.byType(TextField).first, 'たろう');
+    await tester.enterText(find.byType(TextField).last, '1234');
     await tester.pump();
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'ルームに参加'));
