@@ -7,8 +7,8 @@ import 'package:wifi_scan/wifi_scan.dart';
 /// `wifi_scan` プラグインのMethodChannel。
 const _channel = MethodChannel('wifi_scan');
 
-/// `canStartScan` がプラグイン内部で使っているコード
-/// (`CanStartScan`のindexではなく、プラットフォーム側の数値)。
+/// プラットフォーム側が `canStartScan` で返す数値
+/// (プラグインの `_deserializeCanStartScan` が読み替えている値)。
 const _canYes = 1;
 const _canLocationServiceDisabled = 5;
 

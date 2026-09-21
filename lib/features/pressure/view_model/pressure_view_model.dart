@@ -51,17 +51,6 @@ class PressureViewModel extends Notifier<PressureState> {
   /// しない。以前は「available のときだけ早期return」だったので、センサー
   /// 非搭載端末では待機→ゲームの遷移のたびに [checkSensorAvailable] の
   /// タイムアウト(最大3秒)を待ち直していた(issue #30)。
-  /// 前のルーム・前の画面で出た失敗表示を消す(待機画面を開いたときに呼ぶ)。
-  ///
-  /// このproviderはルームをまたいで生き続けるため、失敗したまま退出して
-  /// 別のルームに入ると、何も押していないのに失敗文が残って見える。
-  /// 状態を書き換えるので、ビルド中(useEffectの中)から直接呼ばず、
-  /// フレーム確定後に呼ぶこと。
-  void clearCalibrationFailure() {
-    if (state.calibrationFailure == CalibrationFailure.none) return;
-    state = state.copyWith(calibrationFailure: CalibrationFailure.none);
-  }
-
   Future<void> init(String roomId) async {
     if (state.sensorAvailability != PressureSensorAvailability.checking) {
       // 判定は済んでいる。ただしRTDBへの記録はルームごとに要るため、
@@ -87,6 +76,17 @@ class PressureViewModel extends Notifier<PressureState> {
     } finally {
       _initInFlight = null;
     }
+  }
+
+  /// 前のルーム・前の画面で出た失敗表示を消す(待機画面を開いたときに呼ぶ)。
+  ///
+  /// このproviderはルームをまたいで生き続けるため、失敗したまま退出して
+  /// 別のルームに入ると、何も押していないのに失敗文が残って見える。
+  /// 状態を書き換えるので、ビルド中(useEffectの中)から直接呼ばず、
+  /// フレーム確定後に呼ぶこと。
+  void clearCalibrationFailure() {
+    if (state.calibrationFailure == CalibrationFailure.none) return;
+    state = state.copyWith(calibrationFailure: CalibrationFailure.none);
   }
 
   Future<void> _checkAndStart(String roomId) async {
