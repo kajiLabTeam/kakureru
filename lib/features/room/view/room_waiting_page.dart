@@ -76,7 +76,7 @@ class RoomWaitingPage extends HookConsumerWidget {
     // ref.listenではなくuseEffect(roomAsync.value依存)にしているのは、
     // 既にゲームが進行中(room.status == playing)のルームに、コード入力
     // だけで新規参加してこのページに新規マウントされるケースがあるため
-    // (joinRoomはroom.statusを見ずに参加を許可する)。最初のスナップショット
+    // (joinRoomは終了済みのルームだけを弾き、進行中への途中参加は許可する)。最初のスナップショット
     // の時点で既にplayingだと、ref.listenは登録後の「変化」にしか反応しない
     // ので、GamePageへの遷移も鬼指名の自動受諾も発火しなかった(待機画面の
     // まま止まってしまう不具合の原因)。useEffectなら初回到達分の評価も

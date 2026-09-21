@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/room_join_error.dart';
@@ -270,13 +271,23 @@ class RoomRepository {
 
   /// コードからルームに参加する。
   ///
-  /// 終了したルームの`roomCodes/{code}`は削除されない運用のため、
-  /// コードが引けただけでは参加させず、`meta/status`が[RoomStatus.finished]
-  /// でないことまで確認する(終了済みのルームに入ると待機画面で
-  /// 永久に待つことになるため)。進行中([RoomStatus.playing])のルームへの
-  /// 途中参加は従来どおり許可する。
+  /// 終了したルームもその`roomCodes/{code}`も削除されない運用のため、
+  /// コードが引けただけでは参加させず、`meta`を読んで次の3つを確認する
+  /// (終了済みのルームに入ると待機画面や結果画面で行き止まりになるため)。
   ///
-  /// 失敗理由は[RoomJoinError]で投げる(画面側で日本語に変換する)。
+  /// 1. `meta`が存在すること。`rooms`だけをコンソールで削除した後や、
+  ///    [createRoom]が`meta`の書き込み前に失敗して[_rollbackRoom]でも
+  ///    `roomCodes/{code}`を消せなかった(ルール上、`meta/hostUserId`が
+  ///    無いと消せない)後には、行き先の無いコードだけが残る
+  /// 2. `status`が[RoomStatus.finished]でないこと
+  /// 3. `endsAt`(ゲーム終了時刻)を過ぎていないこと。**現状こちらが本命**で、
+  ///    `status`を`FINISHED`にする[finishRoom]はまだ呼ばれておらず、遊び
+  ///    終えたルームは`PLAYING`のまま`endsAt`だけが過去になる。「先週の
+  ///    コードを打つと終わった部屋に入ってしまう」のはこの状態
+  ///
+  /// まだ終わっていない進行中([RoomStatus.playing])のルームへの途中参加は
+  /// 従来どおり許可する。失敗理由は[RoomJoinError]で投げる(画面側で日本語に
+  /// 変換する)。
   Future<String> joinRoom({
     required String code,
     required String displayName,
@@ -287,9 +298,16 @@ class RoomRepository {
 
     final roomId = (snapshot.value as Map)['roomId'] as String;
 
-    final statusSnapshot = await _db.ref('rooms/$roomId/meta/status').get();
-    if (RoomStatus.fromRaw(statusSnapshot.value as String?) ==
-        RoomStatus.finished) {
+    final metaSnapshot = await _db.ref('rooms/$roomId/meta').get();
+    final meta = metaSnapshot.value as Map<dynamic, dynamic>?;
+    if (meta == null) throw RoomJoinError.notFound;
+
+    if (RoomStatus.fromRaw(meta['status']?.toString()) == RoomStatus.finished) {
+      throw RoomJoinError.finished;
+    }
+
+    final endsAt = (meta['endsAt'] as num?)?.toInt();
+    if (endsAt != null && await _serverNowMillis() >= endsAt) {
       throw RoomJoinError.finished;
     }
 
@@ -302,6 +320,21 @@ class RoomRepository {
     });
 
     return roomId;
+  }
+
+  /// 現在のサーバー時刻(エポックミリ秒)。
+  ///
+  /// `.info/serverTimeOffset`はSDKがローカルに持つ値なので、購読すれば
+  /// すぐに届く。それでも届かない場合に参加そのものを止めてしまわないよう、
+  /// 短いタイムアウトでオフセット0(=端末時計)にフォールバックする。
+  Future<int> _serverNowMillis() async {
+    final offset = await _db
+        .ref('.info/serverTimeOffset')
+        .onValue
+        .map((event) => (event.snapshot.value as num?)?.toInt() ?? 0)
+        .first
+        .timeout(const Duration(seconds: 3), onTimeout: () => 0);
+    return serverNowMillis(offset);
   }
 
   /// ルームの状態をリアルタイムで監視する

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -226,6 +227,8 @@ String _actionErrorMessage(Object? error) {
     case RoomJoinError.finished:
       return 'この部屋は終了しています';
     default:
+      // 画面から原文が消えるため、調査できるようログにだけ残す。
+      debugPrint('[RoomHomePage] 想定外の失敗: $error');
       return '通信に失敗しました。電波の良い場所でもう一度お試しください';
   }
 }
