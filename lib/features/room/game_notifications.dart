@@ -1,40 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:kakureru/core/utils/local_notifications.dart';
-import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
-import 'package:vibration/vibration.dart';
-
-/// 鬼放出の瞬間に一度だけ端末を振動させ、通知も出すフック。
-///
-/// ポケットに入れたまま遊ぶ運用のため、振動だけだと画面を見ていないと
-/// 気づけない。
-///
-/// [tick] には毎秒更新されるカウンタを渡すこと。releasedAt 自体は変化
-/// しないため、これが無いと releasedAt が確定した最初の一瞬しか判定
-/// されない。
-void useDemonReleaseNotification({
-  required int? releasedAt,
-  required int serverTimeOffset,
-  required int tick,
-}) {
-  final hasNotified = useRef(false);
-  useEffect(() {
-    if (releasedAt == null || hasNotified.value) return null;
-    if (serverNowMillis(serverTimeOffset) >= releasedAt) {
-      hasNotified.value = true;
-      Vibration.hasVibrator().then((hasVibrator) {
-        if (hasVibrator) Vibration.vibrate(duration: 800);
-      });
-      showDemonReleasedNotification();
-    }
-    return null;
-  }, [releasedAt, tick]);
-}
 
 /// 誰かがDEMONになったら(ホストの指名受諾・自己申告どちらでも)SnackBarで
 /// 全員に知らせるフック。

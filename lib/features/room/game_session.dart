@@ -3,13 +3,14 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
+import 'package:kakureru/features/room/game_alerts.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
-/// ゲーム画面に滞在している間だけセンサー4種(位置情報・気圧・Wi-Fi・BLE)を
-/// 動かすフック。画面を離れたらすべて止める。
+/// ゲーム画面に滞在している間だけ、センサー4種(位置情報・気圧・Wi-Fi・BLE)と
+/// 時間で発火する判定([GameAlerts])を動かすフック。画面を離れたらすべて止める。
 ///
-/// 4つとも「ゲーム画面の滞在に紐づけて開始/停止する」という同じライフ
+/// どれも「ゲーム画面の滞在に紐づけて開始/停止する」という同じライフ
 /// サイクルなので1つのフックにまとめている。GamePage.build に並べていた
 /// ときは、画面のレイアウトを読むために無関係なセンサー配線を毎回読み
 /// 飛ばす必要があった(useLeftUserNotificationsと同じ切り出し方針)。
@@ -48,6 +49,14 @@ void useGameSession(
   useEffect(() {
     ref.read(wifiScanRepositoryProvider).startScanning(roomId);
     return () => ref.read(wifiScanRepositoryProvider).stopScanning();
+  }, [roomId]);
+
+  // 時間で発火する判定(鬼放出・ゲーム終了・エリア外)。**画面が消えていても
+  // 進む**ように、ウィジェットの再描画ではなく自前のタイマーで回している
+  // (issue #71)。センサー4種と同じく、ゲーム画面の滞在に紐づけて開始/停止する。
+  useEffect(() {
+    ref.read(gameAlertsProvider.notifier).start(roomId);
+    return () => ref.read(gameAlertsProvider.notifier).stop();
   }, [roomId]);
 
   // BLEの広告・スキャン(issue #16)。myUidが確定するまで

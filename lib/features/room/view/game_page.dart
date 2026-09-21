@@ -15,9 +15,9 @@ import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/area_alert.dart';
-import 'package:kakureru/features/room/area_alert_notifications.dart';
 import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
+import 'package:kakureru/features/room/game_alerts.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/game_notifications.dart';
 import 'package:kakureru/features/room/game_over_navigation.dart';
@@ -113,9 +113,13 @@ class GamePage extends HookConsumerWidget {
       nowMillis: now,
     );
 
-    // 残り時間を1秒ごとに再計算するためのティッカー。
+    // 残り時間の**表示**を1秒ごとに描き直すためのティッカー。
     // .info/serverTimeOffset 自体はズレが変化した時にしか流れてこないため、
     // 表示を毎秒更新するにはこのタイマーで再描画をトリガーする必要がある。
+    //
+    // 値そのものは読まない。書き込みが再描画を呼び、その中で now が
+    // 取り直されるのが目的。時間で発火する**判定**はここではなく
+    // GameAlerts 側にある(画面が消えると再描画は止まるため。issue #71)。
     final tick = useState(0);
     useEffect(() {
       final timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -162,25 +166,15 @@ class GamePage extends HookConsumerWidget {
       return null;
     }, const []);
 
-    // 鬼放出の瞬間に一度だけ振動+通知で知らせる。
-    useDemonReleaseNotification(
-      releasedAt: room?.releasedAt,
-      serverTimeOffset: offset,
-      tick: tick.value,
-    );
-
-    // ゲーム終了を検知したら結果画面へ遷移する。
+    // 鬼放出の振動+通知、ゲーム終了の検知、エリア外の判定は GameAlerts
+    // (useGameSessionが開始する)が1秒ごとのタイマーで回している。画面が
+    // 消えていても進むようにするため、ウィジェットの再描画から切り離した
+    // (issue #71)。ここはその結果を受け取って画面に出すだけ。
     useGameOverNavigation(
+      ref,
       context,
-      room: room,
       roomId: roomId,
-      serverTimeOffset: offset,
-      tick: tick.value,
       isShowingCaughtTransition: showCaughtTransition.value,
-      // 偽プレイヤーを出している間は「逃走者0人で即終了」を抑える。
-      // 1台で自分が鬼になって開始すると、RTDB上の逃走者は0人なので
-      // GamePageに入った瞬間に結果画面へ飛ばされてしまう(issue #67)。
-      debugMocksEnabled: showMocks,
     );
 
     // 「同じメンバーでもう一回」による巻き戻しの検知。ホストが結果画面
@@ -195,47 +189,30 @@ class GamePage extends HookConsumerWidget {
 
     // プレイエリア外のアラート(issue #61 / UI改修モック2a-07)。
     //
-    // hooksはbuildの本体でしか呼べない(roomAsync.whenのdata:の中は
-    // roomがdataのときしか実行されず、呼ぶと順序が崩れる)ため、判定と
-    // 状態の持ち越しはここで済ませ、表示だけをdata:側でぶら下げる。
+    // 判定・振動・通知はすべて GameAlerts 側で回っている(issue #71)。画面が
+    // 消えている間も検知と解除を続ける必要があり、ウィジェットの再描画に
+    // 乗せられないため。ここはその結果を表示に変換するだけ。
     //
-    // 本文(roomAsync.when)がdataを描いていないときはroomを渡さない。
-    // 渡してしまうと、RTDBが一瞬こけてスピナーやエラーが出ている間も
-    // 判定だけが進み、バナーが無いまま振動と通知だけが続く。観測は
-    // 「分からない」になり、フック側が直前の判定を保つので、dataに戻れば
-    // 猶予を数え直さずに警告が復帰する。
+    // 以前はここで「本文がdataを描いているか」も条件に混ぜ、RTDBが一瞬
+    // こけている間に「バナーが無いのに振動だけ続く」のを防いでいた。いまは
+    // GameAlerts側が room を取れないことをそのまま「判定に使える情報が無い」
+    // (OutsideAreaStatus.unknown)として扱い、猶予判定が直前の状態を保つので、
+    // 画面の状態に依存せず同じ結果になる。
     //
-    // エリア未設定のルームではgameAreaが空なのでobserveOutsideAreaが
-    // 常に「内側」を返し、以下すべてが自動的に無効になる。
-    //
-    // 「dataを描いているか」は本文と同じ`when`で判定する。ローディング/
-    // エラーの細かい扱い(skipLoadingOnRefresh等)を書き写すと、いつか
-    // 本文とずれるため。
-    final isShowingRoomData = roomAsync.when(
-      data: (_) => true,
-      loading: () => false,
-      error: (_, _) => false,
-    );
+    // 矢印の向きに使う観測だけは、表示のたびに最新の位置から作り直す。
     final myLocation = _findLocation(locationState.locations, myUid);
     final outsideAreaObservation = observeOutsideArea(
-      area: isShowingRoomData ? room?.setting.gameArea : null,
+      area: room?.setting.gameArea,
       location: myLocation,
       // updatedAtはServerValue.timestampで書かれるのでサーバー時刻で比べる。
       nowMillis: now,
     );
-    // 猶予距離・猶予時間を通したあとの「いま警告を出すか」。
-    final isOutsideAreaWarning = useOutsideAreaWarning(
-      observation: outsideAreaObservation,
-      tick: tick.value,
-    );
-    // 表示と発火の条件を揃える。これ1つで赤帯・地図の赤かぶせ・戻り方
-    // カード・振動・通知がまとめて出入りする。
+    // 表示と発火の条件を揃える。これ1つで赤帯・地図の赤かぶせ・方向矢印が
+    // まとめて出入りする。
     final outsideAreaAlert = outsideAreaAlertOf(
-      isWarning: isOutsideAreaWarning && isShowingRoomData,
+      isWarning: ref.watch(gameAlertsProvider).isOutsideAreaWarning,
       observation: outsideAreaObservation,
     );
-    // 外にいる間だけ振動と通知を続ける(戻ったら通知も消す)。
-    useOutsideAreaNotifications(isOutside: outsideAreaAlert != null);
 
     final pressureState = ref.watch(pressureViewModelProvider);
     final bleDetections = ref.watch(bleViewModelProvider);
