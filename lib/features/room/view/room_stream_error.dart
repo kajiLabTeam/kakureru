@@ -35,11 +35,17 @@ class RoomStreamErrorView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 画面にはuserFacingErrorMessageの1文しか出さないため、生の例外を見られる
+    // のはこのログだけになる(issue #95)。
+    debugPrint('[RoomStreamErrorView] 購読の失敗: $error');
+
     return Center(
-      child: Padding(
+      // 横向きの小型端末では、案内文2〜3行とボタン2つで縦が足りなくなる
+      // (画面の向きは固定していない)。はみ出しの代わりにスクロールさせる。
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               userFacingErrorMessage(error),

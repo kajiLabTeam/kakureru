@@ -86,6 +86,13 @@ void useRestartRecovery(
         '[useRestartRecovery] postFrameCallback fired mounted=${context.mounted}',
       );
       if (!context.mounted) return;
+      // popUntil/popの最中はルートがまだ生きていて`context.mounted`もtrueの
+      // ままなので、mountedだけでは「もう離脱した画面」を弾けない。結果画面で
+      // 「ホームに戻る」を押した直後(popアニメーション約300ms)に巻き戻しが
+      // 届くと、退出済み(users/{uid}を消した)なのに待機画面へ飛ばされ、
+      // 参加者一覧に自分がいない待機画面から動けなくなる。加えて
+      // pushReplacementがホームのルートを置き換えるため戻り先も失われる。
+      if (ModalRoute.of(context)?.isActive != true) return;
       onNavigate?.call();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(

@@ -120,7 +120,7 @@ Future<StreamController<Room>> _pumpResultPage(
 /// 結果画面を「ホーム画面の上にpushされたルート」として出す。「ホームに戻る」
 /// の`popUntil`がホームまで戻ることを見るには、下にルートが要るため
 /// ([_pumpResultPage]は結果画面自体が最初のルートで、popUntilが何もしない)。
-Future<void> _pumpResultPageOverHome(
+Future<StreamController<Room>> _pumpResultPageOverHome(
   WidgetTester tester, {
   required _FakeRoomRepository roomRepo,
 }) async {
@@ -167,6 +167,7 @@ Future<void> _pumpResultPageOverHome(
     ),
   );
   await tester.pump();
+  return controller;
 }
 
 void main() {
@@ -474,6 +475,35 @@ void main() {
 
       expect(find.text('待機中'), findsOneWidget);
       expect(roomRepo.leaveRoomCalls, isEmpty);
+    });
+
+    testWidgets('ホームへ戻る途中に巻き戻しが届いても、待機画面へ連れ戻されない', (tester) async {
+      // popアニメーションの間はルートが生きていてcontext.mountedもtrueの
+      // ままなので、その隙にstatus==WAITINGが届くとuseRestartRecoveryが
+      // pushReplacementしてしまう。退出済み(users/{uid}を消した)なのに
+      // 参加者一覧に自分がいない待機画面へ飛ぶうえ、pushReplacementが
+      // ホームのルートを置き換えるため戻り先も失われる(issue #94)。
+      final roomRepo = _FakeRoomRepository();
+      final controller = await _pumpResultPageOverHome(
+        tester,
+        roomRepo: roomRepo,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'ホームに戻る'));
+      await tester.pump();
+      controller.add(
+        _room(
+          status: RoomStatus.waiting,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
+      expect(find.text('ホーム画面'), findsOneWidget);
+      expect(find.text('待機中'), findsNothing);
     });
 
     testWidgets('退出に失敗してもホームには戻れる', (tester) async {

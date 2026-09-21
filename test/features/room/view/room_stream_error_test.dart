@@ -11,6 +11,8 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 const _roomId = 'room1';
 
+final _subscribeError = Exception('購読の失敗を模擬');
+
 /// RTDBを叩かずに退出の呼び出しだけ記録するRoomRepositoryの差し替え。
 class _FakeRoomRepository extends RoomRepository {
   final List<String> leaveRoomCalls = [];
@@ -94,10 +96,17 @@ void main() {
                 child: TextButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => Scaffold(
-                        body: RoomStreamErrorView(
-                          roomId: _roomId,
-                          error: Exception('購読の失敗を模擬'),
+                      // GamePageと同じく、戻る操作を全部止めた画面から出られる
+                      // ことまで確かめる(PopScopeが見るのはmaybePopだけで、
+                      // Navigator.popは素通りする)。この前提が崩れると、
+                      // GamePageのユーザーは無言で詰む。
+                      builder: (_) => PopScope(
+                        canPop: false,
+                        child: Scaffold(
+                          body: RoomStreamErrorView(
+                            roomId: _roomId,
+                            error: _subscribeError,
+                          ),
                         ),
                       ),
                     ),

@@ -49,6 +49,9 @@ AsyncAction useAsyncAction(BuildContext context) {
         await action();
         result = (status: AsyncActionStatus.succeeded, error: null);
       } on Object catch (e) {
+        // 画面にはuserFacingErrorMessageの1文しか出さないため、原因を追える
+        // のはこのログだけになる(issue #95。writeOrLogFailureと同じ方針)。
+        debugPrint('[useAsyncAction] 失敗: $e');
         result = (status: AsyncActionStatus.failed, error: e);
         if (context.mounted) error.value = e;
       } finally {
