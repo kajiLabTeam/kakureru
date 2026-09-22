@@ -9,6 +9,7 @@ import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
+import 'package:kakureru/features/room/room_code_validation.dart';
 import 'package:kakureru/features/room/room_create_error.dart';
 import 'package:kakureru/features/room/room_join_error.dart';
 
@@ -300,6 +301,9 @@ class RoomRepository {
   ///   終了したルームに入れてしまう。`rooms/{roomId}`をまたぐ原子的な
   ///   読み書きはルール上できない(docs/rtdb-schema.md参照)ため、窓を
   ///   狭めることしかできない
+  /// - サーバー時刻を取得できないときは、終わっているかを判定できないので
+  ///   参加自体を止める([RoomJoinError.serverTimeUnavailable])。端末時計で
+  ///   代用すると、時計が遅れている端末が終了済みルームに入れてしまう
   /// - デバッグ用の偽プレイヤー(`showDebugMockPlayersProvider`)を出して
   ///   1台で始めたルームは、RTDB上の逃走者が0人なので途中参加できない
   ///   (ゲーム画面側は偽プレイヤーを逃走者ありに倒しているが、参加時は
@@ -309,7 +313,15 @@ class RoomRepository {
     required String displayName,
     required String deviceId,
   }) async {
-    final snapshot = await _db.ref('roomCodes/$code').get();
+    // 画面(参加ボタンの活性)とViewModelでも弾いているが、このメソッドは
+    // 公開APIなので、別の入口から直接呼ばれても`roomCodes/`の読み取り
+    // (ルール上ここは読めず、生の権限エラーになる)まで進ませない。
+    final normalizedCode = normalizeRoomCode(code);
+    if (validateRoomCode(normalizedCode) != null) {
+      throw RoomJoinError.invalidCode;
+    }
+
+    final snapshot = await _db.ref('roomCodes/$normalizedCode').get();
     if (!snapshot.exists) throw RoomJoinError.notFound;
 
     final roomId = (snapshot.value as Map)['roomId'] as String;
@@ -324,10 +336,16 @@ class RoomRepository {
     final hasFugitives =
         status != RoomStatus.playing || await _hasFugitives(roomId);
 
+    // サーバー時刻が取れないまま端末時計で判定すると、時計が遅れている
+    // 端末が`endsAt`を過ぎたルームに入れてしまう。判定できないときは
+    // 参加させない(画面側で理由を出す)。
+    final nowMillis = await _serverNowMillis();
+    if (nowMillis == null) throw RoomJoinError.serverTimeUnavailable;
+
     if (isGameOver(
       status: status,
       endsAt: (meta['endsAt'] as num?)?.toInt(),
-      nowMillis: await _serverNowMillis(),
+      nowMillis: nowMillis,
       hasFugitives: hasFugitives,
     )) {
       throw RoomJoinError.finished;
@@ -368,8 +386,13 @@ class RoomRepository {
   }
 
   /// 現在のサーバー時刻(エポックミリ秒)。
-  Future<int> _serverNowMillis() async =>
-      serverNowMillis(await fetchServerTimeOffset(_db));
+  /// サーバー時刻(エポックミリ秒)。オフセットを取得できなければnull。
+  ///
+  /// 端末時計へフォールバックしないのは[fetchServerTimeOffset]のdoc参照。
+  Future<int?> _serverNowMillis() async {
+    final offset = await fetchServerTimeOffset(_db);
+    return offset == null ? null : serverNowMillis(offset);
+  }
 
   /// ルームの状態をリアルタイムで監視する
   Stream<Room> watchRoom(String roomId) {

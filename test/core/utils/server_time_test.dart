@@ -74,8 +74,9 @@ void main() {
       expect(cancelled, isTrue);
     });
 
-    test('届かなければオフセット0にフォールバックし、購読を解除する', () async {
-      // 取得できないときに参加そのものを止めてしまわないための経路。
+    test('届かなければnullを返し、購読を解除する', () async {
+      // オフセット0(=端末時計)へ倒すと、時計が遅れている端末が終了済み
+      // ルームに参加できてしまうため、取得できないことをそのまま返す。
       // 購読を解除しないと`.info`の購読が宙に浮いたままになる。
       var cancelled = false;
       final controller = StreamController<DatabaseEvent>(
@@ -88,7 +89,23 @@ void main() {
         timeout: const Duration(milliseconds: 20),
       );
 
-      expect(offset, 0);
+      expect(offset, isNull);
+      expect(cancelled, isTrue);
+    });
+
+    test('ストリームがエラーになってもnullを返し、購読を解除する', () async {
+      // タイムアウトを待たずに失敗が分かる経路。ここで0を返すと
+      // タイムアウト時と同じ「終了済みルームに入れる」問題になる。
+      var cancelled = false;
+      final controller = StreamController<DatabaseEvent>(
+        onCancel: () => cancelled = true,
+      );
+      addTearDown(controller.close);
+      final future = fetchServerTimeOffset(_FakeDatabase(controller));
+
+      controller.addError(Exception('offline'));
+
+      expect(await future, isNull);
       expect(cancelled, isTrue);
     });
   });

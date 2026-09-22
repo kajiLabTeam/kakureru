@@ -231,6 +231,17 @@ void main() {
       expect(find.text('ルームコードは4桁の数字です'), findsOneWidget);
     });
 
+    testWidgets('サーバー時刻を取得できなかった失敗も日本語で出る', (tester) async {
+      // 端末時計で代用せずに参加を止める経路(room_repository参照)。
+      // 何が起きたか分からないままにせず、次の行動を案内する。
+      await _tapJoinAndFail(tester, RoomJoinError.serverTimeUnavailable);
+
+      expect(
+        find.text('時刻を確認できませんでした。電波の良い場所でもう一度お試しください'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('ルームコードを発行できなかった失敗も日本語で出る', (tester) async {
       // 作成と参加は同じproviderの状態を共有しているため、表示の変換も
       // 共通。ここでは変換だけを確認する(発行の失敗そのものは

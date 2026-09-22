@@ -235,6 +235,8 @@ String _actionErrorMessage(Object? error) {
       return 'この部屋は終了しています';
     case RoomJoinError.invalidCode:
       return 'ルームコードは$roomCodeLength桁の数字です';
+    case RoomJoinError.serverTimeUnavailable:
+      return '時刻を確認できませんでした。電波の良い場所でもう一度お試しください';
     case RoomCreateError.codeExhausted:
       return 'ルームコードが空いていません。少し待ってからもう一度お試しください';
     default:

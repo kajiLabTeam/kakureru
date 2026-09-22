@@ -14,7 +14,11 @@ import 'package:kakureru/features/room/room_join_error.dart';
 /// (`ref()` / `get()` / `set()` / `onValue`)だけを実装する。未実装のメンバを
 /// 呼んだ場合はNoSuchMethodErrorで落ちるので、テストが黙って通ることはない。
 class _FakeDatabase implements FirebaseDatabase {
-  _FakeDatabase(this.root, {this.allRoomCodesTaken = false});
+  _FakeDatabase(
+    this.root, {
+    this.allRoomCodesTaken = false,
+    this.serverTimeUnavailable = false,
+  });
 
   /// RTDBのツリーをネストしたMapで持つ。
   final Map<String, Object?> root;
@@ -22,6 +26,10 @@ class _FakeDatabase implements FirebaseDatabase {
   /// trueにすると、どの4桁コードを引いても既に使われている状態になる
   /// (コードが枯渇したときの[RoomCreateError]の検証に使う)。
   final bool allRoomCodesTaken;
+
+  /// trueにすると`.info/serverTimeOffset`の購読がエラーになる(オフライン等)。
+  /// タイムアウト待ちをせずに「サーバー時刻が取れない」状態を作れる。
+  final bool serverTimeUnavailable;
 
   /// リポジトリが`get()`で読んだパス。「そもそも読みにいかない」ことを
   /// 検証するために記録する(テスト側から直接[read]した分は含めない)。
@@ -100,8 +108,12 @@ class _FakeReference implements DatabaseReference {
   }
 
   @override
-  Stream<DatabaseEvent> get onValue =>
-      Stream.value(_FakeEvent(_FakeSnapshot(_db.read(_path))));
+  Stream<DatabaseEvent> get onValue {
+    if (_db.serverTimeUnavailable && _path == '.info/serverTimeOffset') {
+      return Stream<DatabaseEvent>.error(Exception('offline'));
+    }
+    return Stream.value(_FakeEvent(_FakeSnapshot(_db.read(_path))));
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -246,6 +258,49 @@ void main() {
       );
 
       // 参加者として残ってしまうと、他の端末の一覧にも出てしまう。
+      expect(_usersOf(db), isNot(contains('me')));
+    });
+
+    test('サーバー時刻を取得できないときは参加せず、usersを書き込まない', () async {
+      // オフセットが取れないまま端末時計で判定すると、時計が遅れている
+      // 端末が`endsAt`を過ぎたルームに入れてしまう(PR #103のレビュー指摘)。
+      final db = _FakeDatabase(
+        _rtdbWith(status: 'PLAYING', endsAt: _nowMillis + 60000),
+        serverTimeUnavailable: true,
+      );
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await expectLater(
+        withClock(
+          Clock.fixed(DateTime.fromMillisecondsSinceEpoch(_nowMillis)),
+          () => repo.joinRoom(
+            code: '1234',
+            displayName: 'たろう',
+            deviceId: 'device-1',
+          ),
+        ),
+        throwsA(RoomJoinError.serverTimeUnavailable),
+      );
+
+      expect(_usersOf(db), isNot(contains('me')));
+    });
+
+    test('4桁の数字でないコードはinvalidCodeになり、RTDBを読みにいかない', () async {
+      // 画面とViewModelでも弾いているが、このメソッドを直接呼ばれても
+      // `roomCodes/`の読み取り(権限エラー)まで進ませない。
+      final db = _FakeDatabase(_rtdbWith());
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await expectLater(
+        repo.joinRoom(code: '', displayName: 'たろう', deviceId: 'device-1'),
+        throwsA(RoomJoinError.invalidCode),
+      );
+      await expectLater(
+        repo.joinRoom(code: '12a4', displayName: 'たろう', deviceId: 'device-1'),
+        throwsA(RoomJoinError.invalidCode),
+      );
+
+      expect(db.readPaths, isEmpty);
       expect(_usersOf(db), isNot(contains('me')));
     });
 

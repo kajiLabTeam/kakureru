@@ -27,11 +27,15 @@ int serverNowMillis(int offsetMillis) {
   return clock.now().millisecondsSinceEpoch + offsetMillis;
 }
 
-/// `.info/serverTimeOffset`を1回だけ読んで返す。
+/// `.info/serverTimeOffset`を1回だけ読んで返す。取得できなければnull。
 ///
-/// このノードはSDKがローカルに持つ値なので購読すればすぐ届くが、
-/// 届かないまま呼び出し側の処理(ルーム参加など)を止めてしまわないよう、
-/// [timeout]を過ぎたらオフセット0(=端末時計)にフォールバックする。
+/// このノードはSDKがローカルに持つ値なので購読すればすぐ届く。それでも
+/// [timeout]を過ぎた場合とストリームがエラーになった場合は、**オフセット0
+/// (=端末時計)へ黙ってフォールバックしない**。ルームが終わっているかの
+/// 判定はサーバー時刻に依存しており、時計が遅れている端末で端末時計を
+/// サーバー時刻として使うと、`endsAt`を過ぎた終了済みルームに参加できて
+/// しまうため(PR #103のレビュー指摘)。判定できないことを呼び出し側へ
+/// 伝えて、そちらで失敗として扱わせる。
 /// [Stream.first]はイベントが来るまで購読を解いてくれず、タイムアウト時に
 /// 購読が宙に浮くため、ここでは自前で[StreamSubscription]を持って必ず
 /// キャンセルする。
@@ -39,11 +43,11 @@ int serverNowMillis(int offsetMillis) {
 /// 画面から継続的に見る場合は[serverTimeOffsetProvider]を使うこと。
 /// こちらは単発で必要な場所(リポジトリ層)のための入口で、
 /// オフセットの取得経路を1箇所にまとめるために置いている。
-Future<int> fetchServerTimeOffset(
+Future<int?> fetchServerTimeOffset(
   FirebaseDatabase db, {
   Duration timeout = const Duration(seconds: 3),
 }) async {
-  final completer = Completer<int>();
+  final completer = Completer<int?>();
   final subscription = db
       .ref('.info/serverTimeOffset')
       .onValue
@@ -54,11 +58,11 @@ Future<int> fetchServerTimeOffset(
           }
         },
         onError: (_) {
-          if (!completer.isCompleted) completer.complete(0);
+          if (!completer.isCompleted) completer.complete(null);
         },
       );
   try {
-    return await completer.future.timeout(timeout, onTimeout: () => 0);
+    return await completer.future.timeout(timeout, onTimeout: () => null);
   } finally {
     await subscription.cancel();
   }
