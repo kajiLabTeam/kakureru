@@ -16,7 +16,7 @@ void main() {
     await tester.pumpWidget(pumpTarget());
 
     expect(find.text('使用していい範囲'), findsNothing);
-    expect(find.byIcon(Icons.map_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.help_outline), findsOneWidget);
   });
 
   testWidgets('押すと使ってよい場所・ダメな場所がすべて出る', (tester) async {

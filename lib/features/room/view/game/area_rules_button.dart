@@ -19,7 +19,9 @@ class AreaRulesButton extends StatelessWidget {
       iconSize: 20,
       visualDensity: VisualDensity.compact,
       tooltip: '使用していい範囲',
-      icon: const Icon(Icons.map_outlined),
+      // 地図アイコンではなく「?」。「ここ入っていいんだっけ?」と迷った
+      // ときに押すものなので、ヘルプの見た目のほうが押す気になる。
+      icon: const Icon(Icons.help_outline),
       onPressed: () => showAreaRulesDialog(context),
     );
   }
