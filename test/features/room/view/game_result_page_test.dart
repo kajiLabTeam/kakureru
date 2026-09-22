@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -23,7 +24,14 @@ class _FakeRoomRepository extends RoomRepository {
   Completer<void>? pendingRestart;
   int restartCalls = 0;
   final List<String> resetOwnRoleCalls = [];
-  int leaveRoomCalls = 0;
+
+  /// [leaveRoom]に渡されたroomId。回数だけでなくIDも見ることで、別の部屋を
+  /// 消していないことまで確かめる。
+  final List<String> leaveRoomCalls = [];
+
+  /// trueにすると[leaveRoom]が失敗する(退出に失敗してもホームへ戻れること
+  /// を確かめるため)。
+  bool leaveRoomFails = false;
 
   @override
   Future<void> restartRoom(String roomId) {
@@ -40,7 +48,8 @@ class _FakeRoomRepository extends RoomRepository {
 
   @override
   Future<void> leaveRoom(String roomId) async {
-    leaveRoomCalls++;
+    leaveRoomCalls.add(roomId);
+    if (leaveRoomFails) throw Exception('退出の失敗を模擬');
   }
 }
 
@@ -99,6 +108,64 @@ Future<StreamController<Room>> _pumpResultPage(
     initialRoom ??
         _room(
           status: RoomStatus.playing,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          ],
+        ),
+  );
+  await tester.pump();
+  return controller;
+}
+
+/// 結果画面を「ホーム画面の上にpushされたルート」として出す。「ホームに戻る」
+/// の`popUntil`がホームまで戻ることを見るには、下にルートが要るため
+/// ([_pumpResultPage]は結果画面自体が最初のルートで、popUntilが何もしない)。
+Future<StreamController<Room>> _pumpResultPageOverHome(
+  WidgetTester tester, {
+  required _FakeRoomRepository roomRepo,
+  String myUid = _hostUid,
+  Room? initialRoom,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(800, 1600));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
+  final controller = StreamController<Room>.broadcast();
+  addTearDown(controller.close);
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        myUidProvider.overrideWithValue(myUid),
+        roomRepositoryProvider.overrideWithValue(roomRepo),
+        roomStreamProvider(_roomId).overrideWith((ref) => controller.stream),
+      ],
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const GameResultPage(roomId: _roomId),
+                  ),
+                ),
+                child: const Text('ホーム画面'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('ホーム画面'));
+  // 部屋が届くまで結果画面はCircularProgressIndicatorを出し続けるため、
+  // ここでpumpAndSettleすると終わらない。遷移アニメーションぶんだけ進める。
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  controller.add(
+    initialRoom ??
+        _room(
+          status: RoomStatus.finished,
           users: const [
             RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
           ],
@@ -236,7 +303,13 @@ void main() {
       roomRepo.pendingRestart!.completeError(Exception('巻き戻しの失敗を模擬'));
       await tester.pump();
 
-      expect(find.textContaining('巻き戻しの失敗を模擬'), findsOneWidget);
+      // 生の例外文ではなくユーザー向けの案内を出す(issue #95)。文言自体の
+      // 網羅はerror_message_test.dart側で見る。
+      expect(find.textContaining('巻き戻しの失敗を模擬'), findsNothing);
+      expect(
+        find.text(userFacingErrorMessage(Exception('巻き戻しの失敗を模擬'))),
+        findsOneWidget,
+      );
       expect(
         find.widgetWithText(FilledButton, '同じメンバーでもう一回'),
         findsOneWidget,
@@ -344,6 +417,144 @@ void main() {
 
       expect(roomRepo.resetOwnRoleCalls, isEmpty);
       expect(find.text('待機中'), findsOneWidget);
+    });
+  });
+
+  group('ホームに戻る', () {
+    testWidgets('押すとleaveRoomが1回呼ばれ、ホームまで戻る', (tester) async {
+      // 結果画面へはpushReplacementで来るため待機画面のdisposeによる退出を
+      // 通らない。ここで消さないと幽霊参加者が残る(issue #94)。
+      final roomRepo = _FakeRoomRepository();
+      await _pumpResultPageOverHome(tester, roomRepo: roomRepo);
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'ホームに戻る'));
+      await tester.pumpAndSettle();
+
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
+      expect(find.text('ホーム画面'), findsOneWidget);
+      expect(find.byType(GameResultPage), findsNothing);
+    });
+
+    testWidgets('バックボタンで戻ったときもleaveRoomが呼ばれる', (tester) async {
+      // 結果画面にはPopScopeが無く、Androidのバックボタン/スワイプ戻るで
+      // そのままホームまで戻れてしまう。ボタン以外の経路でも幽霊参加者を
+      // 残さないため、画面の破棄時にも退出する(issue #94)。
+      final roomRepo = _FakeRoomRepository();
+      await _pumpResultPageOverHome(tester, roomRepo: roomRepo);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
+      expect(find.text('ホーム画面'), findsOneWidget);
+    });
+
+    testWidgets('巻き戻しで待機画面へ移るときは退出しない', (tester) async {
+      // 「同じメンバーでもう一回」による遷移でも結果画面は破棄されるが、
+      // これは離脱ではないので退出してはいけない(退出すると、戻った待機
+      // 画面に自分がいない)。
+      final roomRepo = _FakeRoomRepository();
+      final controller = await _pumpResultPage(
+        tester,
+        roomRepo: roomRepo,
+        myUid: _hostUid,
+        pressureViewModel: _FakePressureViewModel(),
+        initialRoom: _room(
+          status: RoomStatus.playing,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          ],
+        ),
+      );
+
+      controller.add(
+        _room(
+          status: RoomStatus.waiting,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('待機中'), findsOneWidget);
+      expect(roomRepo.leaveRoomCalls, isEmpty);
+    });
+
+    testWidgets('ホームへ戻る途中に巻き戻しが届いても、待機画面へ連れ戻されない', (tester) async {
+      // popアニメーションの間はルートが生きていてcontext.mountedもtrueの
+      // ままなので、その隙にstatus==WAITINGが届くとuseRestartRecoveryが
+      // pushReplacementしてしまう。退出済み(users/{uid}を消した)なのに
+      // 参加者一覧に自分がいない待機画面へ飛ぶうえ、pushReplacementが
+      // ホームのルートを置き換えるため戻り先も失われる(issue #94)。
+      final roomRepo = _FakeRoomRepository();
+      final controller = await _pumpResultPageOverHome(
+        tester,
+        roomRepo: roomRepo,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'ホームに戻る'));
+      await tester.pump();
+      controller.add(
+        _room(
+          status: RoomStatus.waiting,
+          users: const [
+            RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
+      expect(find.text('ホーム画面'), findsOneWidget);
+      expect(find.text('待機中'), findsNothing);
+    });
+
+    testWidgets('ホームへ戻る途中に巻き戻しが届いても、役割リセットを書き込まない', (tester) async {
+      // 鬼だった人が「ホームに戻る」を押すと、leaveRoomが`users/{uid}`を
+      // removeする。その直後に巻き戻し(WAITING)が届いたからといって役割
+      // リセットのupdateを出すと、removeの後に同じノードがroleだけ付いた形で
+      // 復活し、issue #94で消したはずの幽霊参加者に戻ってしまう
+      // (人数・キャリブレーション判定・鬼のランダム選出に混ざる)。
+      final roomRepo = _FakeRoomRepository();
+      const demonUsers = [
+        RoomUser(id: _hostUid, displayName: 'ホスト', isHost: true),
+        RoomUser(id: _memberUid, displayName: 'メンバー', role: UserRole.demon),
+      ];
+      final controller = await _pumpResultPageOverHome(
+        tester,
+        roomRepo: roomRepo,
+        myUid: _memberUid,
+        initialRoom: _room(
+          status: RoomStatus.finished,
+          users: demonUsers,
+        ),
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'ホームに戻る'));
+      await tester.pump();
+      controller.add(
+        _room(status: RoomStatus.waiting, users: demonUsers),
+      );
+      await tester.pumpAndSettle();
+
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
+      expect(roomRepo.resetOwnRoleCalls, isEmpty);
+      expect(find.text('ホーム画面'), findsOneWidget);
+      expect(find.text('待機中'), findsNothing);
+    });
+
+    testWidgets('退出に失敗してもホームには戻れる', (tester) async {
+      final roomRepo = _FakeRoomRepository()..leaveRoomFails = true;
+      await _pumpResultPageOverHome(tester, roomRepo: roomRepo);
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'ホームに戻る'));
+      await tester.pumpAndSettle();
+
+      expect(roomRepo.leaveRoomCalls, [_roomId]);
+      expect(find.text('ホーム画面'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }
