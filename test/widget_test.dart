@@ -8,7 +8,7 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// createRoom/joinRoomの完了タイミングをテストから制御するための
-/// RoomViewModelの差し替え。本物はFirebase/device_info_plusを叩くため
+/// RoomViewModelの差し替え。本物はFirebaseを叩くため
 /// widgetテストでは呼べず、Completerで代わりに結果を注入する。
 class _ControllableRoomViewModel extends RoomViewModel {
   Completer<String?>? createCompleter;

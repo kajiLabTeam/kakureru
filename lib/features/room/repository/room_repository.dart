@@ -35,7 +35,6 @@ class RoomRepository {
   /// ルームを作成して roomId を返す
   Future<String> createRoom({
     required String displayName,
-    required String deviceId,
     RoomSetting setting = const RoomSetting(),
   }) async {
     final roomId = _db.ref('rooms').push().key!;
@@ -62,7 +61,6 @@ class RoomRepository {
       debugPrint('[createRoom] step4 rooms/$roomId/users/$_uid set 開始');
       await _db.ref('rooms/$roomId/users/$_uid').set({
         'displayName': displayName,
-        'deviceId': deviceId,
         'isHost': true,
         'role': 'FUGITIVE',
         'joinedAt': ServerValue.timestamp,
@@ -271,7 +269,6 @@ class RoomRepository {
   Future<String> joinRoom({
     required String code,
     required String displayName,
-    required String deviceId,
   }) async {
     final snapshot = await _db.ref('roomCodes/$code').get();
     if (!snapshot.exists) throw Exception('ルームが見つかりません');
@@ -280,7 +277,6 @@ class RoomRepository {
 
     await _db.ref('rooms/$roomId/users/$_uid').set({
       'displayName': displayName,
-      'deviceId': deviceId,
       'isHost': false,
       'role': 'FUGITIVE',
       'joinedAt': ServerValue.timestamp,

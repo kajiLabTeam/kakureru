@@ -16,7 +16,6 @@ abstract class RoomUser with _$RoomUser {
   const factory RoomUser({
     required String id,
     @Default('') String displayName,
-    @Default('') String deviceId,
     @Default(false) bool isHost,
     @Default(UserRole.fugitive)
     @JsonKey(unknownEnumValue: UserRole.fugitive)
