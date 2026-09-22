@@ -3,6 +3,8 @@ import '../model/room.dart';
 import '../player_name_validation.dart';
 import '../repository/player_preferences_repository.dart';
 import '../repository/room_repository.dart';
+import '../room_code_validation.dart';
+import '../room_join_error.dart';
 
 final roomRepositoryProvider = Provider((ref) => RoomRepository());
 
@@ -37,10 +39,17 @@ class RoomViewModel extends AsyncNotifier<String?> {
 
   Future<void> joinRoom(String code, String displayName) async {
     final normalized = normalizePlayerName(displayName);
+    final normalizedCode = normalizeRoomCode(code);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
+      // 画面側でも参加ボタンを無効にしているが、ここでも弾いておく。
+      // 不正なコードのまま進むと`roomCodes/`の読み取りが権限エラーになり、
+      // 英文の例外がそのまま画面に出るため(issue #96)。
+      if (validateRoomCode(normalizedCode) != null) {
+        throw RoomJoinError.invalidCode;
+      }
       final roomId = await _repo.joinRoom(
-        code: code,
+        code: normalizedCode,
         displayName: normalized,
       );
       await _preferences.saveDisplayName(normalized);

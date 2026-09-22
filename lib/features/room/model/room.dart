@@ -5,7 +5,27 @@ import 'package:kakureru/features/room/model/room_user.dart';
 
 part 'room.freezed.dart';
 
-enum RoomStatus { waiting, playing, finished }
+/// ルームの進行状態。[raw]はRTDBの`rooms/{roomId}/meta/status`に入る文字列。
+/// 読み書きの両方でこの定数を使い、生の文字列をコード中に散らさない。
+enum RoomStatus {
+  waiting('WAITING'),
+  playing('PLAYING'),
+  finished('FINISHED');
+
+  const RoomStatus(this.raw);
+
+  /// RTDBに保存される文字列表現。
+  final String raw;
+
+  /// RTDBの文字列から変換する。未設定・未知の値は[waiting]として扱う
+  /// (古いルームや書き込み途中のルームで画面が壊れないようにするため)。
+  static RoomStatus fromRaw(String? value) {
+    for (final status in RoomStatus.values) {
+      if (status.raw == value) return status;
+    }
+    return RoomStatus.waiting;
+  }
+}
 
 @freezed
 abstract class Room with _$Room {
@@ -35,7 +55,7 @@ abstract class Room with _$Room {
       id: id,
       roomCode: meta['roomCode']?.toString() ?? '',
       hostUserId: meta['hostUserId'] as String? ?? '',
-      status: _parseStatus(meta['status'] as String?),
+      status: RoomStatus.fromRaw(meta['status'] as String?),
       basePressure: (meta['basePressure'] as num?)?.toDouble(),
       createdAt: meta['createdAt'] as int? ?? 0,
       startedAt: meta['startedAt'] as int?,
@@ -54,16 +74,5 @@ abstract class Room with _$Room {
           )
           .toList(),
     );
-  }
-
-  static RoomStatus _parseStatus(String? value) {
-    switch (value) {
-      case 'PLAYING':
-        return RoomStatus.playing;
-      case 'FINISHED':
-        return RoomStatus.finished;
-      default:
-        return RoomStatus.waiting;
-    }
   }
 }

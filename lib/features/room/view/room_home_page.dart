@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/features/room/player_name_validation.dart';
+import 'package:kakureru/features/room/room_code_validation.dart';
+import 'package:kakureru/features/room/room_create_error.dart';
+import 'package:kakureru/features/room/room_join_error.dart';
 import 'package:kakureru/features/room/view/room_waiting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
@@ -18,6 +22,7 @@ class RoomHomePage extends HookConsumerWidget {
     // TextFieldの入力を毎回のbuildで拾えるよう、controllerの変更を購読して
     // 再描画をトリガーする(controllerだけではウィジェットは自動で更新されない)。
     useListenable(nameController);
+    useListenable(codeController);
 
     // 前回保存済みの名前を、入力欄がまだ空のうちだけ初期値として復元する
     // (ユーザーが既に入力し始めていたら上書きしない)。nameErrorの計算より
@@ -46,6 +51,13 @@ class RoomHomePage extends HookConsumerWidget {
     final hasTouchedName = useState(false);
     final showNameError = hasTouchedName.value ? nameError : null;
 
+    // ルームコードも名前と同じ扱い。空のまま参加を押すと`roomCodes/`への
+    // 読み取りになり権限エラーの英文が出てしまうので、4桁そろうまで
+    // 参加ボタン自体を無効にする。赤字は一度触れた後だけ出す。
+    final codeError = validateRoomCode(codeController.text);
+    final hasTouchedCode = useState(false);
+    final showCodeError = hasTouchedCode.value ? codeError : null;
+
     // ルーム作成/参加は同じroomViewModelProviderを共有しているため、
     // state.isLoadingだけでは押されたのがどちらのボタンか区別できない。
     // ローディング表示(スピナー)を押した側だけに出すため、ローカルに
@@ -57,6 +69,13 @@ class RoomHomePage extends HookConsumerWidget {
       if (!next.isLoading) {
         isCreating.value = false;
         isJoining.value = false;
+      }
+      // 画面には日本語の定型文しか出さないぶん、原因を追えるよう生の失敗を
+      // ログに残す。表示側(build)ではなくここで出すのは、buildは入力の
+      // 1打鍵ごとに走るため同じ行が何度も出てしまうため。
+      final error = next.error;
+      if (error != null && _actionErrorIsUnexpected(error)) {
+        debugPrint('[RoomHomePage] 想定外の失敗: $error');
       }
       final roomId = next.value;
       if (roomId != null) {
@@ -141,11 +160,22 @@ class RoomHomePage extends HookConsumerWidget {
                   TextField(
                     controller: codeController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'ルームコード(4桁)'),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(roomCodeLength),
+                    ],
+                    onChanged: (_) => hasTouchedCode.value = true,
+                    decoration: InputDecoration(
+                      labelText: 'ルームコード($roomCodeLength桁)',
+                      errorText: _codeErrorMessage(showCodeError),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton(
-                    onPressed: state.isLoading || nameError != null
+                    onPressed:
+                        state.isLoading ||
+                            nameError != null ||
+                            codeError != null
                         ? null
                         : () {
                             isJoining.value = true;
@@ -171,7 +201,7 @@ class RoomHomePage extends HookConsumerWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 24),
                 child: Text(
-                  '${state.error}',
+                  _actionErrorMessage(state.error),
                   style: const TextStyle(color: Color(0xFFE5484D)),
                 ),
               ),
@@ -181,6 +211,43 @@ class RoomHomePage extends HookConsumerWidget {
     );
   }
 }
+
+String? _codeErrorMessage(RoomCodeError? error) {
+  switch (error) {
+    case RoomCodeError.empty:
+      return 'ルームコードを入力してください';
+    case RoomCodeError.invalidFormat:
+      return 'ルームコードは$roomCodeLength桁の数字です';
+    case null:
+      return null;
+  }
+}
+
+/// 作成/参加の失敗をユーザー向けの日本語にする。
+///
+/// 生の例外(`Exception: ...`やFirebaseの英文)をそのまま画面に出さない。
+/// 原因が特定できないものは、次にどうすればよいかだけを伝える。
+String _actionErrorMessage(Object? error) {
+  switch (error) {
+    case RoomJoinError.notFound:
+      return 'そのコードの部屋が見つかりません';
+    case RoomJoinError.finished:
+      return 'この部屋は終了しています';
+    case RoomJoinError.invalidCode:
+      return 'ルームコードは$roomCodeLength桁の数字です';
+    case RoomJoinError.serverTimeUnavailable:
+      return '時刻を確認できませんでした。電波の良い場所でもう一度お試しください';
+    case RoomCreateError.codeExhausted:
+      return 'ルームコードが空いていません。少し待ってからもう一度お試しください';
+    default:
+      return '通信に失敗しました。電波の良い場所でもう一度お試しください';
+  }
+}
+
+/// [_actionErrorMessage]が「通信に失敗しました」に丸めてしまう失敗かどうか。
+/// 丸めた失敗だけをログに出すために使う。
+bool _actionErrorIsUnexpected(Object error) =>
+    error is! RoomJoinError && error is! RoomCreateError;
 
 String? _nameErrorMessage(PlayerNameError? error) {
   switch (error) {
