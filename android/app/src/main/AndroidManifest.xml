@@ -22,6 +22,8 @@
     android:usesPermissionFlags="neverForLocation"/>
 <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+<!-- 足元写真の撮影(image_picker, ImageSource.camera)にカメラの起動が要る。 -->
+<uses-permission android:name="android.permission.CAMERA"/>
     <application
         android:label="kakureru"
         android:name="${applicationName}"

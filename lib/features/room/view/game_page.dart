@@ -24,6 +24,7 @@ import 'package:kakureru/features/room/game_over_navigation.dart';
 import 'package:kakureru/features/room/game_session.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/opponent_roster_status.dart';
+import 'package:kakureru/features/room/photo_capture_config.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
@@ -38,6 +39,8 @@ import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/game/opponent_detail_card.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
 import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
+import 'package:kakureru/features/room/view/game/photo_capture_banner.dart';
+import 'package:kakureru/features/room/view_model/photo_capture_controller.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
@@ -147,6 +150,22 @@ class GamePage extends HookConsumerWidget {
 
     // ゲーム画面に滞在している間だけ、位置情報・気圧・Wi-Fi・BLEを動かす。
     useGameSession(ref, roomId: roomId, myUid: myUid);
+
+    // 撮影プロンプトのタイマー。間隔はsetting/photoIntervalSec、前回の撮影
+    // 時刻はusers/{uid}/lastPhotoAt(アプリ再起動をまたいで復元するため)。
+    // PHOTO_API_BASE_URL未設定の環境では機能を無効化するだけで、
+    // タイマー自体は動かしたままにしても実害は無いためフックは常に呼ぶ
+    // (呼び出しを条件分岐するとhooksの呼び出し順が崩れるため)。
+    warnIfPhotoFeatureNotConfigured();
+    final photoCapture = usePhotoCaptureController(
+      context,
+      roomId: roomId,
+      myUid: myUid,
+      intervalSec: room?.setting.photoIntervalSec ?? 300,
+      lastPhotoAt: myUid == null
+          ? null
+          : findUser(room?.users ?? const [], myUid)?.lastPhotoAt,
+    );
 
     // GPSの実測(getPositionStream)は初回の測位に時間がかかる(コールドスタート)。
     // 端末にキャッシュされた直近の位置を getLastKnownPosition で先に取り、
@@ -443,6 +462,21 @@ class GamePage extends HookConsumerWidget {
                     if (myRole == UserRole.fugitive &&
                         phase == GamePhase.beforeRelease)
                       PreReleaseBanner(countdownSec: countdownSec),
+                    // 撮影プロンプト。間隔が来た、またはアップロード失敗で
+                    // 再送待ちの画像がある間だけ出す(PHOTO_API_BASE_URL
+                    // 未設定の環境では機能ごと隠す)。
+                    if (isPhotoFeatureConfigured &&
+                        (photoCapture.state.isDue ||
+                            photoCapture.state.pendingBytes != null))
+                      PhotoCaptureBanner(
+                        state: photoCapture.state,
+                        onCapture: () {
+                          unawaited(photoCapture.capture());
+                        },
+                        onResend: () {
+                          unawaited(photoCapture.resend());
+                        },
+                      ),
                     // 位置が送れていないときの警告。原因によって直し方が
                     // 違う(設定で許可する/入り直す)ため文言を出し分ける。
                     if (locationWarningMessage(locationState)
