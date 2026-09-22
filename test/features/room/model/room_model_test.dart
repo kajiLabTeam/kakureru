@@ -71,7 +71,6 @@ void main() {
     test('fromMap injects id from the map key, not from the value', () {
       final Map<dynamic, dynamic> raw = {
         'displayName': 'host',
-        'deviceId': 'd1',
         'isHost': true,
         'role': 'DEMON',
         'joinedAt': 10,
@@ -82,6 +81,32 @@ void main() {
       expect(user.id, 'uid-1');
       expect(user.role, UserRole.demon);
       expect(user.isHost, isTrue);
+    });
+
+    // deviceId は廃止したが、廃止前に作られたルームのRTDBには値が残っている。
+    // RoomUser が持たないキー(廃止した deviceId、モデル化していない fcmToken)は
+    // 未知フィールドとして黙って無視され、読み込みが落ちないこと。
+    test('fromMap ignores unknown fields left by older clients', () {
+      final Map<dynamic, dynamic> raw = {
+        'displayName': 'host',
+        'deviceId': 'TQ3A.230805.001',
+        'fcmToken': 'token-1',
+        'isHost': true,
+        'joinedAt': 10,
+      };
+
+      final user = RoomUser.fromMap('uid-1', raw);
+
+      expect(user.id, 'uid-1');
+      expect(user.displayName, 'host');
+      expect(user.isHost, isTrue);
+      expect(user.joinedAt, 10);
+    });
+
+    // 書き込み側からも deviceId が消えていること。
+    test('toMap does not write deviceId', () {
+      const user = RoomUser(id: 'uid-1', displayName: 'x');
+      expect(user.toMap().containsKey('deviceId'), isFalse);
     });
 
     test('fromMap defaults role to fugitive when missing or unrecognized', () {

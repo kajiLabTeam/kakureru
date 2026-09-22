@@ -41,7 +41,6 @@ class RoomRepository {
   /// ルームを作成して roomId を返す
   Future<String> createRoom({
     required String displayName,
-    required String deviceId,
     RoomSetting setting = const RoomSetting(),
   }) async {
     final roomId = _db.ref('rooms').push().key!;
@@ -68,7 +67,6 @@ class RoomRepository {
       debugPrint('[createRoom] step4 rooms/$roomId/users/$_uid set 開始');
       await _db.ref('rooms/$roomId/users/$_uid').set({
         'displayName': displayName,
-        'deviceId': deviceId,
         'isHost': true,
         'role': 'FUGITIVE',
         'joinedAt': ServerValue.timestamp,
@@ -311,7 +309,6 @@ class RoomRepository {
   Future<String> joinRoom({
     required String code,
     required String displayName,
-    required String deviceId,
   }) async {
     // 画面(参加ボタンの活性)とViewModelでも弾いているが、このメソッドは
     // 公開APIなので、別の入口から直接呼ばれても`roomCodes/`の読み取り
@@ -353,7 +350,6 @@ class RoomRepository {
 
     await _db.ref('rooms/$roomId/users/$_uid').set({
       'displayName': displayName,
-      'deviceId': deviceId,
       'isHost': false,
       'role': 'FUGITIVE',
       'joinedAt': ServerValue.timestamp,

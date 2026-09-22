@@ -1,4 +1,3 @@
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../model/room.dart';
 import '../player_name_validation.dart';
@@ -19,11 +18,6 @@ final savedDisplayNameProvider = FutureProvider<String?>((ref) {
   return ref.watch(playerPreferencesRepositoryProvider).loadDisplayName();
 });
 
-final deviceIdProvider = FutureProvider<String>((ref) async {
-  final info = await DeviceInfoPlugin().androidInfo;
-  return info.id;
-});
-
 class RoomViewModel extends AsyncNotifier<String?> {
   @override
   Future<String?> build() async => null;
@@ -37,11 +31,7 @@ class RoomViewModel extends AsyncNotifier<String?> {
     final normalized = normalizePlayerName(displayName);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final deviceId = await ref.read(deviceIdProvider.future);
-      final roomId = await _repo.createRoom(
-        displayName: normalized,
-        deviceId: deviceId,
-      );
+      final roomId = await _repo.createRoom(displayName: normalized);
       await _preferences.saveDisplayName(normalized);
       return roomId;
     });
@@ -52,6 +42,7 @@ class RoomViewModel extends AsyncNotifier<String?> {
     final normalizedCode = normalizeRoomCode(code);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
+
       // 画面側でも参加ボタンを無効にしているが、ここでも弾いておく。
       // 不正なコードのまま進むと`roomCodes/`の読み取りが権限エラーになり、
       // 英文の例外がそのまま画面に出るため(issue #96)。
@@ -59,10 +50,10 @@ class RoomViewModel extends AsyncNotifier<String?> {
         throw RoomJoinError.invalidCode;
       }
       final deviceId = await ref.read(deviceIdProvider.future);
+
       final roomId = await _repo.joinRoom(
         code: normalizedCode,
         displayName: normalized,
-        deviceId: deviceId,
       );
       await _preferences.saveDisplayName(normalized);
       return roomId;
