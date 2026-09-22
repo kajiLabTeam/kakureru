@@ -233,13 +233,11 @@ void main() {
       final roomId = await repo.joinRoom(
         code: '1234',
         displayName: 'たろう',
-        deviceId: 'device-1',
       );
 
       expect(roomId, 'room-1');
       final me = _usersOf(db)!['me']! as Map<String, Object?>;
       expect(me['displayName'], 'たろう');
-      expect(me['deviceId'], 'device-1');
       expect(me['isHost'], false);
       expect(me['role'], 'FUGITIVE');
     });
@@ -252,7 +250,6 @@ void main() {
         repo.joinRoom(
           code: '1234',
           displayName: 'たろう',
-          deviceId: 'device-1',
         ),
         throwsA(RoomJoinError.finished),
       );
@@ -276,7 +273,6 @@ void main() {
           () => repo.joinRoom(
             code: '1234',
             displayName: 'たろう',
-            deviceId: 'device-1',
           ),
         ),
         throwsA(RoomJoinError.serverTimeUnavailable),
@@ -292,11 +288,11 @@ void main() {
       final repo = RoomRepository(db: db, auth: _FakeAuth());
 
       await expectLater(
-        repo.joinRoom(code: '', displayName: 'たろう', deviceId: 'device-1'),
+        repo.joinRoom(code: '', displayName: 'たろう'),
         throwsA(RoomJoinError.invalidCode),
       );
       await expectLater(
-        repo.joinRoom(code: '12a4', displayName: 'たろう', deviceId: 'device-1'),
+        repo.joinRoom(code: '12a4', displayName: 'たろう'),
         throwsA(RoomJoinError.invalidCode),
       );
 
@@ -312,7 +308,6 @@ void main() {
         repo.joinRoom(
           code: '9999',
           displayName: 'たろう',
-          deviceId: 'device-1',
         ),
         throwsA(RoomJoinError.notFound),
       );
@@ -333,7 +328,6 @@ void main() {
         repo.joinRoom(
           code: '1234',
           displayName: 'たろう',
-          deviceId: 'device-1',
         ),
         throwsA(RoomJoinError.notFound),
       );
@@ -350,7 +344,6 @@ void main() {
       await repo.joinRoom(
         code: '1234',
         displayName: 'たろう',
-        deviceId: 'device-1',
       );
 
       expect(db.readPaths, isNot(contains('rooms/room-1/users')));
@@ -365,7 +358,6 @@ void main() {
         await repo.joinRoom(
           code: '1234',
           displayName: 'たろう',
-          deviceId: 'device-1',
         ),
         'room-1',
       );
@@ -379,7 +371,6 @@ void main() {
         await repo.joinRoom(
           code: '1234',
           displayName: 'たろう',
-          deviceId: 'device-1',
         ),
         'room-1',
       );
@@ -402,7 +393,6 @@ void main() {
           () => repo.joinRoom(
             code: '1234',
             displayName: 'たろう',
-            deviceId: 'device-1',
           ),
         ),
         throwsA(RoomJoinError.finished),
@@ -422,7 +412,6 @@ void main() {
           () => repo.joinRoom(
             code: '1234',
             displayName: 'たろう',
-            deviceId: 'device-1',
           ),
         ),
         'room-1',
@@ -445,7 +434,6 @@ void main() {
           () => repo.joinRoom(
             code: '1234',
             displayName: 'たろう',
-            deviceId: 'device-1',
           ),
         ),
         throwsA(RoomJoinError.finished),
@@ -461,7 +449,6 @@ void main() {
           () => repo.joinRoom(
             code: '1234',
             displayName: 'たろう',
-            deviceId: 'device-1',
           ),
         ),
         'room-1',
@@ -488,7 +475,6 @@ void main() {
           () => repo.joinRoom(
             code: '1234',
             displayName: 'たろう',
-            deviceId: 'device-1',
           ),
         ),
         throwsA(RoomJoinError.finished),
@@ -508,7 +494,6 @@ void main() {
           () => repo.joinRoom(
             code: '1234',
             displayName: 'たろう',
-            deviceId: 'device-1',
           ),
         ),
         throwsA(RoomJoinError.finished),
@@ -535,7 +520,6 @@ void main() {
           () => repo.joinRoom(
             code: '1234',
             displayName: 'たろう',
-            deviceId: 'device-1',
           ),
         ),
         'room-1',
@@ -552,7 +536,7 @@ void main() {
       final repo = RoomRepository(db: db, auth: _FakeAuth());
 
       await expectLater(
-        repo.createRoom(displayName: 'たろう', deviceId: 'device-1'),
+        repo.createRoom(displayName: 'たろう'),
         throwsA(RoomCreateError.codeExhausted),
       );
     });

@@ -42,15 +42,12 @@ class RoomViewModel extends AsyncNotifier<String?> {
     final normalizedCode = normalizeRoomCode(code);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-
       // 画面側でも参加ボタンを無効にしているが、ここでも弾いておく。
       // 不正なコードのまま進むと`roomCodes/`の読み取りが権限エラーになり、
       // 英文の例外がそのまま画面に出るため(issue #96)。
       if (validateRoomCode(normalizedCode) != null) {
         throw RoomJoinError.invalidCode;
       }
-      final deviceId = await ref.read(deviceIdProvider.future);
-
       final roomId = await _repo.joinRoom(
         code: normalizedCode,
         displayName: normalized,

@@ -16,7 +16,6 @@ class _RecordingRoomRepository extends RoomRepository {
   Future<String> joinRoom({
     required String code,
     required String displayName,
-    required String deviceId,
   }) async {
     joinCalled = true;
     return 'room-1';
