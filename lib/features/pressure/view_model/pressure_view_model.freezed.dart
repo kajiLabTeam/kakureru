@@ -14,7 +14,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$PressureState {
 
- PressureSensorAvailability get sensorAvailability; double? get myPressureHPa; bool get isCalibrating;
+ PressureSensorAvailability get sensorAvailability; double? get myPressureHPa; bool get isCalibrating; CalibrationFailure get calibrationFailure;
 /// Create a copy of PressureState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -25,16 +25,16 @@ $PressureStateCopyWith<PressureState> get copyWith => _$PressureStateCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PressureState&&(identical(other.sensorAvailability, sensorAvailability) || other.sensorAvailability == sensorAvailability)&&(identical(other.myPressureHPa, myPressureHPa) || other.myPressureHPa == myPressureHPa)&&(identical(other.isCalibrating, isCalibrating) || other.isCalibrating == isCalibrating));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PressureState&&(identical(other.sensorAvailability, sensorAvailability) || other.sensorAvailability == sensorAvailability)&&(identical(other.myPressureHPa, myPressureHPa) || other.myPressureHPa == myPressureHPa)&&(identical(other.isCalibrating, isCalibrating) || other.isCalibrating == isCalibrating)&&(identical(other.calibrationFailure, calibrationFailure) || other.calibrationFailure == calibrationFailure));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,sensorAvailability,myPressureHPa,isCalibrating);
+int get hashCode => Object.hash(runtimeType,sensorAvailability,myPressureHPa,isCalibrating,calibrationFailure);
 
 @override
 String toString() {
-  return 'PressureState(sensorAvailability: $sensorAvailability, myPressureHPa: $myPressureHPa, isCalibrating: $isCalibrating)';
+  return 'PressureState(sensorAvailability: $sensorAvailability, myPressureHPa: $myPressureHPa, isCalibrating: $isCalibrating, calibrationFailure: $calibrationFailure)';
 }
 
 
@@ -45,7 +45,7 @@ abstract mixin class $PressureStateCopyWith<$Res>  {
   factory $PressureStateCopyWith(PressureState value, $Res Function(PressureState) _then) = _$PressureStateCopyWithImpl;
 @useResult
 $Res call({
- PressureSensorAvailability sensorAvailability, double? myPressureHPa, bool isCalibrating
+ PressureSensorAvailability sensorAvailability, double? myPressureHPa, bool isCalibrating, CalibrationFailure calibrationFailure
 });
 
 
@@ -62,12 +62,13 @@ class _$PressureStateCopyWithImpl<$Res>
 
 /// Create a copy of PressureState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? sensorAvailability = null,Object? myPressureHPa = freezed,Object? isCalibrating = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? sensorAvailability = null,Object? myPressureHPa = freezed,Object? isCalibrating = null,Object? calibrationFailure = null,}) {
   return _then(_self.copyWith(
 sensorAvailability: null == sensorAvailability ? _self.sensorAvailability : sensorAvailability // ignore: cast_nullable_to_non_nullable
 as PressureSensorAvailability,myPressureHPa: freezed == myPressureHPa ? _self.myPressureHPa : myPressureHPa // ignore: cast_nullable_to_non_nullable
 as double?,isCalibrating: null == isCalibrating ? _self.isCalibrating : isCalibrating // ignore: cast_nullable_to_non_nullable
-as bool,
+as bool,calibrationFailure: null == calibrationFailure ? _self.calibrationFailure : calibrationFailure // ignore: cast_nullable_to_non_nullable
+as CalibrationFailure,
   ));
 }
 
@@ -152,10 +153,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( PressureSensorAvailability sensorAvailability,  double? myPressureHPa,  bool isCalibrating)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( PressureSensorAvailability sensorAvailability,  double? myPressureHPa,  bool isCalibrating,  CalibrationFailure calibrationFailure)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PressureState() when $default != null:
-return $default(_that.sensorAvailability,_that.myPressureHPa,_that.isCalibrating);case _:
+return $default(_that.sensorAvailability,_that.myPressureHPa,_that.isCalibrating,_that.calibrationFailure);case _:
   return orElse();
 
 }
@@ -173,10 +174,10 @@ return $default(_that.sensorAvailability,_that.myPressureHPa,_that.isCalibrating
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( PressureSensorAvailability sensorAvailability,  double? myPressureHPa,  bool isCalibrating)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( PressureSensorAvailability sensorAvailability,  double? myPressureHPa,  bool isCalibrating,  CalibrationFailure calibrationFailure)  $default,) {final _that = this;
 switch (_that) {
 case _PressureState():
-return $default(_that.sensorAvailability,_that.myPressureHPa,_that.isCalibrating);case _:
+return $default(_that.sensorAvailability,_that.myPressureHPa,_that.isCalibrating,_that.calibrationFailure);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -193,10 +194,10 @@ return $default(_that.sensorAvailability,_that.myPressureHPa,_that.isCalibrating
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( PressureSensorAvailability sensorAvailability,  double? myPressureHPa,  bool isCalibrating)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( PressureSensorAvailability sensorAvailability,  double? myPressureHPa,  bool isCalibrating,  CalibrationFailure calibrationFailure)?  $default,) {final _that = this;
 switch (_that) {
 case _PressureState() when $default != null:
-return $default(_that.sensorAvailability,_that.myPressureHPa,_that.isCalibrating);case _:
+return $default(_that.sensorAvailability,_that.myPressureHPa,_that.isCalibrating,_that.calibrationFailure);case _:
   return null;
 
 }
@@ -208,12 +209,13 @@ return $default(_that.sensorAvailability,_that.myPressureHPa,_that.isCalibrating
 
 
 class _PressureState implements PressureState {
-  const _PressureState({this.sensorAvailability = PressureSensorAvailability.checking, this.myPressureHPa, this.isCalibrating = false});
+  const _PressureState({this.sensorAvailability = PressureSensorAvailability.checking, this.myPressureHPa, this.isCalibrating = false, this.calibrationFailure = CalibrationFailure.none});
   
 
 @override@JsonKey() final  PressureSensorAvailability sensorAvailability;
 @override final  double? myPressureHPa;
 @override@JsonKey() final  bool isCalibrating;
+@override@JsonKey() final  CalibrationFailure calibrationFailure;
 
 /// Create a copy of PressureState
 /// with the given fields replaced by the non-null parameter values.
@@ -225,16 +227,16 @@ _$PressureStateCopyWith<_PressureState> get copyWith => __$PressureStateCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PressureState&&(identical(other.sensorAvailability, sensorAvailability) || other.sensorAvailability == sensorAvailability)&&(identical(other.myPressureHPa, myPressureHPa) || other.myPressureHPa == myPressureHPa)&&(identical(other.isCalibrating, isCalibrating) || other.isCalibrating == isCalibrating));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PressureState&&(identical(other.sensorAvailability, sensorAvailability) || other.sensorAvailability == sensorAvailability)&&(identical(other.myPressureHPa, myPressureHPa) || other.myPressureHPa == myPressureHPa)&&(identical(other.isCalibrating, isCalibrating) || other.isCalibrating == isCalibrating)&&(identical(other.calibrationFailure, calibrationFailure) || other.calibrationFailure == calibrationFailure));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,sensorAvailability,myPressureHPa,isCalibrating);
+int get hashCode => Object.hash(runtimeType,sensorAvailability,myPressureHPa,isCalibrating,calibrationFailure);
 
 @override
 String toString() {
-  return 'PressureState(sensorAvailability: $sensorAvailability, myPressureHPa: $myPressureHPa, isCalibrating: $isCalibrating)';
+  return 'PressureState(sensorAvailability: $sensorAvailability, myPressureHPa: $myPressureHPa, isCalibrating: $isCalibrating, calibrationFailure: $calibrationFailure)';
 }
 
 
@@ -245,7 +247,7 @@ abstract mixin class _$PressureStateCopyWith<$Res> implements $PressureStateCopy
   factory _$PressureStateCopyWith(_PressureState value, $Res Function(_PressureState) _then) = __$PressureStateCopyWithImpl;
 @override @useResult
 $Res call({
- PressureSensorAvailability sensorAvailability, double? myPressureHPa, bool isCalibrating
+ PressureSensorAvailability sensorAvailability, double? myPressureHPa, bool isCalibrating, CalibrationFailure calibrationFailure
 });
 
 
@@ -262,12 +264,13 @@ class __$PressureStateCopyWithImpl<$Res>
 
 /// Create a copy of PressureState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? sensorAvailability = null,Object? myPressureHPa = freezed,Object? isCalibrating = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? sensorAvailability = null,Object? myPressureHPa = freezed,Object? isCalibrating = null,Object? calibrationFailure = null,}) {
   return _then(_PressureState(
 sensorAvailability: null == sensorAvailability ? _self.sensorAvailability : sensorAvailability // ignore: cast_nullable_to_non_nullable
 as PressureSensorAvailability,myPressureHPa: freezed == myPressureHPa ? _self.myPressureHPa : myPressureHPa // ignore: cast_nullable_to_non_nullable
 as double?,isCalibrating: null == isCalibrating ? _self.isCalibrating : isCalibrating // ignore: cast_nullable_to_non_nullable
-as bool,
+as bool,calibrationFailure: null == calibrationFailure ? _self.calibrationFailure : calibrationFailure // ignore: cast_nullable_to_non_nullable
+as CalibrationFailure,
   ));
 }
 

@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
@@ -8,10 +9,58 @@ import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
 import 'package:kakureru/features/wifi/model/wifi_scan_result.dart';
+import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:kakureru/features/wifi/repository/wifi_scan_repository.dart';
 
 final wifiScanRepositoryProvider = Provider((ref) => WifiScanRepository());
+
+/// Wi-Fiスキャンがいま実行できているか(待機画面の表示用。issue #98)。
+///
+/// スキャンを止めたり再開したりはせず、[refresh]が呼ばれたときだけ
+/// 1回試して結果を状態に反映する。位置情報のON/OFFや権限は端末の設定
+/// 画面で変えられる(=アプリ側からは変化を検知できない)ので、画面を開いた
+/// ときと「再確認」を押したときに確認し直す形にしている。
+class WifiScanStatusNotifier extends Notifier<WifiScanStatus> {
+  @override
+  WifiScanStatus build() => WifiScanStatus.checking;
+
+  /// 実行中の[refresh]。待機画面のマウントと連打が重なっても、
+  /// 実際のスキャン要求は1回にまとめる(スロットルの回数を無駄に
+  /// 消費しないため)。
+  Future<void>? _inFlight;
+
+  Future<void> refresh() {
+    final inFlight = _inFlight;
+    if (inFlight != null) return inFlight;
+
+    final future = _check();
+    _inFlight = future;
+    return future.whenComplete(() => _inFlight = null);
+  }
+
+  Future<void> _check() async {
+    state = WifiScanStatus.checking;
+    WifiScanStatus result;
+    try {
+      result = await ref.read(wifiScanRepositoryProvider).triggerScan();
+    } on Object catch (e) {
+      // プラグイン側の例外(未対応端末でのMissingPluginException等)。
+      // ここで握らないと、待機画面が「確認中...」のまま固まる。
+      debugPrint('[WifiScanStatusNotifier] triggerScan failed: $e');
+      result = WifiScanStatus.failed;
+    }
+    // 確認を待っている間に画面を離れた(=providerが破棄された)場合、
+    // 破棄済みのNotifierへ代入すると例外になる。
+    if (!ref.mounted) return;
+    state = result;
+  }
+}
+
+final wifiScanStatusProvider =
+    NotifierProvider<WifiScanStatusNotifier, WifiScanStatus>(
+      WifiScanStatusNotifier.new,
+    );
 
 /// 表示方式A用: 自分以外の参加者それぞれの3段階判定(ヒステリシス適用前の生の値)。
 ///

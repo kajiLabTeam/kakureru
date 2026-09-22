@@ -8,6 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
+import 'package:kakureru/features/pressure/model/calibration_failure.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/async_action.dart';
@@ -24,6 +25,8 @@ import 'package:kakureru/features/room/view/game_page.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
 import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
+import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
+import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
 const _demonColor = Color(0xFFE5484D);
 const _doneColor = Color(0xFF3A8A4A);
@@ -74,7 +77,31 @@ class RoomWaitingPage extends HookConsumerWidget {
     }
 
     useEffect(() {
-      ref.read(pressureViewModelProvider.notifier).init(roomId);
+      final pressureNotifier = ref.read(pressureViewModelProvider.notifier);
+      pressureNotifier.init(roomId);
+      // 前のルームで出たキャリブレーションの失敗表示を持ち越さない
+      // (providerは画面をまたいで生き続ける)。ビルド中は状態を書き換え
+      // られないので、このフレームが確定してから消す。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        pressureNotifier.clearCalibrationFailure();
+      });
+      return null;
+    }, const []);
+
+    // Wi-Fiスキャンが実際に通るかを画面を開いたときに1回だけ確かめる
+    // (issue #98)。位置情報のON/OFFや権限、開発者オプションのスロットル
+    // 解除は端末の設定側で変わるため、画面から検知する術がない。設定を
+    // 直して戻ってきた人のために、表示側に「再確認」を置いてある。
+    //
+    // useEffectはビルド直後に同期実行され、refresh()は最初に状態を
+    // 「確認中」へ書き換えるため、そのまま呼ぶと「ビルド中にproviderを
+    // 書き換えた」エラーになる。このフレームが確定してから走らせる。
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        unawaited(ref.read(wifiScanStatusProvider.notifier).refresh());
+      });
       return null;
     }, const []);
 
@@ -298,6 +325,10 @@ class RoomWaitingPage extends HookConsumerWidget {
                       ),
                   ],
                 ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 2),
+                child: _WifiScanStatusRow(),
               ),
               if (isHost)
                 Padding(
@@ -723,6 +754,11 @@ class _CalibrationSection extends ConsumerWidget {
       hint = 'ホストのキャリブレーション待ち';
     }
 
+    // 失敗の理由は押した本人にしか関係しないので、ボタンのすぐ下に出す。
+    final failureMessage = calibrationFailureMessage(
+      pressureState.calibrationFailure,
+    );
+
     return Column(
       children: [
         FilledButton.icon(
@@ -757,6 +793,77 @@ class _CalibrationSection extends ConsumerWidget {
               hint,
               style: const TextStyle(color: appMuted, fontSize: 12),
             ),
+          ),
+        if (failureMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              failureMessage,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _demonColor, fontSize: 12),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// 待機画面に出す「Wi-Fiスキャン: 〜」の1行(issue #98)。
+///
+/// Wi-Fiでの距離感は鬼の主要な情報源なのに、スキャンが空振りしていても
+/// 以前は誰も気づけなかった。OK以外のときは直し方を1行で添え、設定を
+/// 直してから押し直せるよう「再確認」を出す。
+class _WifiScanStatusRow extends ConsumerWidget {
+  const _WifiScanStatusRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(wifiScanStatusProvider);
+    final isProblem = isWifiScanProblem(status);
+    // 非対応の端末は直しようがないので、警告色にも「再確認」の対象にもしない
+    // (押しても永久に変わらないボタンを出さない)。
+    final isFixable = isWifiScanFixable(status);
+    final hint = wifiScanStatusHint(status);
+    final color = isFixable ? _pendingColor : appMuted;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(isProblem ? Icons.wifi_off : Icons.wifi, size: 14, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Wi-Fiスキャン: ${wifiScanStatusLabel(status)}',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: isFixable ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+              if (hint != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    hint,
+                    style: const TextStyle(color: appMuted, fontSize: 11),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (isFixable)
+          TextButton(
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 28),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+            onPressed: () =>
+                unawaited(ref.read(wifiScanStatusProvider.notifier).refresh()),
+            child: const Text('再確認'),
           ),
       ],
     );
