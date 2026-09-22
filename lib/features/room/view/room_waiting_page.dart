@@ -20,6 +20,7 @@ import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/single_flight_action.dart';
+import 'package:kakureru/features/room/view/game/area_rules_button.dart';
 import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/game_page.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
@@ -175,10 +176,16 @@ class RoomWaitingPage extends HookConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('待機中'),
-        // デバッグ用の偽プレイヤーを足す(issue #67)。実機1台では参加者が
-        // 自分だけで開始条件を満たせず、ゲーム画面まで到達できないため。
-        // kDebugModeがfalseのリリースビルドではこのボタン自体が存在しない。
-        actions: const [if (kDebugMode) DebugMockPlayersToggle()],
+        // 1つめはデバッグ用の偽プレイヤーを足すトグル(issue #67)。実機1台
+        // では参加者が自分だけで開始条件を満たせず、ゲーム画面まで到達
+        // できないため。kDebugModeがfalseのリリースビルドではこのボタン
+        // 自体が存在しない。
+        // 2つめは使ってよい場所の一覧(issue #108)。こちらはリリース
+        // ビルドでも常に出る。
+        actions: const [
+          if (kDebugMode) DebugMockPlayersToggle(),
+          AreaRulesButton(),
+        ],
       ),
       body: roomAsync.when(
         data: (room) {
