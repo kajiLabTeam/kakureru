@@ -63,3 +63,8 @@ dart_defines.json
 # night-run: 実行中の状態ファイル・ログ(タスク内容や進捗を含む。定義自体はコミットする)
 night-run/state/*
 !night-run/state/.gitkeep
+
+# kakureru-photo-api (Cloudflare Workers)
+kakureru-photo-api/node_modules/
+kakureru-photo-api/.wrangler/
+.dev.vars

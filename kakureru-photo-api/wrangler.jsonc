@@ -1,0 +1,17 @@
+{
+  "name": "kakureru-photo-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "kakureru-photos"
+    }
+  ],
+  "vars": {
+    "FIREBASE_PROJECT_ID": "kakureru-b8545"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
