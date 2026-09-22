@@ -1,15 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
 import 'package:kakureru/features/room/async_action.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/game_outcome.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
+import 'package:kakureru/features/room/view/leave_room_action.dart';
+import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 const _demonColor = Color(0xFFE5484D);
@@ -31,10 +35,35 @@ class GameResultPage extends HookConsumerWidget {
     final myUid = ref.watch(myUidProvider);
     final restart = useAsyncAction(context);
 
+    // 破棄中(unmount中)はrefがもう使えずStateErrorになるため、disposeで使う
+    // 分はbuild時に取得しておく(room_waiting_page.dartと同じ理由)。
+    final roomRepo = ref.read(roomRepositoryProvider);
+
+    // 退出を済ませた/離脱ではない、の印。「ホームに戻る」と戻る操作
+    // (バックボタン・スワイプ)の両方で退出したいが、二重に走らせないための
+    // ガード(room_waiting_page.dartのhasNavigatedと同じ役割)。
+    final hasHandledExit = useRef(false);
+
     // 巻き戻し(「同じメンバーでもう一回」)の検知・自分の役割リセット・
     // 待機画面への遷移は、GamePage側でも同じ処理が要るため共通フックに
-    // している(useRestartRecoveryのドキュメント参照)。
-    useRestartRecovery(ref, context, roomId: roomId);
+    // している(useRestartRecoveryのドキュメント参照)。巻き戻しによる遷移で
+    // もこのページは破棄されるが、それは離脱ではない。
+    useRestartRecovery(
+      ref,
+      context,
+      roomId: roomId,
+      onNavigate: () => hasHandledExit.value = true,
+    );
+
+    // 結果画面にはPopScopeが無く、戻る操作(バックボタン・スワイプ)でその
+    // ままホームまで戻れてしまう。その経路でも退出したいので、画面が実際に
+    // 破棄されるタイミングで退出する(issue #94)。
+    useEffect(() {
+      return () {
+        if (hasHandledExit.value) return;
+        leaveRoomInBackground(roomRepo, roomId, tag: 'GameResultPage');
+      };
+    }, const []);
 
     return Scaffold(
       body: SafeArea(
@@ -170,7 +199,7 @@ class GameResultPage extends HookConsumerWidget {
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(
-                            '${restart.error}',
+                            userFacingErrorMessage(restart.error!),
                             style: const TextStyle(color: _demonColor),
                           ),
                         ),
@@ -181,9 +210,19 @@ class GameResultPage extends HookConsumerWidget {
                             '[GameResultPage] home button pressed '
                             'canPop=${Navigator.of(context).canPop()}',
                           );
-                          Navigator.of(
+                          // 結果画面へはGamePageからのpushReplacementで来る
+                          // ため、待機画面のdisposeによる退出を通らない。
+                          // ここで消さないと、ホストが「同じメンバーでもう
+                          // 一回」を押したときに、帰ったはずの人が幽霊参加者
+                          // として人数・キャリブレーション判定・鬼のランダム
+                          // 選出に混ざる(issue #94)。
+                          hasHandledExit.value = true;
+                          leaveRoomAndGoHome(
                             context,
-                          ).popUntil((route) => route.isFirst);
+                            roomRepo,
+                            roomId,
+                            tag: 'GameResultPage',
+                          );
                           debugPrint('[GameResultPage] popUntil called');
                         },
                         child: const Text('ホームに戻る'),
@@ -195,7 +234,7 @@ class GameResultPage extends HookConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('エラー: $e')),
+          error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
         ),
       ),
     );

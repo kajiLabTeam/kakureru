@@ -5,9 +5,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/repository/room_repository.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
@@ -23,9 +25,25 @@ Room _room() => const Room(
   users: [RoomUser(id: 'host', displayName: 'ホスト', isHost: true)],
 );
 
-/// ホストとして設定画面を開き、エリア描画モードに入るまで済ませる。
-Future<void> _openInDrawingMode(WidgetTester tester) async {
-  // 既定の800x600だと「エリアを描く」ボタンが画面外に出てタップできない。
+/// 保存が必ず失敗するRoomRepositoryの差し替え(エラー表示の検証用)。
+class _FailingRoomRepository extends RoomRepository {
+  /// 画面に出してはいけない生の例外文。
+  static final rawError = Exception(
+    '[firebase_database/permission-denied] Client raw message',
+  );
+
+  @override
+  Future<void> updateSetting(String roomId, RoomSetting setting) async {
+    throw rawError;
+  }
+}
+
+/// ホストとして設定画面を開く。
+Future<void> _openSettingPage(
+  WidgetTester tester, {
+  RoomRepository? roomRepo,
+}) async {
+  // 既定の800x600だと画面下のボタンが画面外に出てタップできない。
   await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -37,6 +55,8 @@ Future<void> _openInDrawingMode(WidgetTester tester) async {
       overrides: [
         myUidProvider.overrideWithValue('host'),
         roomStreamProvider(_roomId).overrideWith((ref) => controller.stream),
+        if (roomRepo != null)
+          roomRepositoryProvider.overrideWithValue(roomRepo),
       ],
       child: const MaterialApp(home: RoomSettingPage(roomId: _roomId)),
     ),
@@ -44,6 +64,11 @@ Future<void> _openInDrawingMode(WidgetTester tester) async {
   await tester.pump();
   controller.add(_room());
   await tester.pump();
+}
+
+/// ホストとして設定画面を開き、エリア描画モードに入るまで済ませる。
+Future<void> _openInDrawingMode(WidgetTester tester) async {
+  await _openSettingPage(tester);
 
   await tester.tap(find.text('エリアを描く'));
   await tester.pump();
@@ -124,5 +149,20 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('エリアが小さすぎます'), findsNothing);
+  });
+
+  testWidgets('保存が失敗したら、生の例外文ではなくユーザー向けの案内を出す', (tester) async {
+    await _openSettingPage(tester, roomRepo: _FailingRoomRepository());
+
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(userFacingErrorMessage(_FailingRoomRepository.rawError)),
+      findsOneWidget,
+    );
+    expect(find.textContaining('firebase_database'), findsNothing);
+    // 画面はそのまま残る(popはsaveが成功したときだけ)。
+    expect(find.byType(RoomSettingPage), findsOneWidget);
   });
 }

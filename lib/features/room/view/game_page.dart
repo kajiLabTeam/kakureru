@@ -17,6 +17,7 @@ import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/area_alert.dart';
 import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/game_alerts.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/game_notifications.dart';
@@ -38,6 +39,7 @@ import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/game/opponent_detail_card.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
 import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
+import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
@@ -233,8 +235,16 @@ class GamePage extends HookConsumerWidget {
         case AsyncActionStatus.succeeded:
           showCaughtTransition.value = true;
         case AsyncActionStatus.failed:
+          // 何の操作が失敗したのかは残す(SnackBarは画面の文脈から離れた
+          // 場所に出るため)。原因の説明だけをuserFacingErrorMessageに任せ、
+          // 例外そのものは埋め込まない(issue #95)。
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('送信に失敗しました: ${result.error}')),
+            SnackBar(
+              content: Text(
+                '「鬼になる」の送信に失敗しました。'
+                '${userFacingErrorMessage(result.error!)}',
+              ),
+            ),
           );
         case AsyncActionStatus.skipped:
           // 前の送信がまだ終わっていないだけなので、何も出さない。
@@ -566,7 +576,7 @@ class GamePage extends HookConsumerWidget {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('エラー: $e')),
+              error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
             ),
           ),
           // 「捕まった」確定直後の全画面演出(issue #15)。マップ等の下に

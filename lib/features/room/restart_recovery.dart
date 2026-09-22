@@ -26,10 +26,16 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 /// 参加者のroleをまとめて戻すことはできない(鬼の決定が`meta/pendingDemonUid`
 /// 経由の自己申告方式になっているのと同じ制約。docs/rtdb-schema.md参照)。
 /// そのため、各端末が自分でこのフックを通じて役割をリセットする。
+///
+/// [onNavigate]は待機画面へ遷移する直前に1度だけ呼ばれる。呼び出し側が
+/// 「この画面が破棄されたのは離脱ではない」と判断するために使う
+/// (GameResultPageのdisposeによる退出。room_waiting_page.dartの
+/// `hasNavigated`と同じ役割)。
 void useRestartRecovery(
   WidgetRef ref,
   BuildContext context, {
   required String roomId,
+  void Function()? onNavigate,
 }) {
   final hasHandled = useRef(false);
   final roomAsync = ref.watch(roomStreamProvider(roomId));
@@ -58,20 +64,14 @@ void useRestartRecovery(
     if (hasHandled.value) return null;
     final room = roomAsync.value;
     if (room == null || room.status != RoomStatus.waiting) return null;
-    hasHandled.value = true;
     debugPrint('[useRestartRecovery] waiting detected, will navigate');
 
+    // 役割リセットに必要な値だけ、refが確実に使えるここで読んでおく
+    // (書き込み自体は下のガードを通ってから行う)。
     final myUid = ref.read(myUidProvider);
     final myself = myUid == null ? null : _findUser(room.users, myUid);
-    if (myself?.role == UserRole.demon) {
-      unawaited(
-        writeOrLogFailure(
-          () => ref.read(roomRepositoryProvider).resetOwnRoleForRestart(roomId),
-          tag: 'useRestartRecovery',
-          field: '自分の役割のリセット',
-        ),
-      );
-    }
+    final shouldResetRole = myself?.role == UserRole.demon;
+    final roomRepo = ref.read(roomRepositoryProvider);
 
     // useEffectはビルド直後に同期実行されるため、ここで即座にNavigatorを
     // 操作すると「ビルド中にNavigator操作をした」というエラーになる。
@@ -80,6 +80,34 @@ void useRestartRecovery(
         '[useRestartRecovery] postFrameCallback fired mounted=${context.mounted}',
       );
       if (!context.mounted) return;
+      // popUntil/popの最中はルートがまだ生きていて`context.mounted`もtrueの
+      // ままなので、mountedだけでは「もう離脱した画面」を弾けない。結果画面で
+      // 「ホームに戻る」を押した直後(popアニメーション約300ms)に巻き戻しが
+      // 届くと、退出済み(users/{uid}を消した)なのに待機画面へ飛ばされ、
+      // 参加者一覧に自分がいない待機画面から動けなくなる。加えて
+      // pushReplacementがホームのルートを置き換えるため戻り先も失われる。
+      if (ModalRoute.of(context)?.isActive != true) return;
+      // 巻き戻しに対応済みの印は、ガードを通ったここで初めて立てる。効果本体
+      // で立てると、pop中に弾かれた回を「対応済み」と見なしてしまう。
+      if (hasHandled.value) return;
+      hasHandled.value = true;
+
+      // 役割リセット(`users/{uid}`へのupdate)も同じくガードの後に出す。
+      // 「ホームに戻る」のleaveRoom(同じノードのremove)と競合すると、
+      // removeの後にupdateが着いてroleだけのノードが復活し、issue #94で
+      // 消したはずの幽霊参加者ができる。isActiveがfalseなら退出側が先に
+      // 動いているので、ここでは何も書かずに退出に任せる。
+      if (shouldResetRole) {
+        unawaited(
+          writeOrLogFailure(
+            () => roomRepo.resetOwnRoleForRestart(roomId),
+            tag: 'useRestartRecovery',
+            field: '自分の役割のリセット',
+          ),
+        );
+      }
+
+      onNavigate?.call();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => RoomWaitingPage(roomId: roomId),
