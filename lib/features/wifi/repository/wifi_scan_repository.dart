@@ -21,8 +21,8 @@ class WifiScanRepository {
   final FirebaseDatabase? _dbOverride;
   final FirebaseAuth? _authOverride;
 
-  // `.instance` の解決を遅延させる理由は PressureRepository と同じ
-  // (メソッドを丸ごとoverrideするテスト用のサブクラスが、暗黙の
+  // `.instance` の解決を遅延させる理由は RoomRepository・PressureRepository
+  // と同じ(メソッドを丸ごとoverrideするテスト用のサブクラスが、暗黙の
   // `super()` を通るだけでFirebase未初期化の例外を踏まないようにするため)。
   // 詳しい経緯は room_repository.dart のコメントを参照。
   late final FirebaseDatabase _db = _dbOverride ?? FirebaseDatabase.instance;
