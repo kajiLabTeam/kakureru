@@ -29,9 +29,10 @@ import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
-import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
+import 'package:kakureru/features/room/view/game/area_rules_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_confirm_dialog.dart';
+import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/game/game_header_bar.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
 import 'package:kakureru/features/room/view/game/game_status_cards.dart';
@@ -266,11 +267,16 @@ class GamePage extends HookConsumerWidget {
             appBar: GameHeaderBar(
               roleTheme: headerRoleTheme,
               countdownSec: countdownSec,
-              // デバッグビルド限定の、偽プレイヤーの表示/非表示トグル
+              // 1つめはデバッグビルド限定の、偽プレイヤーの表示/非表示トグル
               // (issue #67)。RTDBには一切書かず、この端末の画面にだけ
               // 偽の相手を足す。kDebugModeがfalseのリリースビルドでは
               // このボタン自体が存在しない。
-              actions: const [if (kDebugMode) DebugMockPlayersToggle()],
+              // 2つめは使ってよい場所の一覧(issue #108)。こちらは
+              // リリースビルドでも常に出る。
+              actions: const [
+                if (kDebugMode) DebugMockPlayersToggle(),
+                AreaRulesButton(),
+              ],
             ),
             body: roomAsync.when(
               data: (room) {
