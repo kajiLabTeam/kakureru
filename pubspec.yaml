@@ -62,6 +62,8 @@ dependencies:
   flutter_ble_peripheral: ^2.1.1
   http: ^1.6.0
   image_picker: ^1.2.3
+  # 写真ダウンロードのキャッシュ保存先(getTemporaryDirectory)を得るためだけに追加。
+  path_provider: ^2.1.5
 
 dev_dependencies:
   # コード生成用。実行時には不要なので dev_dependencies 側に置く。

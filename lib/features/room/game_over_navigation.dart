@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/room/game_alerts.dart';
+import 'package:kakureru/features/room/repository/photo_repository.dart';
 import 'package:kakureru/features/room/view/game_result_page.dart';
 
 /// ゲーム終了が検知されたら結果画面へ遷移するフック。
@@ -26,10 +29,15 @@ void useGameOverNavigation(
 }) {
   final isGameOver = ref.watch(gameAlertsProvider).isGameOver;
   final hasNavigated = useRef(false);
+  final photoRepository = useMemoized(PhotoRepository.new, const []);
   useEffect(() {
     if (hasNavigated.value || !isGameOver) return null;
     if (isShowingCaughtTransition) return null;
     hasNavigated.value = true;
+    // ルームが終わった写真キャッシュはもう使われないため、この端末から
+    // 削除しておく(spec: 「ルーム終了時、またはキャッシュが約200MBを
+    // 超えたら古いものから削除」)。遷移を待たせる必要は無いのでawaitしない。
+    unawaited(photoRepository.clearCacheForRoom(roomId));
     // useEffectはビルド直後に同期実行されるため、ここで即座にNavigatorを
     // 操作すると「ビルド中にNavigator操作をした」というエラーになり、
     // Navigatorが以降ずっと操作不能になる(useRestartRecoveryと同じ理由。

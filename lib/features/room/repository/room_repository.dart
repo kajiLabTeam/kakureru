@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/features/room/model/room.dart';
+import 'package:kakureru/features/room/model/room_photo.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 
 /// ルームの作成・参加・監視といったRTDB操作をまとめたリポジトリ。
@@ -336,6 +337,34 @@ class RoomRepository {
       await settingSub.cancel();
       await usersSub.cancel();
     };
+
+    return controller.stream;
+  }
+
+  /// 写真一覧をリアルタイムで監視する(一覧画面用)。
+  ///
+  /// `watchRoom`と違い監視対象は`photos`サブツリー1つだけなので、
+  /// 複数subtreeを揃えてから初回emitする仕組みは不要(単一のonValueで足りる)。
+  /// 更新頻度・寿命がroomの他の情報と異なるため、あえて別の購読にしている。
+  Stream<List<RoomPhoto>> watchPhotos(String roomId) {
+    final controller = StreamController<List<RoomPhoto>>.broadcast();
+
+    final sub = _db.ref('rooms/$roomId/photos').onValue.listen((event) {
+      final value = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (value == null) {
+        controller.add(const []);
+        return;
+      }
+      controller.add([
+        for (final entry in value.entries)
+          RoomPhoto.fromMap(
+            entry.key.toString(),
+            entry.value as Map<dynamic, dynamic>,
+          ),
+      ]);
+    });
+
+    controller.onCancel = sub.cancel;
 
     return controller.stream;
   }

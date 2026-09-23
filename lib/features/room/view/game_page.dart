@@ -38,8 +38,10 @@ import 'package:kakureru/features/room/view/game/game_status_cards.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/game/opponent_detail_card.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
+import 'package:kakureru/features/room/view/game/map_photo_tab_bar.dart';
 import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
 import 'package:kakureru/features/room/view/game/photo_capture_banner.dart';
+import 'package:kakureru/features/room/view/photo_gallery_page.dart';
 import 'package:kakureru/features/room/view_model/photo_capture_controller.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
@@ -89,6 +91,7 @@ class GamePage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final roomAsync = ref.watch(roomStreamProvider(roomId));
     final room = roomAsync.value;
+    final photosAsync = ref.watch(photosStreamProvider(roomId));
     final offset = ref.watch(serverTimeOffsetProvider).value ?? 0;
     final locationState = ref.watch(locationViewModelProvider);
     final myUid = ref.watch(myUidProvider);
@@ -141,6 +144,12 @@ class GamePage extends HookConsumerWidget {
     // nullの間は既定で最も近い相手を選ぶ(下のeffectiveSelectedUid参照)。
     // ウィジェット内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
     final selectedOpponentUid = useState<String?>(null);
+
+    // 地図/写真一覧タブの選択状態(MapPhotoTabBar⇔PageViewのスワイプ両方から
+    // 変わりうる)。GamePageが消えたら一緒に消えてよい一時状態なので
+    // hooksで持つ(AGENTS.md規約)。
+    final pageIndex = useState(0);
+    final pageController = usePageController();
 
     // デバッグ用の偽プレイヤーを出しているかどうか(issue #67)。多人数での
     // 見え方は端末を人数分集めないと確認できないため、デバッグビルドでだけ
@@ -454,7 +463,7 @@ class GamePage extends HookConsumerWidget {
                       )
                     : const <WifiApComparison>[];
 
-                return Column(
+                final mapPageContent = Column(
                   children: [
                     // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
                     // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
@@ -596,6 +605,44 @@ class GamePage extends HookConsumerWidget {
                       ),
                     ],
                     const SizedBox(height: 8),
+                  ],
+                );
+
+                // 地図↔写真一覧の切り替え(issue #107)。地図ページ自体は
+                // 上のmapPageContentのまま変更せず、PageViewのもう一方の
+                // ページとしてPhotoGalleryPageを足す(photo_gallery_page.dart
+                // の設計コメント参照)。タブのタップとスワイプの両方で
+                // pageIndexとpageControllerを揃える。
+                return Column(
+                  children: [
+                    MapPhotoTabBar(
+                      selectedIndex: pageIndex.value,
+                      onSelect: (index) {
+                        pageIndex.value = index;
+                        pageController.animateToPage(
+                          index,
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeInOut,
+                        );
+                      },
+                    ),
+                    Expanded(
+                      child: PageView(
+                        controller: pageController,
+                        onPageChanged: (index) => pageIndex.value = index,
+                        children: [
+                          mapPageContent,
+                          PhotoGalleryPage(
+                            roomId: roomId,
+                            room: room,
+                            myUid: myUid,
+                            photos: photosAsync.value ?? const [],
+                            nowMillis: now,
+                            photoCapture: photoCapture,
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 );
               },
