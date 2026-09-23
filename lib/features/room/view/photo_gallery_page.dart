@@ -56,7 +56,7 @@ class PhotoGalleryPage extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           if (showBanner) _CaptureBannerCard(photoCapture: photoCapture),
-          const _GalleryGuide(),
+          _GalleryGuide(intervalSec: room.setting.photoIntervalSec),
         ],
       );
     }
@@ -73,7 +73,7 @@ class PhotoGalleryPage extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           if (showBanner) _CaptureBannerCard(photoCapture: photoCapture),
-          const _GalleryGuide(),
+          _GalleryGuide(intervalSec: intervalSec),
         ],
       );
     }
@@ -229,15 +229,18 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _GalleryGuide extends StatelessWidget {
-  const _GalleryGuide();
+  const _GalleryGuide({required this.intervalSec});
+
+  final int intervalSec;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 32),
+    final intervalMinutes = intervalSec ~/ 60;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
       child: Text(
-        'ゲームが始まると、ここに足元の写真が並びます',
-        style: TextStyle(color: Colors.black54),
+        'ゲームが始まったら$intervalMinutes分ごとに足元の写真を撮ってください',
+        style: const TextStyle(color: Colors.black54),
       ),
     );
   }
