@@ -64,6 +64,16 @@ rooms/
       {photoId}/
         uid                 撮影者のuid
         takenAt             撮影時刻(ServerValue.timestamp)。画像本体はR2([docs/photo-storage.md](photo-storage.md)参照)
+    events/
+      {pushKey}/          分析用のイベントログ。追記のみで上書きしない(下の「events」参照)
+        type                "game_started" | "released" | "catch" | "became_demon" | "game_ended" | "photo_taken"
+        at                  ServerValue.timestamp
+        uid                 出来事の主体のuid
+        targetUid           相手のuid(無ければ省略)
+        lat / lng           位置(あれば)
+        accuracy            GPSの精度(m、あれば)
+        pressure            気圧(hPa、あれば)
+        indoor              屋内ならtrue(catchのみ)
 
 roomCodes/
   {code}/                 4桁コード → roomId の逆引き
@@ -85,7 +95,7 @@ roomCodes/
 現状のルールは、この設計意図のうち既に決まっている部分だけを反映している:
 
 - 全体のデフォルトは `auth != null`（未認証アクセスは拒否）。認証は起動時の匿名サインイン（`lib/main.dart`）が前提
-- `rooms/{roomId}` 自体には一括の `.read`/`.write` を付けない。RTDBのルールは上位ノードで許可すると下位ノードでの制限を上書きしてしまう（カスケードする）ため、`meta`/`setting`/`users`/`locations`/`visible`/`catches`/`photos` それぞれに個別にルールを付けている
+- `rooms/{roomId}` 自体には一括の `.read`/`.write` を付けない。RTDBのルールは上位ノードで許可すると下位ノードでの制限を上書きしてしまう（カスケードする）ため、`meta`/`setting`/`users`/`locations`/`visible`/`catches`/`photos`/`events` それぞれに個別にルールを付けている
 - `users/{uid}`・`locations/{uid}` は本人（`auth.uid === $uid`）以外は書き込み不可
 - `visible/{uid}` はクライアント書き込みを禁止（Cloud Functions が Admin SDK 経由で書く想定）し、読み取りは本人のみ
 - `roomCodes/{code}` は新規作成は誰でも可能だが、既存コードへの上書き・削除はそのルームのホスト（`meta/hostUserId` と `auth.uid` が一致する人）のみ
@@ -197,4 +207,19 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 **既知のリスク**: 改造クライアントを使えば、ホスト以外でも `setting` を書き換えられる。`meta.hostUserId` を書き込み不可・不変にするルールが入ったら、`setting`・`meta`・`pendingDemonUid` の host限定ルールをまとめて追加すること。
 
+### `events`: プレイテスト分析用のイベントログ
 
+ゲーム後に「最初の捕獲までの時間」「捕獲人数」「各逃走者が捕まるまでの時間」「屋内/屋外での捕獲回数」を、エクスポートしたJSONから手で集計するための追記専用ログ。書き込みは `EventLogRepository`(`lib/features/room/repository/event_log_repository.dart`)が fire-and-forget で行い、失敗してもゲーム進行は止めない。ルールは `catches` と同じく認証済みなら読み書き可の暫定ルール。
+
+| type | 書く端末 | 記録するタイミング | uid |
+|---|---|---|---|
+| `game_started` | ホスト | `RoomRepository.startGame` 完了時 | ホスト |
+| `released` | ホストのみ | `GameAlerts` が鬼放出を検知した時 | ホスト |
+| `catch` | 捕まった本人 | 「鬼になる」ダイアログで屋内/屋外を選び、`reportCaught` が成功した時 | 捕まった逃走者(捕まえた鬼は特定できないので `targetUid` は無し) |
+| `became_demon` | 指名された本人 | `acceptDemonNomination` で鬼になった時(開始前の初期鬼) | 鬼になった人 |
+| `game_ended` | ホストのみ | `GameAlerts` がゲーム終了を検知した時 | ホスト |
+| `photo_taken` | 撮影者 | 足元写真のアップロード成功時 | 撮影者 |
+
+- `released` / `game_ended` は全端末で同じ判定が回るため、重複を避けてホスト端末だけが書く。`at` は「ホスト端末が検知した時刻」で、バックグラウンド等で遅れうる。正確な予定時刻は `meta/releasedAt` / `meta/endsAt` を使うこと。ホストのアプリが閉じていると記録されない
+- `catch` の `lat`/`lng`/`accuracy` は、その時点で自分が最後に送った `locations/{uid}` の値。`pressure` は端末の最新の気圧(取れなければ `locations/{uid}/pressure`)
+- `meta/endedAt` は `finishRoom` がどこからも呼ばれていないため現状書かれない。終了時刻は `game_ended` イベントか `meta/endsAt`(全員捕獲で早期終了した場合は最後の `catch`)から求める

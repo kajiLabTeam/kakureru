@@ -26,6 +26,7 @@ import 'package:kakureru/features/room/game_session.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/opponent_roster_status.dart';
 import 'package:kakureru/features/room/photo_capture_config.dart';
+import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
@@ -254,11 +255,30 @@ class GamePage extends HookConsumerWidget {
     // 失敗はuseAsyncActionのerrorにも入るが、この画面では地図が主役で
     // エラー行を置く場所が無いためSnackBarで出す。
     Future<void> handleBecomeDemonPressed() async {
-      if (!await showBecomeDemonConfirmDialog(context)) return;
+      final place = await showBecomeDemonConfirmDialog(context);
+      if (place == null) return;
 
       final result = await becomeDemon.run(
         () => ref.read(roomRepositoryProvider).reportCaught(roomId),
       );
+      // 分析用のイベントログ。申告が通ったときだけ、そのときの位置・
+      // GPS精度・気圧を添えて記録する(fire-and-forget)。
+      if (result.status == AsyncActionStatus.succeeded && myUid != null) {
+        unawaited(
+          ref
+              .read(eventLogRepositoryProvider)
+              .log(
+                roomId,
+                type: GameEventType.caught,
+                uid: myUid,
+                lat: myLocation?.latitude,
+                lng: myLocation?.longitude,
+                accuracy: myLocation?.accuracy,
+                pressure: pressureState.myPressureHPa ?? myLocation?.pressure,
+                indoor: place == CaughtPlace.indoor,
+              ),
+        );
+      }
       if (!context.mounted) return;
       switch (result.status) {
         case AsyncActionStatus.succeeded:
