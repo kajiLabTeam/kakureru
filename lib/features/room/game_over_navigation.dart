@@ -44,6 +44,13 @@ void useGameOverNavigation(
     // restart_recovery.dartのコメント参照)。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) return;
+      // pop中(「ホームに戻る」を押した直後の約300ms)はルートがまだ生きて
+      // いてmountedもtrueのままで、そこでpushReplacementすると「今いちばん上
+      // にある生きたルート」=ホームが結果画面に置き換わる。結果画面が最初の
+      // ルートになると、その「ホームに戻る」(popUntil(isFirst))は何もせず、
+      // 退出済みのまま詰む。購読エラー画面からホームへ戻れるようにしたことで
+      // この窓ができた(restart_recovery.dartと同じガード。issue #94/#95)。
+      if (ModalRoute.of(context)?.isActive != true) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => GameResultPage(roomId: roomId),

@@ -17,6 +17,7 @@ import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/area_alert.dart';
 import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/game_alerts.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/game_notifications.dart';
@@ -29,19 +30,21 @@ import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
-import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
+import 'package:kakureru/features/room/view/game/area_rules_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_confirm_dialog.dart';
+import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/game/game_header_bar.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
 import 'package:kakureru/features/room/view/game/game_status_cards.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
+import 'package:kakureru/features/room/view/game/map_photo_tab_bar.dart';
 import 'package:kakureru/features/room/view/game/opponent_detail_card.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
-import 'package:kakureru/features/room/view/game/map_photo_tab_bar.dart';
 import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
 import 'package:kakureru/features/room/view/game/photo_capture_banner.dart';
 import 'package:kakureru/features/room/view/photo_gallery_page.dart';
+import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/photo_capture_controller.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
@@ -261,8 +264,16 @@ class GamePage extends HookConsumerWidget {
         case AsyncActionStatus.succeeded:
           showCaughtTransition.value = true;
         case AsyncActionStatus.failed:
+          // 何の操作が失敗したのかは残す(SnackBarは画面の文脈から離れた
+          // 場所に出るため)。原因の説明だけをuserFacingErrorMessageに任せ、
+          // 例外そのものは埋め込まない(issue #95)。
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('送信に失敗しました: ${result.error}')),
+            SnackBar(
+              content: Text(
+                '「鬼になる」の送信に失敗しました。'
+                '${userFacingErrorMessage(result.error!)}',
+              ),
+            ),
           );
         case AsyncActionStatus.skipped:
           // 前の送信がまだ終わっていないだけなので、何も出さない。
@@ -284,11 +295,16 @@ class GamePage extends HookConsumerWidget {
             appBar: GameHeaderBar(
               roleTheme: headerRoleTheme,
               countdownSec: countdownSec,
-              // デバッグビルド限定の、偽プレイヤーの表示/非表示トグル
+              // 1つめはデバッグビルド限定の、偽プレイヤーの表示/非表示トグル
               // (issue #67)。RTDBには一切書かず、この端末の画面にだけ
               // 偽の相手を足す。kDebugModeがfalseのリリースビルドでは
               // このボタン自体が存在しない。
-              actions: const [if (kDebugMode) DebugMockPlayersToggle()],
+              // 2つめは使ってよい場所の一覧(issue #108)。こちらは
+              // リリースビルドでも常に出る。
+              actions: const [
+                if (kDebugMode) DebugMockPlayersToggle(),
+                AreaRulesButton(),
+              ],
             ),
             body: roomAsync.when(
               data: (room) {
@@ -651,7 +667,7 @@ class GamePage extends HookConsumerWidget {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('エラー: $e')),
+              error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
             ),
           ),
           // 「捕まった」確定直後の全画面演出(issue #15)。マップ等の下に

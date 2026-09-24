@@ -4,18 +4,29 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/core/utils/rtdb_write.dart';
+import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
 class WifiScanRepository {
-  final FirebaseDatabase _db;
-  final FirebaseAuth _auth;
   Timer? _scanTimer;
   StreamSubscription<List<WiFiAccessPoint>>? _resultsSub;
 
+  /// 引数を省略すると実際のFirebase(`FirebaseDatabase.instance` /
+  /// `FirebaseAuth.instance`)を使う。テストからのみ差し替える。
   WifiScanRepository({FirebaseDatabase? db, FirebaseAuth? auth})
-    : _db = db ?? FirebaseDatabase.instance,
-      _auth = auth ?? FirebaseAuth.instance;
+    : _dbOverride = db,
+      _authOverride = auth;
+
+  final FirebaseDatabase? _dbOverride;
+  final FirebaseAuth? _authOverride;
+
+  // `.instance` の解決を遅延させる理由は RoomRepository・PressureRepository
+  // と同じ(メソッドを丸ごとoverrideするテスト用のサブクラスが、暗黙の
+  // `super()` を通るだけでFirebase未初期化の例外を踏まないようにするため)。
+  // 詳しい経緯は room_repository.dart のコメントを参照。
+  late final FirebaseDatabase _db = _dbOverride ?? FirebaseDatabase.instance;
+  late final FirebaseAuth _auth = _authOverride ?? FirebaseAuth.instance;
 
   String get _uid => _auth.currentUser!.uid;
 
@@ -61,21 +72,35 @@ class WifiScanRepository {
       );
     });
 
-    _triggerScan();
-    _scanTimer = Timer.periodic(_scanInterval, (_) => _triggerScan());
+    unawaited(triggerScan());
+    _scanTimer = Timer.periodic(_scanInterval, (_) => unawaited(triggerScan()));
   }
 
-  Future<void> _triggerScan() async {
+  /// スキャンを1回要求し、その結果を[WifiScanStatus]で返す。
+  ///
+  /// 戻り値は待機画面の「Wi-Fiスキャン: 〜」表示にも使う(issue #98)。
+  /// スロットリングは`canStartScan()`では分からない(`yes`のまま
+  /// `startScan()`だけが失敗する)ため、実際に要求してみるところまでやって
+  /// 初めて判定できる。待機画面から呼ぶとスロットルの回数(2分に4回)を1回
+  /// 消費するが、解除し忘れを遊ぶ前に気づけることの方が大きい。
+  Future<WifiScanStatus> triggerScan() async {
     final can = await WiFiScan.instance.canStartScan();
     if (can != CanStartScan.yes) {
-      // Androidのスキャンスロットリング(2分に4回)等でスキャンできない場合、
-      // ここで黙ってスキップされるとwifiScanが古いまま更新されなくなる原因が
-      // 実機ログからしか追えない。開発者オプションでのスロットル解除漏れを
-      // 切り分けられるよう、スキップしたことだけは残す(issue #45調査)。
+      // 位置情報OFF・権限無し等でスキャンできない場合、ここで黙って
+      // スキップされるとwifiScanが古いまま更新されなくなる原因が
+      // 実機ログからしか追えない。切り分けられるよう、スキップしたこと
+      // だけは残す(issue #45調査)。
       debugPrint('[WifiScanRepository] scan skipped: canStartScan=$can');
-      return;
+      return wifiScanStatusFromCanStartScan(can);
     }
-    await WiFiScan.instance.startScan();
+    final started = await WiFiScan.instance.startScan();
+    if (!started) {
+      // 要求は通るのに実行されない主因はAndroidのスキャンスロットリング
+      // (2分に4回)。開発者オプションでの解除漏れがここに出る。
+      debugPrint('[WifiScanRepository] startScan failed (throttled?)');
+      return WifiScanStatus.throttled;
+    }
+    return WifiScanStatus.ok;
   }
 
   /// ゲーム画面を離れる時に呼ぶこと。

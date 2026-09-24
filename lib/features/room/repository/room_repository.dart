@@ -4,9 +4,15 @@ import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_photo.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
+import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/role_visibility.dart';
+import 'package:kakureru/features/room/room_code_validation.dart';
+import 'package:kakureru/features/room/room_create_error.dart';
+import 'package:kakureru/features/room/room_join_error.dart';
 
 /// ルームの作成・参加・監視といったRTDB操作をまとめたリポジトリ。
 class RoomRepository {
@@ -36,7 +42,6 @@ class RoomRepository {
   /// ルームを作成して roomId を返す
   Future<String> createRoom({
     required String displayName,
-    required String deviceId,
     RoomSetting setting = const RoomSetting(),
   }) async {
     final roomId = _db.ref('rooms').push().key!;
@@ -49,7 +54,7 @@ class RoomRepository {
     try {
       debugPrint('[createRoom] step2 rooms/$roomId/meta set 開始');
       await _db.ref('rooms/$roomId/meta').set({
-        'status': 'WAITING',
+        'status': RoomStatus.waiting.raw,
         'hostUserId': _uid,
         'roomCode': code,
         'createdAt': ServerValue.timestamp,
@@ -63,7 +68,6 @@ class RoomRepository {
       debugPrint('[createRoom] step4 rooms/$roomId/users/$_uid set 開始');
       await _db.ref('rooms/$roomId/users/$_uid').set({
         'displayName': displayName,
-        'deviceId': deviceId,
         'isHost': true,
         'role': 'FUGITIVE',
         'joinedAt': ServerValue.timestamp,
@@ -122,13 +126,13 @@ class RoomRepository {
         rethrow;
       }
     }
-    throw Exception('ルームコードの発行に失敗しました');
+    throw RoomCreateError.codeExhausted;
   }
 
   /// ルームを終了状態にする(解散)。
   Future<void> finishRoom(String roomId) async {
     await _db.ref('rooms/$roomId/meta').update({
-      'status': 'FINISHED',
+      'status': RoomStatus.finished.raw,
       'endedAt': ServerValue.timestamp,
     });
   }
@@ -148,7 +152,7 @@ class RoomRepository {
     );
 
     await _db.ref('rooms/$roomId/meta').update({
-      'status': 'PLAYING',
+      'status': RoomStatus.playing.raw,
       'releasedAt': startedAt + setting.releaseWaitSec * 1000,
       'endsAt': startedAt + setting.gameDurationSec * 1000,
     });
@@ -167,7 +171,7 @@ class RoomRepository {
   /// FUGITIVEに戻す処理は[resetOwnRoleForRestart]を参照。
   Future<void> restartRoom(String roomId) async {
     await _db.ref('rooms/$roomId/meta').update({
-      'status': 'WAITING',
+      'status': RoomStatus.waiting.raw,
       'startedAt': null,
       'releasedAt': null,
       'endsAt': null,
@@ -268,26 +272,123 @@ class RoomRepository {
     });
   }
 
-  /// コードからルームに参加する
+  /// コードからルームに参加する。
+  ///
+  /// 終了したルームもその`roomCodes/{code}`も削除されない運用のため、
+  /// コードが引けただけでは参加させず、次の2つを確認する
+  /// (終了済みのルームに入ると待機画面や結果画面で行き止まりになるため)。
+  ///
+  /// 1. `meta`が存在すること。`rooms`だけをコンソールで削除した後や、
+  ///    [createRoom]が`meta`の書き込み前に失敗して[_rollbackRoom]でも
+  ///    `roomCodes/{code}`を消せなかった(ルール上、`meta/hostUserId`が
+  ///    無いと消せない)後には、行き先の無いコードだけが残る
+  /// 2. そのルームがまだ終わっていないこと。判定は画面側と同じ[isGameOver]
+  ///    に任せる(終了条件をここで書き直すと、片方だけ条件が増えたときに
+  ///    「画面では終わっているのに参加できる」ズレが生まれるため)
+  ///
+  /// 実際に効くのは`status`が`FINISHED`になる経路ではなく、残りの2つ。
+  /// `status`を`FINISHED`にする[finishRoom]はまだ呼ばれておらず、遊び
+  /// 終えたルームは`PLAYING`のまま`endsAt`が過去になるか、全員が捕まって
+  /// 逃走者0人になるかのどちらかで終わる。
+  ///
+  /// まだ終わっていない進行中([RoomStatus.playing])のルームへの途中参加は
+  /// 従来どおり許可する。失敗理由は[RoomJoinError]で投げる(画面側で日本語に
+  /// 変換する)。
+  ///
+  /// 分かっている限界が2つある。
+  /// - 読み取りと`users/{uid}`の書き込みの間に最後の逃走者が捕まると、
+  ///   終了したルームに入れてしまう。`rooms/{roomId}`をまたぐ原子的な
+  ///   読み書きはルール上できない(docs/rtdb-schema.md参照)ため、窓を
+  ///   狭めることしかできない
+  /// - サーバー時刻を取得できないときは、終わっているかを判定できないので
+  ///   参加自体を止める([RoomJoinError.serverTimeUnavailable])。端末時計で
+  ///   代用すると、時計が遅れている端末が終了済みルームに入れてしまう
+  /// - デバッグ用の偽プレイヤー(`showDebugMockPlayersProvider`)を出して
+  ///   1台で始めたルームは、RTDB上の逃走者が0人なので途中参加できない
+  ///   (ゲーム画面側は偽プレイヤーを逃走者ありに倒しているが、参加時は
+  ///   相手の端末の設定を知りようがないため)
   Future<String> joinRoom({
     required String code,
     required String displayName,
-    required String deviceId,
   }) async {
-    final snapshot = await _db.ref('roomCodes/$code').get();
-    if (!snapshot.exists) throw Exception('ルームが見つかりません');
+    // 画面(参加ボタンの活性)とViewModelでも弾いているが、このメソッドは
+    // 公開APIなので、別の入口から直接呼ばれても`roomCodes/`の読み取り
+    // (ルール上ここは読めず、生の権限エラーになる)まで進ませない。
+    final normalizedCode = normalizeRoomCode(code);
+    if (validateRoomCode(normalizedCode) != null) {
+      throw RoomJoinError.invalidCode;
+    }
+
+    final snapshot = await _db.ref('roomCodes/$normalizedCode').get();
+    if (!snapshot.exists) throw RoomJoinError.notFound;
 
     final roomId = (snapshot.value as Map)['roomId'] as String;
 
+    final metaSnapshot = await _db.ref('rooms/$roomId/meta').get();
+    final meta = metaSnapshot.value as Map<dynamic, dynamic>?;
+    if (meta == null) throw RoomJoinError.notFound;
+
+    final status = RoomStatus.fromRaw(meta['status']?.toString());
+    // 逃走者の有無が終了判定に効くのはPLAYING中だけ([isGameOver]参照)なので、
+    // そのときだけ`users`を追加で読む(待機中のルームでは無駄読みしない)。
+    final hasFugitives =
+        status != RoomStatus.playing || await _hasFugitives(roomId);
+
+    // サーバー時刻が取れないまま端末時計で判定すると、時計が遅れている
+    // 端末が`endsAt`を過ぎたルームに入れてしまう。判定できないときは
+    // 参加させない(画面側で理由を出す)。
+    final nowMillis = await _serverNowMillis();
+    if (nowMillis == null) throw RoomJoinError.serverTimeUnavailable;
+
+    if (isGameOver(
+      status: status,
+      endsAt: (meta['endsAt'] as num?)?.toInt(),
+      nowMillis: nowMillis,
+      hasFugitives: hasFugitives,
+    )) {
+      throw RoomJoinError.finished;
+    }
+
     await _db.ref('rooms/$roomId/users/$_uid').set({
       'displayName': displayName,
-      'deviceId': deviceId,
       'isHost': false,
       'role': 'FUGITIVE',
       'joinedAt': ServerValue.timestamp,
     });
 
     return roomId;
+  }
+
+  /// ルームに逃走者が1人でも残っているか。
+  ///
+  /// 全員が捕まって決着したルームは`status`が`PLAYING`のままで`endsAt`も
+  /// まだ未来なので、この判定が無いと参加できてしまう。参加者は
+  /// `role: FUGITIVE`で書き込まれるため、入れてしまうと全員の結果画面が
+  /// 「逃げ切り1人」に反転する。
+  ///
+  /// 役割の読み取りは[RoomUser]に任せる(未設定や未知の値をFUGITIVE扱い
+  /// にする既定を画面側と揃えるため)。誰も居ないルームは逃走者0人として
+  /// 扱う。
+  Future<bool> _hasFugitives(String roomId) async {
+    final snapshot = await _db.ref('rooms/$roomId/users').get();
+    final users = snapshot.value as Map<dynamic, dynamic>?;
+    if (users == null) return false;
+    for (final entry in users.entries) {
+      final raw = entry.value;
+      if (raw is! Map) continue;
+      final user = RoomUser.fromMap(entry.key.toString(), raw);
+      if (user.role == UserRole.fugitive) return true;
+    }
+    return false;
+  }
+
+  /// 現在のサーバー時刻(エポックミリ秒)。
+  /// サーバー時刻(エポックミリ秒)。オフセットを取得できなければnull。
+  ///
+  /// 端末時計へフォールバックしないのは[fetchServerTimeOffset]のdoc参照。
+  Future<int?> _serverNowMillis() async {
+    final offset = await fetchServerTimeOffset(_db);
+    return offset == null ? null : serverNowMillis(offset);
   }
 
   /// ルームの状態をリアルタイムで監視する

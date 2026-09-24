@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
+import 'package:kakureru/features/pressure/model/calibration_failure.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/pressure_math.dart';
@@ -24,6 +26,7 @@ abstract class PressureState with _$PressureState {
     PressureSensorAvailability sensorAvailability,
     double? myPressureHPa,
     @Default(false) bool isCalibrating,
+    @Default(CalibrationFailure.none) CalibrationFailure calibrationFailure,
   }) = _PressureState;
 }
 
@@ -39,6 +42,14 @@ class PressureViewModel extends Notifier<PressureState> {
   /// 終わる前に[init]が二重に呼ばれることがある。状態はまだchecking
   /// なので下のガードをすり抜けてしまうため、実行中のものに相乗りさせる。
   Future<void>? _initInFlight;
+
+  /// [stopSendingAndDispose]のたびに進む世代番号。センサーの有無の判定
+  /// (最大3秒)を待っている最中にゲーム画面を離れると、待ちが明けたときには
+  /// もう`disposeSensor()`が済んでいる。そこで購読を始めてしまうと、
+  /// **誰も止めないセンサー購読**が残る(issue #93と同じ「画面を離れたのに
+  /// 止まらない」)。LocationViewModel・BleViewModelと同じやり方で、
+  /// 自分を始めた世代のままかどうかを見る。
+  int _epoch = 0;
 
   /// 待機画面・ゲーム画面に入った時に呼ぶ。センサーの有無を確認し、使える
   /// なら気圧の購読を始める(何度呼んでも安全)。判定結果は他の参加者にも
@@ -75,9 +86,30 @@ class PressureViewModel extends Notifier<PressureState> {
     }
   }
 
+  /// 前のルーム・前の画面で出た失敗表示を消す(待機画面を開いたときに呼ぶ)。
+  ///
+  /// このproviderはルームをまたいで生き続けるため、失敗したまま退出して
+  /// 別のルームに入ると、何も押していないのに失敗文が残って見える。
+  /// 状態を書き換えるので、ビルド中(useEffectの中)から直接呼ばず、
+  /// フレーム確定後に呼ぶこと。
+  void clearCalibrationFailure() {
+    if (state.calibrationFailure == CalibrationFailure.none) return;
+    state = state.copyWith(calibrationFailure: CalibrationFailure.none);
+  }
+
   Future<void> _checkAndStart(String roomId) async {
+    final epoch = _epoch;
     final available = await _repo.checkSensorAvailable();
     unawaited(_repo.reportSensorAvailability(roomId, available: available));
+
+    // 待っている間に画面を離れていたら、ローカルstateへの反映も購読の開始も
+    // しない(RTDBへの記録は上で済ませている。端末にセンサーがあるかどうかは
+    // 画面を離れても変わらない事実なので、書いて困らない)。
+    // **状態をcheckingのまま残すのが大事**で、ここでavailabilityを書くと
+    // 上のガードに引っかかって`_checkAndStart`が二度と走らず、次に
+    // ゲームへ入ったとき気圧が永久に取れなくなる。
+    if (epoch != _epoch) return;
+
     if (!available) {
       state = state.copyWith(
         sensorAvailability: PressureSensorAvailability.unavailable,
@@ -94,13 +126,27 @@ class PressureViewModel extends Notifier<PressureState> {
   }
 
   /// ホストが自分の気圧を基準値として書き込む。
+  ///
+  /// 失敗しても例外は投げず、理由を[PressureState.calibrationFailure]に
+  /// 残す(押した本人が画面で理由を読めるようにするため。issue #98)。
   Future<void> calibrateAsHost(String roomId) async {
     final myPressure = state.myPressureHPa;
-    if (myPressure == null) return;
+    if (myPressure == null) {
+      state = state.copyWith(calibrationFailure: CalibrationFailure.noPressure);
+      return;
+    }
 
-    state = state.copyWith(isCalibrating: true);
+    state = state.copyWith(
+      isCalibrating: true,
+      calibrationFailure: CalibrationFailure.none,
+    );
     try {
       await _repo.calibrateAsHost(roomId, myPressure);
+    } on Object catch (e) {
+      debugPrint('[PressureViewModel] calibrateAsHost failed: $e');
+      state = state.copyWith(
+        calibrationFailure: CalibrationFailure.writeFailed,
+      );
     } finally {
       state = state.copyWith(isCalibrating: false);
     }
@@ -108,16 +154,35 @@ class PressureViewModel extends Notifier<PressureState> {
 
   /// 参加者が「自分の気圧 - 基準値」をoffsetとして書き込む。
   /// basePressureHPa はホストがキャリブレーション済みでないとnull。
+  ///
+  /// [calibrateAsHost]と同じく、失敗の理由は状態に残す(issue #98)。
   Future<void> calibrateAsParticipant(
     String roomId,
     double? basePressureHPa,
   ) async {
     final myPressure = state.myPressureHPa;
-    if (myPressure == null || basePressureHPa == null) return;
+    if (myPressure == null) {
+      state = state.copyWith(calibrationFailure: CalibrationFailure.noPressure);
+      return;
+    }
+    if (basePressureHPa == null) {
+      state = state.copyWith(
+        calibrationFailure: CalibrationFailure.noBasePressure,
+      );
+      return;
+    }
 
-    state = state.copyWith(isCalibrating: true);
+    state = state.copyWith(
+      isCalibrating: true,
+      calibrationFailure: CalibrationFailure.none,
+    );
     try {
       await _repo.calibrateAsParticipant(roomId, myPressure, basePressureHPa);
+    } on Object catch (e) {
+      debugPrint('[PressureViewModel] calibrateAsParticipant failed: $e');
+      state = state.copyWith(
+        calibrationFailure: CalibrationFailure.writeFailed,
+      );
     } finally {
       state = state.copyWith(isCalibrating: false);
     }
@@ -134,6 +199,7 @@ class PressureViewModel extends Notifier<PressureState> {
 
   /// ゲーム画面を離れる時に呼ぶ。送信とセンサー購読を止める。
   void stopSendingAndDispose() {
+    _epoch++;
     _repo.disposeSensor();
   }
 }

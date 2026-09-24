@@ -2,8 +2,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/ble/model/ble_detection.dart';
+import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
+import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
+import 'package:kakureru/features/room/game_alerts.dart';
 import 'package:kakureru/features/room/game_session.dart';
+import 'package:kakureru/features/wifi/repository/wifi_scan_repository.dart';
+import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
 /// start()が呼ばれた回数だけを記録する差し替え。本物のstart()はGeolocatorや
 /// Foreground Serviceへ触れるため、ここでは呼ばせない。
@@ -12,6 +18,7 @@ class _RecordingLocationViewModel extends LocationViewModel {
 
   final LocationState _initialState;
   final startedRooms = <String>[];
+  int stopCalls = 0;
 
   @override
   LocationState build() => _initialState;
@@ -20,11 +27,88 @@ class _RecordingLocationViewModel extends LocationViewModel {
   Future<void> start(String roomId) async {
     startedRooms.add(roomId);
   }
+
+  @override
+  void stop() {
+    stopCalls++;
+  }
+}
+
+/// 気圧の開始/停止の呼び出し回数だけを記録する差し替え。本物は
+/// センサーとRTDBへ触れる。
+class _RecordingPressureViewModel extends PressureViewModel {
+  int stopCalls = 0;
+
+  @override
+  PressureState build() => const PressureState();
+
+  @override
+  Future<void> init(String roomId) async {}
+
+  @override
+  void startSendingToRoom(String roomId) {}
+
+  @override
+  void stopSendingAndDispose() {
+    stopCalls++;
+  }
+}
+
+/// Wi-Fiスキャンの開始/停止の呼び出し回数だけを記録する差し替え。本物は
+/// プラグイン(WiFiScan)とRTDBへ触れる。
+class _RecordingWifiScanRepository extends WifiScanRepository {
+  int stopCalls = 0;
+
+  @override
+  void startScanning(String roomId) {}
+
+  @override
+  void stopScanning() {
+    stopCalls++;
+  }
+}
+
+/// BLEの開始/停止の呼び出し回数だけを記録する差し替え。本物は権限要求と
+/// BLEの広告・スキャンへ触れる。
+class _RecordingBleViewModel extends BleViewModel {
+  int stopCalls = 0;
+
+  @override
+  Map<String, BleDetection> build() => const {};
+
+  @override
+  Future<void> start(String myUid) async {}
+
+  @override
+  void stop() {
+    stopCalls++;
+  }
+}
+
+/// [GameAlerts]の開始/停止の呼び出し回数だけを記録する差し替え。本物は
+/// RTDB(部屋・サーバー時刻)を購読しに行く。
+///
+/// センサー4種ではないが、同じ[useGameSession]の中で同じ形で止めている
+/// (issue #71)ので、一緒に見ておく。`game_alerts_test.dart`が見ているのは
+/// [GameAlerts]単体の振る舞いで、**フックが停止を呼ぶこと**は見ていない。
+class _RecordingGameAlerts extends GameAlerts {
+  int stopCalls = 0;
+
+  @override
+  GameAlertsState build() => initialGameAlertsState;
+
+  @override
+  void start(String roomId) {}
+
+  @override
+  void stop() {
+    stopCalls++;
+  }
 }
 
 /// [useLocationRetryOnResume]だけを貼ったテスト用ウィジェット。
-/// useGameSession 全体はBLE・Wi-Fi・気圧のプラグインまで触るため、
-/// 復帰時の再試行だけを切り出して確認する。
+/// useGameSession 全体を貼ると復帰時の再試行以外の配線まで動くため、
+/// ここだけを切り出して確認する。
 class _RetryHarness extends HookConsumerWidget {
   const _RetryHarness({required this.roomId});
 
@@ -64,7 +148,129 @@ Future<_RecordingLocationViewModel> _pumpHarness(
   return viewModel;
 }
 
+/// ゲーム画面(GamePage)と同じように[useGameSession]を貼るだけのウィジェット。
+/// GamePage本体は地図やRTDBの購読まで抱えているため、センサーの開始/停止の
+/// 配線だけをここに切り出して確認する。
+class _GameSessionHarness extends HookConsumerWidget {
+  const _GameSessionHarness();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    useGameSession(ref, roomId: 'room-1', myUid: 'me');
+    return const SizedBox.shrink();
+  }
+}
+
+/// [useGameSession]が動かすもの(センサー4種 + [GameAlerts])の差し替え一式。
+typedef _Sensors = ({
+  _RecordingLocationViewModel location,
+  _RecordingPressureViewModel pressure,
+  _RecordingWifiScanRepository wifi,
+  _RecordingBleViewModel ble,
+  _RecordingGameAlerts alerts,
+});
+
+/// [_GameSessionHarness]をマウントし、差し替えたものを返す。
+Future<_Sensors> _pumpGameSession(WidgetTester tester) async {
+  final sensors = (
+    location: _RecordingLocationViewModel(const LocationState()),
+    pressure: _RecordingPressureViewModel(),
+    wifi: _RecordingWifiScanRepository(),
+    ble: _RecordingBleViewModel(),
+    alerts: _RecordingGameAlerts(),
+  );
+  await _pumpUnderScope(tester, sensors, const _GameSessionHarness());
+  return sensors;
+}
+
+/// ゲーム画面を離れた状態(unmount)を作る。
+///
+/// **[ProviderScope]は差し替えずに残す。** 本番でゲーム画面を離れるときは
+/// アプリ直下のProviderScopeが生き続けるので、notifierは破棄されない。
+/// ここでScopeごと捨ててしまうと、後始末とコンテナの破棄が同時に起きる
+/// 別の条件になり、「フックが停止を呼んだか」だけを見られなくなる。
+Future<void> _leaveGameScreen(WidgetTester tester, _Sensors sensors) async {
+  await _pumpUnderScope(tester, sensors, const SizedBox.shrink());
+  await tester.pump();
+}
+
+Future<void> _pumpUnderScope(
+  WidgetTester tester,
+  _Sensors sensors,
+  Widget child,
+) {
+  return tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        locationViewModelProvider.overrideWith(() => sensors.location),
+        pressureViewModelProvider.overrideWith(() => sensors.pressure),
+        wifiScanRepositoryProvider.overrideWithValue(sensors.wifi),
+        bleViewModelProvider.overrideWith(() => sensors.ble),
+        gameAlertsProvider.overrideWith(() => sensors.alerts),
+      ],
+      child: child,
+    ),
+  );
+}
+
 void main() {
+  // 画面を離れたら4種のセンサーが止まることの再発防止。以前は後始末の中で
+  // `ref.read`を呼んでおり、unmount中のrefは使えない(StateError)ため
+  // stop()が一度も走らず、位置情報のForeground Service・気圧の送信・
+  // Wi-Fiスキャン・BLEの発信が残り続けていた(issue #93)。例外はhooksが
+  // 握るので画面には何も出ず、気づけるのはこの形のテストだけ。
+  //
+  // **1つのテストにまとめない。** stopの呼び出しを消す・別のものを返すと
+  // いった回帰が起きたときに、どれが止まらなくなったのかがテスト名で
+  // 分かるようにするため(ただし`ref.read`のやり方に戻した場合は、例外が
+  // 同じpumpの中でまとめて流れるので全部が落ちる)。
+  group('useGameSession: 画面を離れたら止まる', () {
+    testWidgets('位置情報の送信を止める', (tester) async {
+      final sensors = await _pumpGameSession(tester);
+      expect(sensors.location.stopCalls, 0);
+
+      await _leaveGameScreen(tester, sensors);
+
+      expect(sensors.location.stopCalls, 1);
+    });
+
+    testWidgets('気圧の送信を止める', (tester) async {
+      final sensors = await _pumpGameSession(tester);
+      expect(sensors.pressure.stopCalls, 0);
+
+      await _leaveGameScreen(tester, sensors);
+
+      expect(sensors.pressure.stopCalls, 1);
+    });
+
+    testWidgets('Wi-Fiスキャンを止める', (tester) async {
+      final sensors = await _pumpGameSession(tester);
+      expect(sensors.wifi.stopCalls, 0);
+
+      await _leaveGameScreen(tester, sensors);
+
+      expect(sensors.wifi.stopCalls, 1);
+    });
+
+    testWidgets('BLEの広告・スキャンを止める', (tester) async {
+      final sensors = await _pumpGameSession(tester);
+      expect(sensors.ble.stopCalls, 0);
+
+      await _leaveGameScreen(tester, sensors);
+
+      expect(sensors.ble.stopCalls, 1);
+    });
+
+    testWidgets('時間で発火する判定(GameAlerts)を止める', (tester) async {
+      final sensors = await _pumpGameSession(tester);
+      expect(sensors.alerts.stopCalls, 0);
+
+      await _leaveGameScreen(tester, sensors);
+
+      expect(sensors.alerts.stopCalls, 1);
+    });
+  });
+
   group('useLocationRetryOnResume', () {
     testWidgets('権限を拒否したままアプリへ戻ってきたら、位置送信を始め直す', (tester) async {
       final viewModel = await _pumpHarness(

@@ -27,8 +27,14 @@ import 'package:kakureru/features/room/single_flight_action.dart';
 ///   onPressed: save.isRunning ? null : () => save.run(() => repo.save()),
 ///   child: save.isRunning ? const CircularProgressIndicator() : const Text('保存'),
 /// );
-/// if (save.error != null) Text('失敗しました: ${save.error}');
+/// if (save.error != null) Text(userFacingErrorMessage(save.error!));
 /// ```
+///
+/// `error`は内部の例外そのものなので、**画面へ出すときは必ず
+/// `userFacingErrorMessage`(error_message.dart)を通す**。`'失敗しました:
+/// ${save.error}'` のように埋め込むと
+/// `[firebase_database/permission-denied] Client doesn't have permission...`
+/// のような英語の例外文がユーザーに出る(issue #95)。
 AsyncAction useAsyncAction(BuildContext context) {
   final isRunning = useState(false);
   final error = useState<Object?>(null);
@@ -43,6 +49,9 @@ AsyncAction useAsyncAction(BuildContext context) {
         await action();
         result = (status: AsyncActionStatus.succeeded, error: null);
       } on Object catch (e) {
+        // 画面にはuserFacingErrorMessageの1文しか出さないため、原因を追える
+        // のはこのログだけになる(issue #95。writeOrLogFailureと同じ方針)。
+        debugPrint('[useAsyncAction] 失敗: $e');
         result = (status: AsyncActionStatus.failed, error: e);
         if (context.mounted) error.value = e;
       } finally {

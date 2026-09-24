@@ -24,9 +24,17 @@ void useGameSession(
   required String? myUid,
 }) {
   // 位置の送信・購読。
+  //
+  // どのeffectも、後始末で`ref.read`を呼ばないよう**生きているうちに**
+  // notifier/repositoryを掴んでおく。widgetのunmount中にrefへ触るのは
+  // hooks_riverpodでは不正(「Using "ref" when a widget is about to or has
+  // been unmounted is unsafe」)で`StateError`になり、**stop()が一度も
+  // 走らないまま**画面を離れることになる(例外はhooksが握るので画面には
+  // 何も出ない。issue #93)。
   useEffect(() {
-    ref.read(locationViewModelProvider.notifier).start(roomId);
-    return () => ref.read(locationViewModelProvider.notifier).stop();
+    final location = ref.read(locationViewModelProvider.notifier)
+      ..start(roomId);
+    return location.stop;
   }, [roomId]);
 
   // 位置送信に失敗していたら、アプリへ戻ってきたタイミングで貼り直す。
@@ -35,11 +43,10 @@ void useGameSession(
   // 気圧の送信。センサー購読自体は待機画面のキャリブレーションで既に
   // 始まっている想定(PressureViewModel.initは判定済みなら再判定しない)。
   useEffect(() {
-    ref.read(pressureViewModelProvider.notifier)
+    final pressure = ref.read(pressureViewModelProvider.notifier)
       ..init(roomId)
       ..startSendingToRoom(roomId);
-    return () =>
-        ref.read(pressureViewModelProvider.notifier).stopSendingAndDispose();
+    return pressure.stopSendingAndDispose;
   }, [roomId]);
 
   // Wi-Fiスキャン。位置情報・気圧とは別の、`WifiScanRepository` が持つ
@@ -47,20 +54,16 @@ void useGameSession(
   // スロットリング対策。具体的な秒数はここに書き写さない — 書き写すと
   // 実装側を変えたときに片方だけ腐るため)。
   useEffect(() {
-    ref.read(wifiScanRepositoryProvider).startScanning(roomId);
-    return () => ref.read(wifiScanRepositoryProvider).stopScanning();
+    final wifiScan = ref.read(wifiScanRepositoryProvider)
+      ..startScanning(roomId);
+    return wifiScan.stopScanning;
   }, [roomId]);
 
   // 時間で発火する判定(鬼放出・ゲーム終了・エリア外)。**画面が消えていても
   // 進む**ように、ウィジェットの再描画ではなく自前のタイマーで回している
   // (issue #71)。センサー4種と同じく、ゲーム画面の滞在に紐づけて開始/停止する。
   useEffect(() {
-    // 後始末で`ref.read`を呼ばないよう、生きているうちにnotifierを掴んで
-    // おく。widgetのunmount中にrefへ触るのはhooks_riverpodでは不正
-    // (「Using "ref" when a widget is about to or has been unmounted is
-    // unsafe」)で、画面を離れるときに例外になる。
-    final alerts = ref.read(gameAlertsProvider.notifier);
-    alerts.start(roomId);
+    final alerts = ref.read(gameAlertsProvider.notifier)..start(roomId);
     return alerts.stop;
   }, [roomId]);
 
@@ -68,8 +71,8 @@ void useGameSession(
   // (FirebaseAuthの復元前など)は開始できない。
   useEffect(() {
     if (myUid == null) return null;
-    ref.read(bleViewModelProvider.notifier).start(myUid);
-    return () => ref.read(bleViewModelProvider.notifier).stop();
+    final ble = ref.read(bleViewModelProvider.notifier)..start(myUid);
+    return ble.stop;
   }, [myUid]);
 }
 

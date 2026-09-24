@@ -7,10 +7,12 @@ import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/features/room/async_action.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
+import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:latlong2/latlong.dart' as latlong;
 
@@ -285,7 +287,7 @@ class RoomSettingPage extends HookConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text(
-                      '${save.error}',
+                      userFacingErrorMessage(save.error!),
                       style: const TextStyle(color: Colors.red),
                     ),
                   ),
@@ -295,7 +297,7 @@ class RoomSettingPage extends HookConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('エラー: $e')),
+        error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
       ),
     );
   }

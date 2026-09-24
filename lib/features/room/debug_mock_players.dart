@@ -181,7 +181,6 @@ List<RoomUser> _mockUsers({required List<UserRole> roles}) {
       RoomUser(
         id: debugMockPlayerUids[i],
         displayName: _debugMockPlayerNames[i],
-        deviceId: debugMockPlayerUids[i],
         role: roles[i],
         pressureSensorAvailable: false,
       ),
