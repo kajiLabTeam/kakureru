@@ -53,6 +53,14 @@ void main() {
     expect(shownId, isNot(0));
   });
 
+  test('撮影タイミングの通知は、他の通知(id: 0〜2)とは別のIDで出す', () async {
+    await showPhotoCaptureDueNotification();
+
+    expect(methods(), ['show']);
+    final shownId = (calls[0].arguments as Map<Object?, Object?>)['id'];
+    expect(shownId, isNot(anyOf(0, 1, 2)));
+  });
+
   // 通知は「出せなかったらそれまで」の付随機能で、呼び出し側に回復の余地が
   // 無い。投げっぱなしにすると未処理の非同期エラーになり、エリア外警告は
   // 8秒ごとに呼び直すので同じエラーが延々と出続ける。
@@ -88,6 +96,12 @@ void main() {
       await expectLater(showDemonReleasedNotification(), completes);
 
       expect(logs.single, contains('鬼放出の通知に失敗'));
+    });
+
+    test('撮影タイミングの通知に失敗しても、例外は投げずログに残す', () async {
+      await expectLater(showPhotoCaptureDueNotification(), completes);
+
+      expect(logs.single, contains('撮影タイミングの通知に失敗'));
     });
 
     // main()はrunApp()より前でこれをawaitしているので、ここで例外を投げると

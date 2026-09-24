@@ -1,5 +1,6 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../model/room.dart';
+import '../model/room_photo.dart';
 import '../player_name_validation.dart';
 import '../repository/player_preferences_repository.dart';
 import '../repository/room_repository.dart';
@@ -68,3 +69,8 @@ final roomStreamProvider = StreamProvider.family.autoDispose<Room, String>((
 ) {
   return ref.watch(roomRepositoryProvider).watchRoom(roomId);
 });
+
+final photosStreamProvider = StreamProvider.family
+    .autoDispose<List<RoomPhoto>, String>((ref, roomId) {
+      return ref.watch(roomRepositoryProvider).watchPhotos(roomId);
+    });

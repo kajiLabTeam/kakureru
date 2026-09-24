@@ -62,9 +62,8 @@ rooms/
         caughtAt
     photos/
       {photoId}/
-        userId
-        storagePath
-        submittedAt
+        uid                 撮影者のuid
+        takenAt             撮影時刻(ServerValue.timestamp)。画像本体はR2([docs/photo-storage.md](photo-storage.md)参照)
 
 roomCodes/
   {code}/                 4桁コード → roomId の逆引き

@@ -6,6 +6,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/room/model/room.dart';
+import 'package:kakureru/features/room/model/room_photo.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
@@ -441,12 +442,36 @@ class RoomRepository {
     return controller.stream;
   }
 
-  /// ルームから退出する。呼び出し元は2つ:
+  /// 写真一覧をリアルタイムで監視する(一覧画面用)。
   ///
-  /// - RoomWaitingPageのdispose(戻る操作で待機画面を離れたとき。ゲーム開始に
-  ///   伴う遷移は離脱ではないので`hasNavigated`で除外している)
-  /// - GameResultPageの「ホームに戻る」(結果画面へはpushReplacementで来る
-  ///   ため、待機画面のdisposeによる退出を通らない。issue #94)
+  /// `watchRoom`と違い監視対象は`photos`サブツリー1つだけなので、
+  /// 複数subtreeを揃えてから初回emitする仕組みは不要(単一のonValueで足りる)。
+  /// 更新頻度・寿命がroomの他の情報と異なるため、あえて別の購読にしている。
+  Stream<List<RoomPhoto>> watchPhotos(String roomId) {
+    final controller = StreamController<List<RoomPhoto>>.broadcast();
+
+    final sub = _db.ref('rooms/$roomId/photos').onValue.listen((event) {
+      final value = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (value == null) {
+        controller.add(const []);
+        return;
+      }
+      controller.add([
+        for (final entry in value.entries)
+          RoomPhoto.fromMap(
+            entry.key.toString(),
+            entry.value as Map<dynamic, dynamic>,
+          ),
+      ]);
+    });
+
+    controller.onCancel = sub.cancel;
+
+    return controller.stream;
+  }
+
+  /// ルームから退出する。RoomWaitingPage/GamePageの`PopScope`から、
+  /// 戻る操作(ハードウェア/AppBarの戻るボタン)で画面を離れたときに呼ばれる。
   ///
   /// users/{uid} を消すだけでは locations/{uid} が残り、他の参加者の
   /// 地図に離脱後もピンが残り続けてしまうため、自分の位置情報も合わせて

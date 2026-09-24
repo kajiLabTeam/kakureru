@@ -154,3 +154,34 @@ Future<void> cancelOutsideAreaNotification() => _runOrLogFailure(
   () => _plugin.cancel(id: _outsideAreaNotificationId),
   what: 'エリア外警告の通知の取り消し',
 );
+
+/// 撮影タイミングの通知ID。鬼放出(0)・エリア外(1)・ゲーム終了(2)とも別に取る。
+const _photoCaptureDueNotificationId = 3;
+
+/// 撮影間隔が来たタイミングで出す通知(issue #107フォローアップ)。
+///
+/// バナーは画面内表示のため、他のタブ(地図/写真)を見ている・アプリを
+/// バックグラウンドにしている等で気づかれないことがある。役割を問わず出す
+/// (鬼は撮影ボタン自体が出ない=押しても何も起きないため、通知だけ届いても
+/// 実害は無い。むしろ鬼だけ通知が来ないと「気づいていないだけでは」と
+/// 混乱させる)。チャンネルを`kakureru_release`/`kakureru_area`と分けるのは、
+/// こちらは1ゲーム中に何度も繰り返し出るため、性格が違う通知と一緒に
+/// 端末側の設定をいじられたくないため。失敗してもログに残すだけ。
+Future<void> showPhotoCaptureDueNotification() {
+  const androidDetails = AndroidNotificationDetails(
+    'kakureru_photo',
+    '撮影タイミングの通知',
+    channelDescription: '足元写真を撮るタイミングになったら通知します',
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+  return _runOrLogFailure(
+    () => _plugin.show(
+      id: _photoCaptureDueNotificationId,
+      title: 'かくれんぼ',
+      body: '足元の写真を撮ってください',
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    ),
+    what: '撮影タイミングの通知',
+  );
+}
