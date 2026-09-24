@@ -6,7 +6,8 @@ import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/user_color.dart';
 import 'package:kakureru/features/room/view/game/downloaded_photo_image.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
-import 'package:kakureru/features/room/view/game/photo_tile.dart' show demonBadgeColor;
+import 'package:kakureru/features/room/view/game/photo_tile.dart'
+    show demonBadgeColor;
 
 /// 写真の全画面拡大表示。
 ///

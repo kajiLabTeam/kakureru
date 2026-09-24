@@ -251,7 +251,10 @@ class PhotoRepository {
     required String? token,
   }) {
     final uri = Uri.parse('$photoApiBaseUrl/rooms/$roomId/photos/$photoId');
-    return _client.get(uri, headers: {'Authorization': 'Bearer ${token ?? ''}'});
+    return _client.get(
+      uri,
+      headers: {'Authorization': 'Bearer ${token ?? ''}'},
+    );
   }
 
   Future<Directory> _cacheDirectory() async {

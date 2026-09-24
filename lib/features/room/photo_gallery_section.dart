@@ -42,7 +42,7 @@ List<PhotoGallerySection> buildPhotoGallerySections({
       PhotoGallerySection(
         slotIndex: slotIndex,
         photos: bySlot[slotIndex]!
-            ..sort((a, b) => b.takenAt.compareTo(a.takenAt)),
+          ..sort((a, b) => b.takenAt.compareTo(a.takenAt)),
       ),
   ];
 }

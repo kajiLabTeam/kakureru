@@ -62,8 +62,7 @@ PhotoCaptureController usePhotoCaptureController(
 
   void scheduleDueTimer(int nextDueAtMillis) {
     dueTimerRef.value?.cancel();
-    final delayMillis =
-        nextDueAtMillis - DateTime.now().millisecondsSinceEpoch;
+    final delayMillis = nextDueAtMillis - DateTime.now().millisecondsSinceEpoch;
     dueTimerRef.value = Timer(
       Duration(milliseconds: delayMillis < 0 ? 0 : delayMillis),
       () {

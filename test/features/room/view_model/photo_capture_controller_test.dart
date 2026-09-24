@@ -74,7 +74,8 @@ void main() {
   });
 
   testWidgets('マウント時点で既に間隔を過ぎていれば、次フレームでisDueが立つ', (tester) async {
-    final pastMillis = DateTime.now().millisecondsSinceEpoch -
+    final pastMillis =
+        DateTime.now().millisecondsSinceEpoch -
         const Duration(minutes: 10).inMilliseconds;
 
     await _pump(tester, intervalSec: 300, lastPhotoAt: pastMillis);
@@ -93,7 +94,8 @@ void main() {
 
   testWidgets('lastPhotoAtがアプリ再起動をまたいでも間隔の基準になる', (tester) async {
     // 5秒間隔のうち3秒が経過済み。残りは2秒。
-    final threeSecondsAgo = DateTime.now().millisecondsSinceEpoch -
+    final threeSecondsAgo =
+        DateTime.now().millisecondsSinceEpoch -
         const Duration(seconds: 3).inMilliseconds;
 
     await _pump(tester, intervalSec: 5, lastPhotoAt: threeSecondsAgo);
@@ -107,7 +109,8 @@ void main() {
   });
 
   testWidgets('マウント時点で既に間隔を過ぎていれば、通知も一緒に出す', (tester) async {
-    final pastMillis = DateTime.now().millisecondsSinceEpoch -
+    final pastMillis =
+        DateTime.now().millisecondsSinceEpoch -
         const Duration(minutes: 10).inMilliseconds;
 
     await _pump(tester, intervalSec: 300, lastPhotoAt: pastMillis);

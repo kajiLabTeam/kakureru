@@ -106,13 +106,13 @@ class PhotoGalleryPage extends StatelessWidget {
         );
         final remainingSec = isCurrentSlot
             ? ((photoSlotEndMillis(
-                          startedAt: startedAt,
-                          slotIndex: section.slotIndex,
-                          intervalSec: intervalSec,
-                        ) -
-                        nowMillis) /
-                    1000)
-                .ceil()
+                            startedAt: startedAt,
+                            slotIndex: section.slotIndex,
+                            intervalSec: intervalSec,
+                          ) -
+                          nowMillis) /
+                      1000)
+                  .ceil()
             : 0;
 
         return Padding(
@@ -139,13 +139,12 @@ class PhotoGalleryPage extends StatelessWidget {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: section.photos.length,
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                      childAspectRatio: 1,
-                    ),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 1,
+                ),
                 itemBuilder: (context, photoIndex) {
                   final photo = section.photos[photoIndex];
                   final person = findUser(room.users, photo.uid);
