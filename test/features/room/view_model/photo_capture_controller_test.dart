@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/room/view_model/photo_capture_controller.dart';
 
@@ -42,6 +44,26 @@ Future<void> _pump(
 }
 
 void main() {
+  // 通知プラグインのメソッドチャネルを差し替えて、呼び出しの記録として
+  // 受け取る(local_notifications_test.dartと同じ方針)。
+  const channel = MethodChannel('dexterous.com/flutter/local_notifications');
+  late List<MethodCall> calls;
+
+  setUp(() {
+    calls = [];
+    AndroidFlutterLocalNotificationsPlugin.registerWith();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          return call.method == 'initialize' ? true : null;
+        });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
+
   testWidgets('間隔をまだ過ぎていなければisDueはfalseのまま', (tester) async {
     await _pump(tester, intervalSec: 300, lastPhotoAt: null);
 
@@ -82,6 +104,25 @@ void main() {
 
     await tester.pump(const Duration(seconds: 2));
     expect(find.text('due'), findsOneWidget);
+  });
+
+  testWidgets('マウント時点で既に間隔を過ぎていれば、通知も一緒に出す', (tester) async {
+    final pastMillis = DateTime.now().millisecondsSinceEpoch -
+        const Duration(minutes: 10).inMilliseconds;
+
+    await _pump(tester, intervalSec: 300, lastPhotoAt: pastMillis);
+    await tester.pump();
+
+    expect(calls.map((c) => c.method), contains('show'));
+  });
+
+  testWidgets('タイマーでisDueが立ったときも、通知を出す', (tester) async {
+    await _pump(tester, intervalSec: 5, lastPhotoAt: null);
+    expect(calls.map((c) => c.method), isNot(contains('show')));
+
+    await tester.pump(const Duration(seconds: 6));
+
+    expect(calls.map((c) => c.method), contains('show'));
   });
 
   testWidgets('画面が破棄されるとタイマーは片付き、残タイマーで失敗しない', (tester) async {

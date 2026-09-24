@@ -473,8 +473,12 @@ class GamePage extends HookConsumerWidget {
                       PreReleaseBanner(countdownSec: countdownSec),
                     // 撮影プロンプト。間隔が来た、またはアップロード失敗で
                     // 再送待ちの画像がある間だけ出す(PHOTO_API_BASE_URL
-                    // 未設定の環境では機能ごと隠す)。
+                    // 未設定の環境では機能ごと隠す)。鬼は撮影対象ではないため
+                    // 逃走者のみに出す(photo_gallery_page.dartのshowBannerと
+                    // 同じ判定。以前ここに役割チェックが無く、鬼の画面にも
+                    // バナーが出て撮影できてしまっていた)。
                     if (isPhotoFeatureConfigured &&
+                        myRole == UserRole.fugitive &&
                         (photoCapture.state.isDue ||
                             photoCapture.state.pendingBytes != null))
                       PhotoCaptureBanner(

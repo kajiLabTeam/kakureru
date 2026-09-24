@@ -5,6 +5,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:kakureru/core/utils/local_notifications.dart';
 import 'package:kakureru/features/room/model/photo_capture_state.dart';
 import 'package:kakureru/features/room/repository/photo_repository.dart';
 
@@ -68,6 +69,10 @@ PhotoCaptureController usePhotoCaptureController(
       () {
         if (!context.mounted) return;
         stateHook.value = stateHook.value.copyWith(isDue: true);
+        // バナーは他のタブを見ている・バックグラウンド中だと気づかれない
+        // ため、通知でも知らせる(役割は問わない。鬼は撮影ボタン自体が
+        // 出ないだけで、通知が来ても実害は無い)。
+        unawaited(showPhotoCaptureDueNotification());
       },
     );
   }
@@ -84,6 +89,7 @@ PhotoCaptureController usePhotoCaptureController(
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
         stateHook.value = stateHook.value.copyWith(isDue: true);
+        unawaited(showPhotoCaptureDueNotification());
       });
     } else {
       scheduleDueTimer(nextDueAtMillis);
