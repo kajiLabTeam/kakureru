@@ -11,6 +11,7 @@ import 'package:kakureru/features/room/area_alert.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:vibration/vibration.dart';
@@ -231,6 +232,21 @@ class GameAlerts extends Notifier<GameAlertsState> {
     _notifiedDemonRelease = true;
     unawaited(_vibrateOnce(_demonReleaseVibrationMillis));
     unawaited(showDemonReleasedNotification());
+    _logAsHost(room!, GameEventType.released);
+  }
+
+  /// 分析用のイベントログを、ホスト端末のときだけ記録する。
+  ///
+  /// この判定は全端末で回るため、全員が書くと同じ出来事が人数分並ぶ。
+  /// ホストの端末で検知した時刻を代表値にする(時刻そのものは
+  /// `meta/releasedAt`・`meta/endsAt`からも計算できる)。
+  void _logAsHost(Room room, GameEventType type) {
+    final myUid = ref.read(myUidProvider);
+    final roomId = _roomId;
+    if (myUid == null || roomId == null || myUid != room.hostUserId) return;
+    unawaited(
+      ref.read(eventLogRepositoryProvider).log(roomId, type: type, uid: myUid),
+    );
   }
 
   /// ゲーム終了を検知したら一度だけ通知し、状態に立てる。
@@ -255,6 +271,7 @@ class GameAlerts extends Notifier<GameAlertsState> {
 
     _notifiedGameOver = true;
     unawaited(showGameOverNotification());
+    _logAsHost(room, GameEventType.gameEnded);
 
     // 終わったらもう何も判定しない。**特にエリア外の振動を止めるのが重要**。
     // 画面が消えている間は結果画面への遷移が起きず、遷移に紐づく

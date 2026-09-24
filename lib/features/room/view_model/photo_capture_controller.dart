@@ -7,6 +7,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kakureru/core/utils/local_notifications.dart';
 import 'package:kakureru/features/room/model/photo_capture_state.dart';
+import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/repository/photo_repository.dart';
 
 /// これを超える画像は送らない(Worker側の上限、docs/photo-storage.md参照)。
@@ -138,6 +139,13 @@ PhotoCaptureController usePhotoCaptureController(
         await FirebaseDatabase.instance
             .ref('rooms/$roomId/users/$uid/lastPhotoAt')
             .set(ServerValue.timestamp);
+        unawaited(
+          EventLogRepository().log(
+            roomId,
+            type: GameEventType.photoTaken,
+            uid: uid,
+          ),
+        );
 
         debugPrint(
           '[usePhotoCaptureController] アップロード成功 bytes=${bytes.length}',

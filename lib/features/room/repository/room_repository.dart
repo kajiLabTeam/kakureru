@@ -9,6 +9,7 @@ import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_photo.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/room_code_validation.dart';
 import 'package:kakureru/features/room/room_create_error.dart';
@@ -34,6 +35,9 @@ class RoomRepository {
   // 解決のタイミングが遅くなるだけで変わらない。
   late final FirebaseDatabase _db = _dbOverride ?? FirebaseDatabase.instance;
   late final FirebaseAuth _auth = _authOverride ?? FirebaseAuth.instance;
+
+  /// 分析用のイベントログ(fire-and-forget。失敗してもここへは投げ返さない)。
+  late final EventLogRepository _eventLog = EventLogRepository(db: _dbOverride);
 
   final _random = Random();
 
@@ -156,6 +160,9 @@ class RoomRepository {
       'releasedAt': startedAt + setting.releaseWaitSec * 1000,
       'endsAt': startedAt + setting.gameDurationSec * 1000,
     });
+    unawaited(
+      _eventLog.log(roomId, type: GameEventType.gameStarted, uid: _uid),
+    );
   }
 
   /// 「同じメンバーでもう一回」でルームを待機状態に巻き戻す(issue #44)。
@@ -237,6 +244,9 @@ class RoomRepository {
       return;
     }
     await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
+    unawaited(
+      _eventLog.log(roomId, type: GameEventType.becameDemon, uid: uid),
+    );
   }
 
   /// ホストが、既に鬼になっている人を逃走者に戻す(指名の取り消し)。

@@ -44,6 +44,11 @@
         "photos": {
           ".read": "auth != null",
           ".write": "auth != null"
+        },
+
+        "events": {
+          ".read": "auth != null",
+          ".write": "auth != null"
         }
       }
     },
