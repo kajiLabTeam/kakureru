@@ -1,30 +1,48 @@
-import 'dart:math' as math;
-
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 
 /// Wi-Fi近接判定に使う閾値。
+///
+/// 値は愛工大14号館での実測(2026-07-20/22)と、そのRSSIを一律22dB弱めた
+/// 屋外想定のシミュレーションから決めた。経緯は
+/// docs/wifi-proximity-investigation.md 9章を参照。
 class ProximityThresholds {
   const ProximityThresholds._();
 
   /// これ未満のRSSI(dBm)のAPは弱すぎるとみなし、判定対象から除外する。
-  static const weakSignalCutoffDbm = -80;
+  /// 屋外では建物内のAPが壁越しに弱く見えるため、屋内向けだった-80から
+  /// 下げている(-80のままだと屋外で共通APがほぼ残らない)。
+  static const weakSignalCutoffDbm = -90;
 
-  /// RSSI差の計算時、これを超える差(dBm)は外れ値として除外する。
-  static const rssiDiffOutlierThresholdDbm = 20;
-
-  /// 共通APがこれ未満なら判定に使えるデータが足りないとみなす。
+  /// 共通AP(物理AP単位)がこれ未満なら判定に使えるデータが足りないとみなす。
   static const minCommonApCount = 3;
 
-  /// Jaccard係数がこれ未満なら「検知なし」。
-  static const jaccardNotDetectedThreshold = 0.35;
+  /// 「近い」と判定するための、共通APのRSSI差の中央値(dB)の上限(この値を含む)。
+  static const rssiDiffCloseThresholdDbm = 7;
 
-  /// Jaccard係数がこれ以上、かつRSSI差平均が[rssiDiffCloseThresholdDbm]未満
-  /// なら「近い」。
-  static const jaccardCloseThreshold = 0.50;
+  /// 「近い」と判定するための、上位AP一致率([calculateTopOverlap])の下限
+  /// (この値を含む)。
+  static const topOverlapCloseThreshold = 0.6;
 
-  /// 「近い」と判定するためのRSSI差平均(dBm)の上限。
-  static const rssiDiffCloseThresholdDbm = 8;
+  /// [calculateTopOverlap]で比べる上位APの件数。
+  static const topOverlapCount = 5;
+}
+
+/// BSSIDを物理APごとにまとめ、各物理APのRSSIはその中の最大値にする。
+///
+/// 愛工大のAPは1台でeduroam / ait-wnet1x / ait-jimu / ステルスなど複数の
+/// SSIDを出しており、それぞれのBSSIDは末尾1文字(16進1桁)だけが違う。
+/// BSSIDのままだと1台のAPが4〜5件に水増しされ、スキャンごとにどのSSIDが
+/// 拾えたかの揺らぎで共通AP数や上位APの顔ぶれが大きく変わってしまうため、
+/// 末尾1文字を落とした文字列を物理APのキーとして集約する。
+Map<String, int> groupByPhysicalAp(Map<String, int> bssidRssi) {
+  final grouped = <String, int>{};
+  for (final e in bssidRssi.entries) {
+    final key = e.key.isEmpty ? e.key : e.key.substring(0, e.key.length - 1);
+    final current = grouped[key];
+    if (current == null || e.value > current) grouped[key] = e.value;
+  }
+  return grouped;
 }
 
 /// [ProximityThresholds.weakSignalCutoffDbm]未満のAPを除外したマップを返す。
@@ -36,83 +54,61 @@ Map<String, int> filterWeakSignals(Map<String, int> bssidRssi) {
   );
 }
 
-/// Jaccard係数(共通BSSID数 / 2人合わせた全BSSID数)を計算する。
-double calculateJaccardIndex(Map<String, int> a, Map<String, int> b) {
-  final setA = a.keys.toSet();
-  final setB = b.keys.toSet();
-  final union = setA.union(setB);
-  if (union.isEmpty) return 0;
-  final intersection = setA.intersection(setB);
-  return intersection.length / union.length;
+/// 判定の前処理: 物理AP単位への集約([groupByPhysicalAp]) → 足切り
+/// ([filterWeakSignals])。集約を先にするのは、同じAPの中で1つでも
+/// 足切りを超えるSSIDがあればそのAPを残すため。
+Map<String, int> prepareForProximity(Map<String, int> bssidRssi) =>
+    filterWeakSignals(groupByPhysicalAp(bssidRssi));
+
+/// 共通APにおけるRSSI差(絶対値)の中央値(dB)。共通APが無ければnull。
+///
+/// 以前は「20dBを超える差を外れ値として除いた平均」を使っていたが、
+/// 離れているときに出る大きな差こそ「遠い」の証拠であり、それを捨てると
+/// 遠い組が近く見えてしまっていた。中央値なら揺らぎによる単発の外れ値には
+/// 強いまま、差が大きいAPが多数派なら素直に値が大きくなる。
+double? calculateMedianRssiDiff(Map<String, int> a, Map<String, int> b) {
+  final diffs = [
+    for (final key in a.keys)
+      if (b.containsKey(key)) (a[key]! - b[key]!).abs(),
+  ]..sort();
+  if (diffs.isEmpty) return null;
+  final mid = diffs.length ~/ 2;
+  if (diffs.length.isOdd) return diffs[mid].toDouble();
+  return (diffs[mid - 1] + diffs[mid]) / 2;
 }
 
-/// 共通BSSIDにおけるRSSI差の平均(dBm)を計算する。
-/// [ProximityThresholds.rssiDiffOutlierThresholdDbm]を超える差は外れ値として除外する。
-double? calculateAverageRssiDiff(Map<String, int> a, Map<String, int> b) {
-  final common = a.keys.toSet().intersection(b.keys.toSet());
-  final diffs = <int>[];
-  for (final bssid in common) {
-    final diff = (a[bssid]! - b[bssid]!).abs();
-    if (diff > ProximityThresholds.rssiDiffOutlierThresholdDbm) continue;
-    diffs.add(diff);
-  }
-  if (diffs.isEmpty) return null;
-  return diffs.reduce((x, y) => x + y) / diffs.length;
+/// 上位AP一致率: 双方のRSSI上位k件(k = min([count], |a|, |b|))のうち、
+/// 両方の上位k件に入っているAPの割合(0〜1)。
+///
+/// 一番強く見えるAPの顔ぶれは、その場所の近くにあるAPでほぼ決まる。
+/// Jaccard係数(全体の集合の重なり)はスキャンで拾えるAP数が20〜130件と
+/// 大きく揺らぐと下がってしまうが、上位数件の一致は拾えた件数に左右
+/// されにくい。また「APを挟んで対称な位置にいるとRSSI差だけは小さく
+/// 見える」ケースも、最寄りのAPが違えばここで弾ける。
+double calculateTopOverlap(
+  Map<String, int> a,
+  Map<String, int> b, {
+  int count = ProximityThresholds.topOverlapCount,
+}) {
+  final k = [count, a.length, b.length].reduce((x, y) => x < y ? x : y);
+  if (k <= 0) return 0;
+  final topA = selectTopAccessPoints(a, count: k).keys.toSet();
+  final topB = selectTopAccessPoints(b, count: k).keys.toSet();
+  return topA.intersection(topB).length / k;
 }
 
 /// RSSIが強い順に上位[count]件を選ぶ(RTDBへの送信データを絞るため)。
+/// 同じRSSIのものはキーの辞書順で並べ、結果が実行ごとに変わらないようにする。
 Map<String, int> selectTopAccessPoints(
   Map<String, int> bssidRssi, {
   int count = 40,
 }) {
   final sorted = bssidRssi.entries.toList()
-    ..sort((a, b) => b.value.compareTo(a.value)); // RSSIが強い順
+    ..sort((a, b) {
+      final byRssi = b.value.compareTo(a.value); // RSSIが強い順
+      return byRssi != 0 ? byRssi : a.key.compareTo(b.key);
+    });
   return Map.fromEntries(sorted.take(count));
-}
-
-/// 判定直前に適用する「固有APのみの対称クランプ」。[bssidRssi]のうち
-/// [common](両者に共通するAP)は常に残し、片側にしかないAP(固有AP)だけを
-/// RSSIの強い順の上位min(自分の固有件数, [otherPrivateCount])件に絞って返す。
-/// 自分・相手それぞれについて呼ぶことで、固有APの件数が揃う
-/// (共通APはどちらの呼び出しでも削られない)。
-///
-/// なぜ必要か: [filterWeakSignals]の足切りは-80dBmという**絶対値**で行うため、
-/// アンテナ利得の差・ポケットか手持ちか、といった端末差で一律に数dB弱く
-/// 見える側だけが大きく削られ、足切り後の集合サイズが非対称になる。
-/// サイズが非対称なままJaccard係数を取ると、共通APは増えないのに和集合だけが
-/// 膨らむため係数が不当に下がる(例: |A|=40・|B|=14でBがAに完全に含まれる
-/// ときJ=14/40=0.35。実際には同じ場所にいるのにfar/検知なしになる)。
-///
-/// 以前は件数M=min(|A|,|B|)だけで揃える`clampToSymmetricTop`相当の実装
-/// だったが、実測RTDBデータで**共通APまでクランプに巻き込まれて削られ、
-/// 逆にJaccard係数が悪化する**ケースが見つかった(A=5件/B=6件で、Bの
-/// 最弱の共通AP1件が「Bの上位5件」から漏れて削られ、共通4件→3件、
-/// Jaccard 0.571→0.429と悪化。docs/wifi-proximity-investigation.md 8章
-/// 参照)。共通APは集合サイズの非対称と無関係にどちらの集合にも既に
-/// 存在しているため、クランプで削る理由が無い。固有APだけをクランプ対象に
-/// することで、和集合の膨らみ(=片方だけが一律に弱く見えて生まれる固有APの
-/// 偏り)だけを是正し、共通APは触らない。
-///
-/// RSSIの強い順の上位N件という選び方は、端末ごとの**一律な**利得オフセットに
-/// 対して不変(オフセットを足しても順位は変わらない)なので、利得差の正規化と
-/// して機能する。判定側だけの変更であり、送信するデータ形は変えない。
-Map<String, int> clampPrivateAccessPoints(
-  Map<String, int> bssidRssi, {
-  required Set<String> common,
-  required int otherPrivateCount,
-}) {
-  final private = Map.fromEntries(
-    bssidRssi.entries.where((e) => !common.contains(e.key)),
-  );
-  final clampedPrivate = selectTopAccessPoints(
-    private,
-    count: math.min(private.length, otherPrivateCount),
-  );
-  return Map.fromEntries(
-    bssidRssi.entries.where(
-      (e) => common.contains(e.key) || clampedPrivate.containsKey(e.key),
-    ),
-  );
 }
 
 /// 既に計算済みの指標から近接度を判定する。[calculateProximity]の中身を
@@ -120,33 +116,24 @@ Map<String, int> clampPrivateAccessPoints(
 ///
 /// 判定順序(いずれかに該当したら確定):
 /// 1. 共通AP数 < [ProximityThresholds.minCommonApCount] → notDetected
-/// 2. Jaccard係数 < [ProximityThresholds.jaccardNotDetectedThreshold] → notDetected
-/// 3. Jaccard係数 >= [ProximityThresholds.jaccardCloseThreshold] かつ
-///    RSSI差平均 < [ProximityThresholds.rssiDiffCloseThresholdDbm] → close
-/// 4. それ以外 → far
+/// 2. RSSI差の中央値 <= [ProximityThresholds.rssiDiffCloseThresholdDbm] かつ
+///    上位AP一致率 >= [ProximityThresholds.topOverlapCloseThreshold] → close
+/// 3. それ以外 → far
 ///
-/// 共通APが少ない環境ではJaccard係数が(AP1件の増減で)不安定になりうるが、
-/// 「共通AP数が少なければRSSI差だけで判定する」という分岐は**意図的に
-/// 入れていない**。APを挟んで対称な位置にいる(=離れているのにRSSI差だけ
-/// 小さく見える)ケースをJaccard係数と組み合わせて弾く設計のため、RSSI差
-/// 単独の判定に切り替えるとこの防御が外れる。また共通AP数はスキャンごとに
-/// 揺らぐため、分岐の閾値をまたぐたびに判定ロジックそのものが切り替わり、
-/// 別種のバタつきを生む。検討の経緯はdocs/wifi-proximity-investigation.md
-/// 8章(8-4)を参照。
+/// 2つの指標をANDで組み合わせるのは、片方だけだと誤判定が増えるため
+/// (RSSI差だけ: APを挟んだ対称位置で誤って近い / 一致率だけ: 同じAPが
+/// 最寄りの10〜20m圏で誤って近い)。
 ProximityLevel classifyProximity({
   required int commonApCount,
-  required double jaccardIndex,
-  required double? averageRssiDiffDbm,
+  required double? medianRssiDiffDbm,
+  required double topOverlap,
 }) {
   if (commonApCount < ProximityThresholds.minCommonApCount) {
     return ProximityLevel.notDetected;
   }
-  if (jaccardIndex < ProximityThresholds.jaccardNotDetectedThreshold) {
-    return ProximityLevel.notDetected;
-  }
-  if (jaccardIndex >= ProximityThresholds.jaccardCloseThreshold &&
-      averageRssiDiffDbm != null &&
-      averageRssiDiffDbm < ProximityThresholds.rssiDiffCloseThresholdDbm) {
+  if (medianRssiDiffDbm != null &&
+      medianRssiDiffDbm <= ProximityThresholds.rssiDiffCloseThresholdDbm &&
+      topOverlap >= ProximityThresholds.topOverlapCloseThreshold) {
     return ProximityLevel.close;
   }
   return ProximityLevel.far;
@@ -154,45 +141,19 @@ ProximityLevel classifyProximity({
 
 /// 2人分のWi-Fiスキャン結果(BSSID→RSSI)から近接度を判定する。
 ///
-/// 手順は 足切り([filterWeakSignals]) → 固有APのみの対称クランプ
-/// ([clampPrivateAccessPoints]) → 各指標の計算 → [classifyProximity]。
-/// クランプを足切りの**後**に置くのが重要で、逆順(top-N絞り込みの後に
-/// 絶対値の足切り)にすると足切り後のサイズが端末間で非対称になる。
+/// 手順は 前処理([prepareForProximity]) → 各指標の計算 → [classifyProximity]。
 ProximityLevel calculateProximity(
   Map<String, int> selfBssidRssi,
   Map<String, int> targetBssidRssi,
 ) {
-  final selfFiltered = filterWeakSignals(selfBssidRssi);
-  final targetFiltered = filterWeakSignals(targetBssidRssi);
+  final self = prepareForProximity(selfBssidRssi);
+  final target = prepareForProximity(targetBssidRssi);
 
-  final common = selfFiltered.keys.toSet().intersection(
-    targetFiltered.keys.toSet(),
-  );
-  final selfPrivateCount = selfFiltered.length - common.length;
-  final targetPrivateCount = targetFiltered.length - common.length;
-
-  final selfClamped = clampPrivateAccessPoints(
-    selfFiltered,
-    common: common,
-    otherPrivateCount: targetPrivateCount,
-  );
-  final targetClamped = clampPrivateAccessPoints(
-    targetFiltered,
-    common: common,
-    otherPrivateCount: selfPrivateCount,
-  );
-
-  final commonCount = selfClamped.keys
-      .toSet()
-      .intersection(targetClamped.keys.toSet())
-      .length;
-  final jaccard = calculateJaccardIndex(selfClamped, targetClamped);
-  final avgRssiDiff = calculateAverageRssiDiff(selfClamped, targetClamped);
-
+  final commonCount = self.keys.where(target.containsKey).length;
   return classifyProximity(
     commonApCount: commonCount,
-    jaccardIndex: jaccard,
-    averageRssiDiffDbm: avgRssiDiff,
+    medianRssiDiffDbm: calculateMedianRssiDiff(self, target),
+    topOverlap: calculateTopOverlap(self, target),
   );
 }
 
@@ -279,31 +240,24 @@ String? applyNearestUidHysteresis({
 
 /// 複数の候補の中から、自分に最も近い1人のuidを選ぶ。
 ///
-/// 「最も近い」= 共通APのRSSI差平均が最小。共通APが
+/// 「最も近い」= 共通AP(物理AP単位)のRSSI差の中央値が最小。前処理は
+/// [calculateProximity]と同じ[prepareForProximity]で、共通APが
 /// [ProximityThresholds.minCommonApCount]未満の候補は除外する。
 /// 該当者がいなければnull。
-///
-/// [calculateProximity]と違い[clampPrivateAccessPoints]は適用しない。ここで
-/// 使う指標は共通AP(積集合)のRSSI差だけで和集合を使わないため、集合サイズの
-/// 非対称でJaccard係数が下がる問題([clampPrivateAccessPoints]参照)が
-/// 起きず、むしろクランプすると比較に使える共通APを減らしてしまうため。
 String? findNearestUid(
   Map<String, int> selfBssidRssi,
   Map<String, Map<String, int>> candidateBssidRssiByUid,
 ) {
-  final selfFiltered = filterWeakSignals(selfBssidRssi);
+  final self = prepareForProximity(selfBssidRssi);
   String? bestUid;
   double? bestDiff;
 
   for (final entry in candidateBssidRssiByUid.entries) {
-    final targetFiltered = filterWeakSignals(entry.value);
-    final commonCount = selfFiltered.keys
-        .toSet()
-        .intersection(targetFiltered.keys.toSet())
-        .length;
+    final target = prepareForProximity(entry.value);
+    final commonCount = self.keys.where(target.containsKey).length;
     if (commonCount < ProximityThresholds.minCommonApCount) continue;
 
-    final diff = calculateAverageRssiDiff(selfFiltered, targetFiltered);
+    final diff = calculateMedianRssiDiff(self, target);
     if (diff == null) continue;
 
     if (bestDiff == null || diff < bestDiff) {

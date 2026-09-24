@@ -7,8 +7,8 @@ library;
 
 /// 距離感トラックの左端(遠い)に割り当てるRSSI(dBm)。
 ///
-/// -90dBmは`ProximityThresholds.weakSignalCutoffDbm`(-80)よりさらに弱く、
-/// 実質「ほぼ届いていない」領域。これより弱い値は左端へ丸める。
+/// -90dBmは`ProximityThresholds.weakSignalCutoffDbm`(-90)と同じで、判定に
+/// 使われる最も弱い値。これより弱い値は判定からも外れるので左端へ丸める。
 const int rssiTrackMinDbm = -90;
 
 /// 距離感トラックの右端(近い)に割り当てるRSSI(dBm)。
