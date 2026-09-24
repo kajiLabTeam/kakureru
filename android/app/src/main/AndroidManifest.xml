@@ -24,6 +24,12 @@
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
 <!-- 足元写真の撮影(image_picker, ImageSource.camera)にカメラの起動が要る。 -->
 <uses-permission android:name="android.permission.CAMERA"/>
+<!-- 撮影タイミングの通知をAlarmManagerへ正確な時刻で予約する(zonedSchedule)。
+     画面オフ中はDartのTimerが止まり2回目以降の通知が届かなかったため。
+     Android 13以降はUSE_EXACT_ALARM(自動付与)、12以前はSCHEDULE_EXACT_ALARM。
+     USE_EXACT_ALARMはGoogle Playでは用途審査があるが、本アプリはPlay配布しない。 -->
+<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32"/>
+<uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <application
         android:label="kakureru"
         android:name="${applicationName}"
@@ -56,6 +62,11 @@
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="location"
             android:exported="false" />
+        <!-- flutter_local_notificationsの予約通知(zonedSchedule)を時刻になったら
+             表示するレシーバー。プラグイン側のマニフェストには含まれないので宣言が要る。 -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

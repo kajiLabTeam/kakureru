@@ -119,13 +119,51 @@ void main() {
     expect(calls.map((c) => c.method), contains('show'));
   });
 
-  testWidgets('タイマーでisDueが立ったときも、通知を出す', (tester) async {
+  testWidgets('次の撮影時刻の通知は、マウント時にOSへ予約しておく', (tester) async {
+    await _pump(tester, intervalSec: 300, lastPhotoAt: null);
+    await tester.pump();
+
+    // 画面オフ中はDartのTimerが止まるため、TimerからではなくOSの
+    // AlarmManager(zonedSchedule)経由で通知させる。
+    expect(calls.map((c) => c.method), contains('zonedSchedule'));
+  });
+
+  testWidgets('タイマーでisDueが立っても、予約済みの通知を二重に出さない', (tester) async {
     await _pump(tester, intervalSec: 5, lastPhotoAt: null);
-    expect(calls.map((c) => c.method), isNot(contains('show')));
 
     await tester.pump(const Duration(seconds: 6));
 
-    expect(calls.map((c) => c.method), contains('show'));
+    expect(find.text('due'), findsOneWidget);
+    expect(calls.map((c) => c.method), isNot(contains('show')));
+  });
+
+  testWidgets('撮影してlastPhotoAtが変わったら、予約を取り消して次の時刻で予約し直す', (tester) async {
+    await _pump(tester, intervalSec: 300, lastPhotoAt: null);
+    await tester.pump();
+    calls.clear();
+
+    await _pump(
+      tester,
+      intervalSec: 300,
+      lastPhotoAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await tester.pump();
+
+    final methods = calls.map((c) => c.method).toList();
+    expect(methods, containsAllInOrder(['cancel', 'zonedSchedule']));
+  });
+
+  testWidgets('画面を離れたら予約した通知を取り消す', (tester) async {
+    await _pump(tester, intervalSec: 300, lastPhotoAt: null);
+    await tester.pump();
+    calls.clear();
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pump();
+
+    final methods = calls.map((c) => c.method).toList();
+    expect(methods, contains('cancel'));
+    expect(methods, isNot(contains('zonedSchedule')));
   });
 
   testWidgets('画面が破棄されるとタイマーは片付き、残タイマーで失敗しない', (tester) async {

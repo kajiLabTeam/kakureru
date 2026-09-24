@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 final _plugin = FlutterLocalNotificationsPlugin();
 
@@ -168,20 +169,79 @@ const _photoCaptureDueNotificationId = 3;
 /// こちらは1ゲーム中に何度も繰り返し出るため、性格が違う通知と一緒に
 /// 端末側の設定をいじられたくないため。失敗してもログに残すだけ。
 Future<void> showPhotoCaptureDueNotification() {
-  const androidDetails = AndroidNotificationDetails(
-    'kakureru_photo',
-    '撮影タイミングの通知',
-    channelDescription: '足元写真を撮るタイミングになったら通知します',
-    importance: Importance.high,
-    priority: Priority.high,
-  );
   return _runOrLogFailure(
     () => _plugin.show(
       id: _photoCaptureDueNotificationId,
-      title: 'かくれんぼ',
-      body: '足元の写真を撮ってください',
-      notificationDetails: const NotificationDetails(android: androidDetails),
+      title: _photoCaptureDueTitle,
+      body: _photoCaptureDueBody,
+      notificationDetails: const NotificationDetails(
+        android: _photoCaptureDueAndroidDetails,
+      ),
     ),
     what: '撮影タイミングの通知',
   );
 }
+
+const _photoCaptureDueTitle = 'かくれんぼ';
+const _photoCaptureDueBody = '足元の写真を撮ってください';
+const _photoCaptureDueAndroidDetails = AndroidNotificationDetails(
+  'kakureru_photo',
+  '撮影タイミングの通知',
+  channelDescription: '足元写真を撮るタイミングになったら通知します',
+  importance: Importance.high,
+  priority: Priority.high,
+);
+
+/// 撮影タイミングの通知を[at]に出すよう、OS(AlarmManager)へ予約する。
+///
+/// 以前はゲーム画面のDartの`Timer`が発火したときに[showPhotoCaptureDueNotification]
+/// を呼んでいたが、画面を消してポケットに入れるとDoze等でTimerが止まり、
+/// **撮影直後(=画面を見ている)の1回目しか通知が届かない**ことがあった。
+/// AlarmManagerに予約すればアプリの状態に関係なくOSが時刻どおりに出す。
+///
+/// 同じIDで予約し直すと前の予約は置き換わる。予約を取り消すには
+/// [cancelPhotoCaptureDueNotification]を呼ぶ。[at]が過去だとプラグインが
+/// 例外を投げるが、他の通知と同じくログに残すだけにする。
+Future<void> schedulePhotoCaptureDueNotification(DateTime at) {
+  return _runOrLogFailure(() async {
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    final canExact = await android?.canScheduleExactNotifications();
+    await _plugin.zonedSchedule(
+      id: _photoCaptureDueNotificationId,
+      title: _photoCaptureDueTitle,
+      body: _photoCaptureDueBody,
+      // 絶対時刻さえ合っていればよいので、端末のタイムゾーンを調べずUTCで渡す。
+      scheduledDate: tz.TZDateTime.from(at, tz.UTC),
+      notificationDetails: const NotificationDetails(
+        android: _photoCaptureDueAndroidDetails,
+      ),
+      androidScheduleMode: photoCaptureDueScheduleMode(
+        canScheduleExact: canExact,
+      ),
+    );
+  }, what: '撮影タイミングの通知の予約');
+}
+
+/// 撮影通知の予約方式を決める。
+///
+/// 正確なアラームの権限(AndroidManifestのUSE_EXACT_ALARM /
+/// SCHEDULE_EXACT_ALARM)があれば、Doze中でも時刻どおりに出す
+/// `exactAllowWhileIdle`。権限が無い端末で`exact`系を使うとプラグインが
+/// 例外を投げて通知が一切出なくなるため、数分遅れうるが確実に出る
+/// `inexactAllowWhileIdle`に落とす(判定できない=nullも権限なし扱い)。
+@visibleForTesting
+AndroidScheduleMode photoCaptureDueScheduleMode({
+  required bool? canScheduleExact,
+}) => (canScheduleExact ?? false)
+    ? AndroidScheduleMode.exactAllowWhileIdle
+    : AndroidScheduleMode.inexactAllowWhileIdle;
+
+/// 撮影通知の予約と、表示中の撮影通知をまとめて取り消す(撮影を済ませた・
+/// ゲーム画面を離れたとき用)。失敗してもログに残すだけ。
+Future<void> cancelPhotoCaptureDueNotification() => _runOrLogFailure(
+  () => _plugin.cancel(id: _photoCaptureDueNotificationId),
+  what: '撮影タイミングの通知の取り消し',
+);

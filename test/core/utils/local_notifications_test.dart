@@ -61,6 +61,45 @@ void main() {
     expect(shownId, isNot(anyOf(0, 1, 2)));
   });
 
+  test('撮影タイミングの通知は、予約も取り消しも即時表示と同じIDで行う', () async {
+    await showPhotoCaptureDueNotification();
+    await schedulePhotoCaptureDueNotification(
+      DateTime.now().add(const Duration(minutes: 5)),
+    );
+    await cancelPhotoCaptureDueNotification();
+
+    expect(methods(), containsAllInOrder(['show', 'zonedSchedule', 'cancel']));
+    int? idOf(String method) =>
+        (calls.firstWhere((c) => c.method == method).arguments
+                as Map<Object?, Object?>)['id']
+            as int?;
+    // IDが食い違うと、撮り終えた後も予約が残って「撮ってください」が届く。
+    expect(idOf('zonedSchedule'), idOf('show'));
+    expect(idOf('cancel'), idOf('show'));
+  });
+
+  group('撮影タイミングの通知の予約モード', () {
+    test('正確なアラームが許可されていれば、Doze中でも時刻どおりに鳴らす', () {
+      expect(
+        photoCaptureDueScheduleMode(canScheduleExact: true),
+        AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    });
+
+    // 許可が無いのにexactで予約するとプラグインが例外を投げ、通知が
+    // 1件も届かなくなる。多少遅れても届くinexactへ落とす。
+    test('許可されていない・判定できないときは、inexactへ落とす', () {
+      expect(
+        photoCaptureDueScheduleMode(canScheduleExact: false),
+        AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+      expect(
+        photoCaptureDueScheduleMode(canScheduleExact: null),
+        AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+    });
+  });
+
   // 通知は「出せなかったらそれまで」の付随機能で、呼び出し側に回復の余地が
   // 無い。投げっぱなしにすると未処理の非同期エラーになり、エリア外警告は
   // 8秒ごとに呼び直すので同じエラーが延々と出続ける。
@@ -102,6 +141,23 @@ void main() {
       await expectLater(showPhotoCaptureDueNotification(), completes);
 
       expect(logs.single, contains('撮影タイミングの通知に失敗'));
+    });
+
+    test('撮影タイミングの通知の予約に失敗しても、例外は投げずログに残す', () async {
+      await expectLater(
+        schedulePhotoCaptureDueNotification(
+          DateTime.now().add(const Duration(minutes: 5)),
+        ),
+        completes,
+      );
+
+      expect(logs.single, contains('撮影タイミングの通知の予約に失敗'));
+    });
+
+    test('撮影タイミングの通知の取り消しに失敗しても、例外は投げずログに残す', () async {
+      await expectLater(cancelPhotoCaptureDueNotification(), completes);
+
+      expect(logs.single, contains('取り消しに失敗'));
     });
 
     // main()はrunApp()より前でこれをawaitしているので、ここで例外を投げると

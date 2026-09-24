@@ -64,15 +64,21 @@ PhotoCaptureController usePhotoCaptureController(
   void scheduleDueTimer(int nextDueAtMillis) {
     dueTimerRef.value?.cancel();
     final delayMillis = nextDueAtMillis - DateTime.now().millisecondsSinceEpoch;
+    // バナーは他のタブを見ている・バックグラウンド中だと気づかれないため、
+    // 通知でも知らせる(役割は問わない。鬼は撮影ボタン自体が出ないだけで、
+    // 通知が来ても実害は無い)。通知はこのTimerからは出さず、OSに予約する:
+    // 画面を消すとDoze等でDartのTimerが止まり、2回目以降の通知が届かなく
+    // なっていたため(Timerはアプリを開いている間のバナー表示専用)。
+    unawaited(
+      schedulePhotoCaptureDueNotification(
+        DateTime.fromMillisecondsSinceEpoch(nextDueAtMillis),
+      ),
+    );
     dueTimerRef.value = Timer(
       Duration(milliseconds: delayMillis < 0 ? 0 : delayMillis),
       () {
         if (!context.mounted) return;
         stateHook.value = stateHook.value.copyWith(isDue: true);
-        // バナーは他のタブを見ている・バックグラウンド中だと気づかれない
-        // ため、通知でも知らせる(役割は問わない。鬼は撮影ボタン自体が
-        // 出ないだけで、通知が来ても実害は無い)。
-        unawaited(showPhotoCaptureDueNotification());
       },
     );
   }
@@ -95,7 +101,13 @@ PhotoCaptureController usePhotoCaptureController(
       scheduleDueTimer(nextDueAtMillis);
     }
 
-    return () => dueTimerRef.value?.cancel();
+    return () {
+      dueTimerRef.value?.cancel();
+      // 撮影を済ませた(lastPhotoAtが変わった)ときは直後に予約し直され、
+      // ゲーム画面を離れたときは予約ごと消える。表示中の通知も一緒に消える
+      // ので、撮り終えた後に「撮ってください」が残り続けることもない。
+      unawaited(cancelPhotoCaptureDueNotification());
+    };
     // scheduleDueTimer/stateHookはeffect内でのみ参照するクロージャの再生成
     // 元であり、依存に加えるとタイマーが無限に張り直されてしまうため除外する。
     // ignore: exhaustive_keys
