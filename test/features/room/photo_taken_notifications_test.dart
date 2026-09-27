@@ -221,14 +221,14 @@ void main() {
       addTearDown(photos.close);
       final showHook = ValueNotifier(false);
       addTearDown(showHook.dispose);
-      final room = Room(
+      const room = Room(
         id: _roomId,
         roomCode: '1234',
         hostUserId: _me,
         status: RoomStatus.playing,
         createdAt: 0,
-        setting: const RoomSetting(),
-        users: const [
+        setting: RoomSetting(),
+        users: [
           RoomUser(id: _me, displayName: 'わたし', role: UserRole.demon),
           RoomUser(id: 'a', displayName: 'たろう'),
         ],
