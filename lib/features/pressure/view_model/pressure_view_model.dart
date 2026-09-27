@@ -86,7 +86,9 @@ class PressureViewModel extends Notifier<PressureState> {
     try {
       await future;
     } finally {
-      _initInFlight = null;
+      // 待っている間に画面を離れて入り直すと、_initInFlightはもう新しい
+      // 判定に差し替わっている。古い判定の終了で新しい判定を消さない。
+      if (identical(_initInFlight, future)) _initInFlight = null;
     }
   }
 
@@ -214,6 +216,9 @@ class PressureViewModel extends Notifier<PressureState> {
   /// 判定結果は端末固有なので残す(非搭載端末で判定を待ち直さないため)。
   void stopSendingAndDispose() {
     _epoch++;
+    // 進行中の判定は、この世代の終了で無効になる(_checkAndStartが何もせず
+    // 終わる)。次のinitが相乗りしないよう手放し、判定をやり直させる。
+    _initInFlight = null;
     unawaited(_pressureSub?.cancel());
     _pressureSub = null;
     _repo.disposeSensor();

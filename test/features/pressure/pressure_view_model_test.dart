@@ -240,6 +240,56 @@ void main() {
       );
     });
 
+    // CodeRabbitのレビュー指摘(PR #125)。判定中に離れてすぐ入り直すと、
+    // 新しいinitが古い判定(離脱で無効になったもの)に相乗りし、状態が
+    // checkingのまま購読も始まらなかった。
+    test('判定中に画面を離れてすぐ入り直しても、新しい判定で購読を始める', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..gate = Completer<void>();
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      final first = notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      final second = notifier.init('room1');
+      // 古い判定には相乗りせず、判定をやり直す。
+      expect(repo.checkCalls, 2);
+
+      repo.gate!.complete();
+      await Future.wait([first, second]);
+
+      expect(
+        container.read(pressureViewModelProvider).sensorAvailability,
+        PressureSensorAvailability.available,
+      );
+      expect(repo.watchCalls, 1);
+    });
+
+    test('古い判定が後から終わっても、進行中の新しい判定を忘れない', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..gate = Completer<void>();
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      final first = notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      final oldGate = repo.gate!;
+      repo.gate = Completer<void>();
+      final second = notifier.init('room1');
+
+      // 古い判定だけ先に終わる。
+      oldGate.complete();
+      await first;
+
+      // 新しい判定はまだ進行中なので、ここで呼ばれたinitは相乗りする。
+      final third = notifier.init('room1');
+      expect(repo.checkCalls, 2);
+
+      repo.gate!.complete();
+      await Future.wait([second, third]);
+      expect(repo.watchCalls, 1);
+    });
+
     test('画面を離れた後でも、入り直せば判定と購読をやり直す', () async {
       final repo = _FakePressureRepository(available: true)
         ..gate = Completer<void>();
