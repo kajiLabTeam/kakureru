@@ -1,4 +1,5 @@
 import 'package:geolocator/geolocator.dart';
+import 'package:kakureru/features/location/model/location_sample.dart';
 
 /// 位置の平滑化(ノイズ除去)に使う閾値。
 ///
@@ -35,6 +36,14 @@ class LocationFilterThresholds {
   ///
   /// **実機での調整が前提**: [forceAcceptAfterRejections] と同じトレードオフ。
   static const forceAcceptAfterElapsed = Duration(seconds: 30);
+
+  /// 強制更新で「棄却していた間の最良の測位」を書くとき、候補にできる
+  /// 測位の古さの上限(受け取ってからの時間)。
+  ///
+  /// 精度だけで選ぶと、走っている人の20〜30秒前の位置が今の時刻付きで
+  /// 書かれ、何十mも後ろにピンが出てしまう。送信間隔(4秒)の2回分に
+  /// 絞り、これより古い候補は使わず今回の測位を書く。
+  static const fallbackCandidateMaxAge = Duration(seconds: 8);
 }
 
 /// [evaluateLocationUpdate] の判定結果。
@@ -52,7 +61,14 @@ enum LocationUpdateDecision {
   rejectedLowAccuracy,
 
   /// 直前に採用した位置からの移動がデッドバンド未満のため棄却。
-  rejectedDeadband;
+  rejectedDeadband,
+
+  /// すでに受け取った測位より古い(または同じ)時刻の測位のため棄却
+  /// (issue #117)。取得の完了順が入れ替わると、古い位置が新しい位置の
+  /// 後に書かれてピンが一瞬逆戻りするのを防ぐ。連続棄却には数え、
+  /// 強制更新の条件を満たせば採用する(端末の時計のずれなどで未来の時刻が
+  /// 基準に居座っても、そこから抜け出すため)。
+  rejectedStale;
 
   /// RTDBへ書き込むべきか(採用されたか)。
   bool get isAccepted =>
@@ -161,4 +177,151 @@ LocationUpdateDecision? _rejectionReason({
     return LocationUpdateDecision.rejectedDeadband;
   }
   return null;
+}
+
+/// [LocationUpdateFilter.offer] の結果。
+///
+/// `toWrite` は RTDB へ書くべき測位で、棄却なら null。強制更新のときは
+/// 今回渡した測位ではなく、棄却が続いた間で最も精度の良かった測位になる
+/// ことがある。
+typedef LocationFilterResult = ({
+  LocationUpdateDecision decision,
+  LocationSample? toWrite,
+});
+
+/// 測位を1件ずつ受け取り、RTDBへ書くべきものだけを返す状態付きフィルタ。
+///
+/// 判定そのものは純粋関数 [evaluateLocationUpdate] に任せ、ここでは
+/// 呼び出し側が守るべき状態の更新規則(直前の採用位置・連続棄却回数・
+/// 最終採用時刻のリセット)をまとめて持つ。以前は `LocationRepository` の
+/// コールバック内に直接書いていたが、Firebaseに触れるためテストできな
+/// かった(issue #117 で規則が増えたので切り出した)。
+///
+/// issue #117 で足した規則は2つ:
+///
+/// - **古い測位を捨てる**: すでに受け取った測位以前の時刻のものは
+///   [LocationUpdateDecision.rejectedStale] として捨てる。これも連続棄却に
+///   数え、強制更新の対象にする。端末の時計のずれなどで未来の時刻の測位が
+///   1件来ると、以後の測位がすべて「古い」扱いになるため、強制更新で
+///   採用したときに時刻の基準をその測位へ戻して抜け出せるようにしている
+/// - **強制更新では最良の測位を書く**: 以前は強制更新の回に来た測位を
+///   そのまま書いていたため、accuracyが100m級の値でも書かれ、次の良い
+///   測位で戻る「遠くへ飛んで戻る」動きになっていた。直近
+///   ([LocationFilterThresholds.fallbackCandidateMaxAge]以内)に棄却した
+///   測位と今回の測位のうち、accuracyが最も良いものを書くようにする
+class LocationUpdateFilter {
+  /// [startedAt] は強制更新の経過時間の起点。まだ一度も採用していない間も
+  /// 時間による強制更新が効くよう、送信開始時刻を渡す。
+  LocationUpdateFilter({required DateTime startedAt})
+    : _lastAcceptedAt = startedAt;
+
+  double? _lastAcceptedLat;
+  double? _lastAcceptedLng;
+  int _consecutiveRejections = 0;
+  DateTime _lastAcceptedAt;
+  int? _latestTimestampMs;
+
+  /// 前回採用してから棄却した測位のうち、accuracyが最も良いものと、
+  /// それを受け取った時刻。古くなった候補は捨てる([_rememberRejected])。
+  ({LocationSample sample, DateTime receivedAt})? _bestRejected;
+
+  /// 直前まで連続して棄却した回数(ログ用)。
+  int get consecutiveRejections => _consecutiveRejections;
+
+  /// 最後に採用した時刻(ログ用)。
+  DateTime get lastAcceptedAt => _lastAcceptedAt;
+
+  /// 測位 [sample] を1件渡し、書くべきかを判定する。[now] は受け取った時刻。
+  LocationFilterResult offer(LocationSample sample, {required DateTime now}) {
+    final elapsed = now.difference(_lastAcceptedAt);
+    final timestampMs = sample.timestampMs;
+    final latest = _latestTimestampMs;
+    final isStale =
+        timestampMs != null && latest != null && timestampMs <= latest;
+
+    final LocationUpdateDecision decision;
+    if (isStale) {
+      // 古い測位も連続棄却に数え、強制更新の条件は通常の棄却と揃える。
+      final forced =
+          _consecutiveRejections + 1 >=
+              LocationFilterThresholds.forceAcceptAfterRejections ||
+          elapsed >= LocationFilterThresholds.forceAcceptAfterElapsed;
+      decision = forced
+          ? LocationUpdateDecision.acceptedByFallback
+          : LocationUpdateDecision.rejectedStale;
+    } else {
+      if (timestampMs != null) _latestTimestampMs = timestampMs;
+      decision = evaluateLocationUpdate(
+        latitude: sample.latitude,
+        longitude: sample.longitude,
+        accuracy: sample.accuracy,
+        previousLatitude: _lastAcceptedLat,
+        previousLongitude: _lastAcceptedLng,
+        consecutiveRejectionCount: _consecutiveRejections,
+        elapsedSinceLastAccepted: elapsed,
+      );
+    }
+
+    if (!decision.isAccepted) {
+      _consecutiveRejections++;
+      _rememberRejected(sample, now);
+      return (decision: decision, toWrite: null);
+    }
+
+    final toWrite = decision == LocationUpdateDecision.acceptedByFallback
+        ? moreAccurateSample(_recentBestRejected(now), sample)
+        : sample;
+    // 古い測位を強制採用したときは、時刻の基準を「今回受け取った測位」
+    // ([sample])の時刻へ戻す。未来の時刻が基準に居座ったままだと、以後の
+    // 測位がすべて捨てられ続けるため。
+    //
+    // 実際に書いた測位([toWrite]。最良の候補から選ばれることがある)の
+    // 時刻は使わない。候補には未来の時刻が付いた測位自体も入りうるので、
+    // それが選ばれると基準がまた未来へ戻り、抜け出せなくなる。また、
+    // 候補の時刻は今回より古いことがあり、そこへ戻すと今回より古い測位を
+    // 後から受け入れてしまう(順序の逆転を防ぐ意味がなくなる)。
+    if (isStale) _latestTimestampMs = timestampMs;
+    _lastAcceptedLat = toWrite.latitude;
+    _lastAcceptedLng = toWrite.longitude;
+    _consecutiveRejections = 0;
+    _lastAcceptedAt = now;
+    _bestRejected = null;
+    return (decision: decision, toWrite: toWrite);
+  }
+
+  /// 棄却した測位を、強制更新の候補として覚える。すでに覚えている候補が
+  /// 古くなっていれば、精度に関係なく今回の測位に置き換える。
+  void _rememberRejected(LocationSample sample, DateTime now) {
+    final best = _recentBestRejected(now);
+    final chosen = moreAccurateSample(best, sample);
+    _bestRejected = identical(chosen, sample)
+        ? (sample: sample, receivedAt: now)
+        : _bestRejected;
+  }
+
+  /// 覚えている候補のうち、まだ古くなっていないもの。無ければnull。
+  LocationSample? _recentBestRejected(DateTime now) {
+    final best = _bestRejected;
+    if (best == null) return null;
+    final age = now.difference(best.receivedAt);
+    if (age > LocationFilterThresholds.fallbackCandidateMaxAge) return null;
+    return best.sample;
+  }
+}
+
+/// 2つの測位のうちaccuracyが良い(小さい)方を返す。[current] がnullなら
+/// [candidate]。同じなら新しい方の [candidate] を選ぶ(位置は新しいほど
+/// 実態に近いため)。
+///
+/// accuracyがnull(キー欠け)の測位は精度が分からないので最も悪い扱いにする。
+/// 0.0(geolocatorで「精度不明」)は [evaluateLocationUpdate] の足切りと
+/// 揃えて、値どおり最良として扱う。
+LocationSample moreAccurateSample(
+  LocationSample? current,
+  LocationSample candidate,
+) {
+  if (current == null) return candidate;
+  final currentAccuracy = current.accuracy ?? double.infinity;
+  final candidateAccuracy = candidate.accuracy ?? double.infinity;
+  return candidateAccuracy <= currentAccuracy ? candidate : current;
 }
