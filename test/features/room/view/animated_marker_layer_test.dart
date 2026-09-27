@@ -160,6 +160,39 @@ void main() {
       expect(shifts[2], isNot(Offset.zero));
     });
 
+    // Copilotのレビュー指摘(PR #127)。組ごとに独立して並べると、動かした
+    // 先で別の組のピンと重なることがあった。
+    test('ずらした先で別のピンと重なるなら、まとめて並べ直す', () {
+      const points = [Offset.zero, Offset.zero, Offset(40, 0)];
+      final shifts = spreadOverlappingMarkers(points);
+      final placed = [for (var i = 0; i < 3; i++) points[i] + shifts[i]];
+      for (var i = 0; i < 3; i++) {
+        for (var j = i + 1; j < 3; j++) {
+          expect(
+            (placed[i] - placed[j]).distance,
+            greaterThanOrEqualTo(markerOverlapDistance),
+          );
+        }
+      }
+    });
+
+    test('密集していても、最後には全員が重ならない位置に並ぶ', () {
+      // 一列に少しずつずれて並んだ8人(隣同士だけが重なっている)。
+      final points = [for (var i = 0; i < 8; i++) Offset(i * 30.0, i * 5.0)];
+      final shifts = spreadOverlappingMarkers(points);
+      final placed = [
+        for (var i = 0; i < points.length; i++) points[i] + shifts[i],
+      ];
+      for (var i = 0; i < placed.length; i++) {
+        for (var j = i + 1; j < placed.length; j++) {
+          expect(
+            (placed[i] - placed[j]).distance,
+            greaterThanOrEqualTo(markerOverlapDistance - 1e-9),
+          );
+        }
+      }
+    });
+
     test('組の中心は変えない(全体として元の場所のまわりに並ぶ)', () {
       const points = [Offset(10, 10), Offset(12, 14), Offset(8, 9)];
       final shifts = spreadOverlappingMarkers(points);

@@ -574,6 +574,39 @@ List<Offset> spreadOverlappingMarkers(
     }
   }
 
+  // 組ごとに並べ直すと、動かした先で別の組のピンと新たに重なることが
+  // ある(例: 画面上の位置が0, 0, 40の3人。前の2人を左右に動かすと40の
+  // 人に重なる)。重なったらその組同士をまとめて並べ直し、重なりが無く
+  // なるまで繰り返す。組は減る一方なので、最悪でも全員が1つの組になって
+  // 終わる。1つの組の中では隣同士が[spacing]離れる(>= overlapDistance)。
+  while (true) {
+    final shifts = _placeGroupsOnCircles(screenPoints, find, spacing);
+    final placed = [
+      for (var i = 0; i < count; i++) screenPoints[i] + shifts[i],
+    ];
+    var merged = false;
+    for (var i = 0; i < count; i++) {
+      for (var j = i + 1; j < count; j++) {
+        if (find(i) != find(j) &&
+            (placed[i] - placed[j]).distance < overlapDistance) {
+          parent[find(j)] = find(i);
+          merged = true;
+        }
+      }
+    }
+    if (!merged) return shifts;
+  }
+}
+
+/// [find]で同じ組と判定されるピンを、組の重心を中心とする円周上に
+/// 隣同士が[spacing]離れるよう並べたときの「ずらす量」を返す。
+/// 1人だけの組は動かさない。
+List<Offset> _placeGroupsOnCircles(
+  List<Offset> screenPoints,
+  int Function(int) find,
+  double spacing,
+) {
+  final count = screenPoints.length;
   final groups = <int, List<int>>{};
   for (var i = 0; i < count; i++) {
     groups.putIfAbsent(find(i), () => []).add(i);
