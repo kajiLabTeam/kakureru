@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -171,8 +173,11 @@ class GameLocationMap extends HookWidget {
                 ],
               ),
             if (gridPolygons.isNotEmpty) PolygonLayer(polygons: gridPolygons),
-            MarkerLayer(
-              markers: [for (final visual in locationVisuals) visual.marker],
+            AnimatedMarkerLayer(
+              markers: [
+                for (final visual in locationVisuals)
+                  (id: visual.id, marker: visual.marker),
+              ],
             ),
             buildMapAttribution(),
           ],
@@ -261,7 +266,8 @@ class GameLocationMap extends HookWidget {
   ///
   /// アイコン・ラベルの役割表記はissue #42対応(色だけでなく形・表記でも
   /// 鬼/逃走者を見分けられるようにする)。
-  ({Marker marker, Polygon<Object>? gridPolygon}) _buildLocationVisual(
+  ({String id, Marker marker, Polygon<Object>? gridPolygon})
+  _buildLocationVisual(
     UserLocation location,
     UserRole? myRole,
     int gridSizeMeters,
@@ -355,7 +361,7 @@ class GameLocationMap extends HookWidget {
             borderColor: color,
           );
 
-    return (marker: marker, gridPolygon: gridPolygon);
+    return (id: location.uid, marker: marker, gridPolygon: gridPolygon);
   }
 
   UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
@@ -484,6 +490,95 @@ class MarkerIcon extends StatelessWidget {
           Icon(icon, size: 34, color: color),
         ],
       ),
+    );
+  }
+}
+
+/// マーカーが旧位置から新位置へ動くのにかける時間(issue #117)。
+///
+/// 位置の送信は4秒ごとなので、それより十分短くして、次の更新が来る前に
+/// 動き終わるようにする。
+const markerMoveDuration = Duration(milliseconds: 1000);
+
+/// [from] から [to] へ、進み具合 [t](0〜1)の位置を返す(直線補間)。
+///
+/// 数m〜数十mの移動しか扱わないので、大円ではなく緯度経度の直線補間で
+/// 十分。[t] は範囲外でも0〜1にクランプする。
+latlong.LatLng lerpLatLng(latlong.LatLng from, latlong.LatLng to, double t) {
+  final clamped = t.clamp(0.0, 1.0);
+  return latlong.LatLng(
+    from.latitude + (to.latitude - from.latitude) * clamped,
+    from.longitude + (to.longitude - from.longitude) * clamped,
+  );
+}
+
+/// 位置が変わったマーカーを、瞬間移動させず [markerMoveDuration] かけて
+/// 動かす [MarkerLayer](issue #117)。
+///
+/// 位置は4秒ごとにしか更新されないため、補間しないと走っている人の
+/// ピンが1回で10〜20m跳ぶ。補間するのは描画位置だけで、渡される
+/// [Marker.point] はすでにグリッド丸め(issue #39)を通した後の点なので、
+/// 鬼視点で逃走者の正確な位置が漏れることはない。
+///
+/// 補間の途中経過はこのウィジェットが消えたら一緒に消えてよい一時状態
+/// なので、hooksで持つ(AGENTS.mdの規約)。
+class AnimatedMarkerLayer extends HookWidget {
+  /// [markers] の順序はそのまま描画順になる。`id` は同じ人のマーカーを
+  /// 更新前後で対応づけるためのキー(uid)。
+  const AnimatedMarkerLayer({super.key, required this.markers});
+
+  /// 描くマーカー。`marker.point` は移動先(最新の位置)。
+  final List<({String id, Marker marker})> markers;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = useAnimationController(
+      duration: markerMoveDuration,
+      initialValue: 1,
+    );
+    final t = useAnimation(controller);
+    final from = useRef(<String, latlong.LatLng>{});
+    final to = useRef(<String, latlong.LatLng>{});
+
+    latlong.LatLng displayed(String id, latlong.LatLng target, double t) {
+      final start = from.value[id];
+      final end = to.value[id];
+      if (start == null || end == null) return target;
+      return lerpLatLng(start, end, t);
+    }
+
+    // 移動先が変わったら、その時点の表示位置から新しい移動先へ動かし直す。
+    // controllerの再始動はリスナー経由で再描画を起こすため、build中ではなく
+    // useEffectで行う。
+    final targetKeys = [
+      for (final entry in markers) ...[entry.id, entry.marker.point],
+    ];
+    useEffect(() {
+      final progress = controller.value;
+      from.value = {
+        for (final entry in markers)
+          entry.id: displayed(entry.id, entry.marker.point, progress),
+      };
+      to.value = {
+        for (final entry in markers) entry.id: entry.marker.point,
+      };
+      unawaited(controller.forward(from: 0));
+      return null;
+    }, targetKeys);
+
+    return MarkerLayer(
+      markers: [
+        for (final entry in markers)
+          Marker(
+            key: entry.marker.key,
+            point: displayed(entry.id, entry.marker.point, t),
+            width: entry.marker.width,
+            height: entry.marker.height,
+            alignment: entry.marker.alignment,
+            rotate: entry.marker.rotate,
+            child: entry.marker.child,
+          ),
+      ],
     );
   }
 }

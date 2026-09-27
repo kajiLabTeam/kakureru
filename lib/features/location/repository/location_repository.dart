@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:kakureru/features/location/model/location_sample.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/repository/location_smoothing.dart';
 import 'package:kakureru/features/location/repository/location_task_handler.dart';
@@ -11,17 +12,12 @@ class LocationRepository {
   final FirebaseAuth _auth;
   DataCallback? _taskDataCallback;
 
-  /// 直近でRTDBへ採用・書き込んだ位置(デッドバンド判定の基準)。
-  /// [startSendingLocation]のたびにリセットする。
-  double? _lastAcceptedLat;
-  double? _lastAcceptedLng;
-
-  /// 直近で連続して棄却した回数と、最後に採用した時刻(強制更新の判定用)。
-  /// [startSendingLocation]のたびにリセットする。まだ一度も採用していない
-  /// 間は送信開始時刻を起点にすることで、「初回からずっとaccuracyが悪くて
-  /// 一度も書き込まれない」ケースでも時間による強制更新が効く。
-  int _consecutiveRejections = 0;
-  DateTime _lastAcceptedAt = DateTime.now();
+  /// 採用判定(accuracy足切り・デッドバンド・強制更新・古い測位の破棄)の
+  /// 状態。[startSendingLocation]のたびに作り直し、前のゲームの基準を
+  /// 持ち越さない。
+  LocationUpdateFilter _filter = LocationUpdateFilter(
+    startedAt: DateTime.now(),
+  );
 
   LocationRepository({FirebaseDatabase? db, FirebaseAuth? auth})
     : _db = db ?? FirebaseDatabase.instance,
@@ -44,10 +40,7 @@ class LocationRepository {
   /// 見て画面へ反映すること。
   Future<bool> startSendingLocation(String roomId) async {
     await stopSendingLocation();
-    _lastAcceptedLat = null;
-    _lastAcceptedLng = null;
-    _consecutiveRejections = 0;
-    _lastAcceptedAt = DateTime.now();
+    _filter = LocationUpdateFilter(startedAt: DateTime.now());
 
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -68,6 +61,8 @@ class LocationRepository {
       final lat = data['lat'];
       final lng = data['lng'];
       final accuracy = data['accuracy'];
+      final altitude = data['altitude'];
+      final timestamp = data['timestamp'];
       // lat/lngが欠けたデータをRTDBへ書くと、他の参加者のwatchLocationsが
       // UserLocation.fromMapの型キャストで例外を出し続けるため、ここで弾く。
       if (lat is! num || lng is! num) return;
@@ -75,56 +70,54 @@ class LocationRepository {
 
       // GPSノイズで実際には静止しているのにピンが飛び回るのを防ぐため、
       // accuracyが悪い測位・デッドバンド未満の移動はRTDBへ書き込まない
-      // (issue #46)。判定ロジック自体はlocation_smoothing.dartにテスト
-      // 可能な純粋関数として切り出してある。
-      // ただし棄却が続いたまま何も書かないと、屋内で精度が慢性的に悪い人の
+      // (issue #46)。取得順が入れ替わった古い測位も捨てる(issue #117)。
+      // 判定と状態の持ち方はlocation_smoothing.dartのLocationUpdateFilter
+      // にテスト可能な形で切り出してある。
+      // 棄却が続いたまま何も書かないと、屋内で精度が慢性的に悪い人の
       // lat/lngがRTDBに一度も現れず、その人の気圧・Wi-Fi情報まで他の参加者
-      // から見えなくなる(lat/lngを欠いたノードはUserLocation.fromMapで例外に
-      // なり、watchLocationsがエントリごとスキップするため)。一定回数/一定
-      // 時間で強制的に1件採用するフォールバックを入れてこれを防いでいる。
-      final accuracyM = (accuracy as num?)?.toDouble();
-      final now = DateTime.now();
-      final decision = evaluateLocationUpdate(
+      // から見えなくなるため、一定回数/一定時間で強制的に1件採用する。
+      // そのとき書くのは棄却していた間で最も精度の良い測位(issue #117)。
+      final sample = LocationSample(
         latitude: lat.toDouble(),
         longitude: lng.toDouble(),
-        accuracy: accuracyM,
-        previousLatitude: _lastAcceptedLat,
-        previousLongitude: _lastAcceptedLng,
-        consecutiveRejectionCount: _consecutiveRejections,
-        elapsedSinceLastAccepted: now.difference(_lastAcceptedAt),
+        altitude: altitude is num ? altitude.toDouble() : null,
+        accuracy: (accuracy as num?)?.toDouble(),
+        timestampMs: timestamp is int ? timestamp : null,
       );
-      if (!decision.isAccepted) {
-        _consecutiveRejections++;
+      final now = DateTime.now();
+      final rejectionsBefore = _filter.consecutiveRejections;
+      final elapsedBefore = now.difference(_filter.lastAcceptedAt).inSeconds;
+      final result = _filter.offer(sample, now: now);
+      final toWrite = result.toWrite;
+      if (toWrite == null) {
         // 黙って捨てると現地で原因を追えないため、理由と値を残す。
         debugPrint(
-          '[LocationRepository] 測位を棄却(${decision.name}): '
-          'accuracy=$accuracyM lat=$lat lng=$lng '
-          '連続棄却=$_consecutiveRejections回 '
-          '最終採用からの経過=${now.difference(_lastAcceptedAt).inSeconds}秒',
+          '[LocationRepository] 測位を棄却(${result.decision.name}): '
+          'accuracy=${sample.accuracy} lat=$lat lng=$lng '
+          '連続棄却=${_filter.consecutiveRejections}回 '
+          '最終採用からの経過=$elapsedBefore秒',
         );
         return;
       }
-      if (decision == LocationUpdateDecision.acceptedByFallback) {
+      if (result.decision == LocationUpdateDecision.acceptedByFallback) {
         debugPrint(
           '[LocationRepository] 棄却が続いたため強制採用: '
-          'accuracy=$accuracyM 連続棄却=$_consecutiveRejections回 '
-          '最終採用からの経過=${now.difference(_lastAcceptedAt).inSeconds}秒',
+          '今回accuracy=${sample.accuracy} '
+          '採用したaccuracy=${toWrite.accuracy} '
+          '連続棄却=$rejectionsBefore回 '
+          '最終採用からの経過=$elapsedBefore秒',
         );
       }
-      _lastAcceptedLat = lat.toDouble();
-      _lastAcceptedLng = lng.toDouble();
-      _consecutiveRejections = 0;
-      _lastAcceptedAt = now;
 
       // set()だとlocations/{uid}ノード全体を置き換えてしまい、同じノードの
       // 子であるpressure(PressureRepository)・wifiScan(WifiScanRepository)を
       // 4秒ごとに消してしまう(issue #8)。update()にして自分が持つキーだけを
       // 書き換え、他リポジトリが書いた兄弟キーには触れないようにする。
       _db.ref('rooms/$roomId/locations/$_uid').update({
-        'lat': lat,
-        'lng': lng,
-        'altitude': data['altitude'],
-        'accuracy': accuracy,
+        'lat': toWrite.latitude,
+        'lng': toWrite.longitude,
+        'altitude': toWrite.altitude,
+        'accuracy': toWrite.accuracy,
         'updatedAt': ServerValue.timestamp,
       });
     };
