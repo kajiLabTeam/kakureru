@@ -271,8 +271,15 @@ class LocationUpdateFilter {
     final toWrite = decision == LocationUpdateDecision.acceptedByFallback
         ? moreAccurateSample(_recentBestRejected(now), sample)
         : sample;
-    // 古い測位を強制採用したときは、時刻の基準を今回の測位へ戻す。未来の
-    // 時刻が基準に居座ったままだと、以後の測位がすべて捨てられ続けるため。
+    // 古い測位を強制採用したときは、時刻の基準を「今回受け取った測位」
+    // ([sample])の時刻へ戻す。未来の時刻が基準に居座ったままだと、以後の
+    // 測位がすべて捨てられ続けるため。
+    //
+    // 実際に書いた測位([toWrite]。最良の候補から選ばれることがある)の
+    // 時刻は使わない。候補には未来の時刻が付いた測位自体も入りうるので、
+    // それが選ばれると基準がまた未来へ戻り、抜け出せなくなる。また、
+    // 候補の時刻は今回より古いことがあり、そこへ戻すと今回より古い測位を
+    // 後から受け入れてしまう(順序の逆転を防ぐ意味がなくなる)。
     if (isStale) _latestTimestampMs = timestampMs;
     _lastAcceptedLat = toWrite.latitude;
     _lastAcceptedLng = toWrite.longitude;

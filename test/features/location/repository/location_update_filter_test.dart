@@ -95,6 +95,43 @@ void main() {
       );
       expect(result.decision, LocationUpdateDecision.accepted);
     });
+    test('古い測位の強制採用で最良の候補を書いても、時刻の基準は今回の測位に戻す', () {
+      const bad = LocationFilterThresholds.maxAcceptableAccuracyM + 10;
+      final best = _sample(latitude: 35.0 + _step, timestampMs: 1000);
+      final filter = LocationUpdateFilter(startedAt: _start)
+        // 未来の時刻が付いた、精度の悪い測位(基準だけが未来へ進む)。
+        ..offer(
+          _sample(accuracy: bad + 100, timestampMs: 3600 * 1000),
+          now: _start,
+        )
+        // 以後は古い扱い。1件目は精度が良く、強制更新の候補になる。
+        ..offer(best, now: _start)
+        ..offer(_sample(accuracy: bad, timestampMs: 2000), now: _start)
+        ..offer(_sample(accuracy: bad, timestampMs: 3000), now: _start);
+
+      final forced = filter.offer(
+        _sample(latitude: 36, accuracy: bad, timestampMs: 4000),
+        now: _start,
+      );
+      expect(forced.decision, LocationUpdateDecision.acceptedByFallback);
+      // 書くのは精度の良い候補。
+      expect(forced.toWrite, best);
+
+      // 基準は書いた候補(1000)ではなく今回の測位(4000)に戻っている。
+      // その間の時刻の測位は、今回より古いので捨てる。
+      final between = filter.offer(
+        _sample(latitude: 37, timestampMs: 3500),
+        now: _start,
+      );
+      expect(between.decision, LocationUpdateDecision.rejectedStale);
+
+      // 今回より新しい測位は通常どおり判定される。
+      final next = filter.offer(
+        _sample(latitude: 37, timestampMs: 5000),
+        now: _start,
+      );
+      expect(next.decision, LocationUpdateDecision.accepted);
+    });
   });
 
   group('LocationUpdateFilter(強制更新で最良の測位を書く)', () {
