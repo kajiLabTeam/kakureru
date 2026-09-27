@@ -548,21 +548,31 @@ class AnimatedMarkerLayer extends HookWidget {
     }
 
     // 移動先が変わったら、その時点の表示位置から新しい移動先へ動かし直す。
-    // controllerの再始動はリスナー経由で再描画を起こすため、build中ではなく
-    // useEffectで行う。
+    //
+    // flutter_hooksのuseEffectはbuildの中で同期的に走る。ここで移動元・
+    // 移動先を書き換えると、このbuildが上で読んだ古い進み具合(t)のまま
+    // 新しい移動先で描かれ、最初の1フレームだけマーカーが移動先へ飛んで
+    // しまう。controllerの再始動もリスナー経由の再描画要求をbuild中に
+    // 出すことになる。そのため、書き換えと再始動はフレームの描画後に行う。
+    // それまでのフレームは古い移動先(=今表示している位置)のまま描かれる。
     final targetKeys = [
       for (final entry in markers) ...[entry.id, entry.marker.point],
     ];
     useEffect(() {
-      final progress = controller.value;
-      from.value = {
-        for (final entry in markers)
-          entry.id: displayed(entry.id, entry.marker.point, progress),
-      };
-      to.value = {
-        for (final entry in markers) entry.id: entry.marker.point,
-      };
-      unawaited(controller.forward(from: 0));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // 描画を待つ間にウィジェットが破棄されていたら、破棄済みの
+        // controllerに触れない。
+        if (!context.mounted) return;
+        final progress = controller.value;
+        from.value = {
+          for (final entry in markers)
+            entry.id: displayed(entry.id, entry.marker.point, progress),
+        };
+        to.value = {
+          for (final entry in markers) entry.id: entry.marker.point,
+        };
+        unawaited(controller.forward(from: 0));
+      });
       return null;
     }, targetKeys);
 

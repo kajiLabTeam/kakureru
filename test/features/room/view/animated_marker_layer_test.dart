@@ -76,8 +76,10 @@ void main() {
       await tester.pumpAndSettle();
 
       await _pumpMapWithOtherAt(tester, b);
+      // 位置が変わった最初のフレームで、移動先へ一瞬飛んではいけない。
+      expect(_otherPoint(tester), a);
       await tester.pump();
-      // 動き始めた直後はまだ元の位置にいる。
+      // 動き始めた直後もまだ元の位置にいる。
       expect(_otherPoint(tester), a);
 
       await tester.pump(markerMoveDuration ~/ 2);
