@@ -26,6 +26,7 @@ import 'package:kakureru/features/room/game_session.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/opponent_roster_status.dart';
 import 'package:kakureru/features/room/photo_capture_config.dart';
+import 'package:kakureru/features/room/photo_taken_notifications.dart';
 import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
@@ -178,6 +179,10 @@ class GamePage extends HookConsumerWidget {
       lastPhotoAt: myUid == null
           ? null
           : findUser(room?.users ?? const [], myUid)?.lastPhotoAt,
+      // 鬼は撮影しないので「撮ってください」の通知は出さない(issue #120)。
+      notifyWhenDue: shouldNotifyPhotoCaptureDue(
+        roleOf(room?.users ?? const [], myUid),
+      ),
     );
 
     // GPSの実測(getPositionStream)は初回の測位に時間がかかる(コールドスタート)。
@@ -218,6 +223,9 @@ class GamePage extends HookConsumerWidget {
 
     // 誰かが鬼になったらSnackBarで全員に知らせる。
     useDemonChangeNotifications(ref, context, roomId: roomId, myUid: myUid);
+
+    // 鬼のとき、逃走者が写真を撮ったら通知とSnackBarで知らせる(issue #120)。
+    usePhotoTakenNotifications(ref, context, roomId: roomId, myUid: myUid);
 
     // プレイエリア外のアラート(issue #61 / UI改修モック2a-07)。
     //

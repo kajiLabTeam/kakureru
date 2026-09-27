@@ -113,4 +113,16 @@ void main() {
       expect(logs, isNotEmpty);
     });
   });
+
+  test('写真の撮影の通知は、撮影タイミングの通知とも別のIDで出す (issue #120)', () async {
+    await showPhotoCaptureDueNotification();
+    await showPhotoTakenNotification('たろうさんが足元の写真を撮りました');
+
+    expect(methods(), ['show', 'show']);
+    final dueId = (calls[0].arguments as Map<Object?, Object?>)['id'];
+    final takenId = (calls[1].arguments as Map<Object?, Object?>)['id'];
+    // 同じIDだと、鬼になった直後などに互いの通知を上書きし合う。
+    expect(takenId, isNot(dueId));
+    expect(takenId, isNot(anyOf(0, 1, 2)));
+  });
 }
