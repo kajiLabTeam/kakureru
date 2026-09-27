@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -6,7 +7,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
-import 'package:kakureru/features/room/location_grid.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
@@ -16,9 +16,8 @@ import 'package:latlong2/latlong.dart' as latlong;
 
 /// [GameLocationMap] をwidgetテストから必須引数を省いて組み立てる入口。
 ///
-/// 「グリッド矩形を鬼にだけ描く」「resolveMarkerPositionへ
-/// viewerRole/targetRoleを正しい順で渡す」といった配線は純粋関数の
-/// テストでは一切押さえられない(取り違えても純粋関数のテストは全て通る)。
+/// 「どの役割から見ても実座標にピンを置く」「重なったピンをずらす」と
+/// いった配線は純粋関数のテストでは押さえられない。
 /// GamePage全体を立ち上げるにはFirebase・センサー系のproviderを丸ごと
 /// 差し替える必要があり割に合わないため、地図だけをテストから直接組む。
 @visibleForTesting
@@ -37,12 +36,12 @@ Widget buildLocationMapForTest({
   );
 }
 
-/// 鬼視点で逃走者GPSをグリッド曖昧化する際のグリッドサイズ(issue #39)。
-/// 以前は20m/50m/100mから選べたが、100m固定にした。
-const gridSizeMeters = 100;
-
-/// ゲーム中の地図。参加者のGPSピン、プレイエリアの境界と外側のマスク、
-/// 鬼視点で逃走者を曖昧化するグリッドセルを描く。
+/// ゲーム中の地図。参加者のGPSピン、プレイエリアの境界と外側のマスクを描く。
+///
+/// 以前は鬼から見た逃走者の位置を100mのマス目に丸めていた(issue #39)が、
+/// プレイテストを経て廃止した(issue #118)。同じマスにいる逃走者のピンが
+/// 全員まったく同じ点に重なり、1人しか見えない原因にもなっていた
+/// (issue #123)。
 ///
 /// 表示するかどうか(役割による可視性)の判断はGamePage側で済ませてある
 /// 前提で、ここに渡された[locations]はそのまま全部描く。
@@ -135,21 +134,10 @@ class GameLocationMap extends HookWidget {
       return null;
     }, [positionTier, currentCenter.latitude, currentCenter.longitude]);
 
-    // マーカー(アイコン+ラベル)と、鬼視点で逃走者に対してのみ描く
-    // グリッドセル矩形(issue #39)を、位置ごとにまとめて組み立てる。
+    // マーカー(アイコン+ラベル)を位置ごとに組み立てる。
     final locationVisuals = locations
-        .map(
-          (location) => _buildLocationVisual(
-            location,
-            myRole,
-            gridSizeMeters,
-          ),
-        )
+        .map((location) => _buildLocationVisual(location, myRole))
         .toList();
-    final gridPolygons = [
-      for (final visual in locationVisuals)
-        if (visual.gridPolygon != null) visual.gridPolygon!,
-    ];
 
     return Stack(
       children: [
@@ -172,7 +160,6 @@ class GameLocationMap extends HookWidget {
                   _areaBorderPolygon(areaPoints),
                 ],
               ),
-            if (gridPolygons.isNotEmpty) PolygonLayer(polygons: gridPolygons),
             AnimatedMarkerLayer(
               markers: [
                 for (final visual in locationVisuals)
@@ -266,11 +253,9 @@ class GameLocationMap extends HookWidget {
   ///
   /// アイコン・ラベルの役割表記はissue #42対応(色だけでなく形・表記でも
   /// 鬼/逃走者を見分けられるようにする)。
-  ({String id, Marker marker, Polygon<Object>? gridPolygon})
-  _buildLocationVisual(
+  ({String id, Marker marker}) _buildLocationVisual(
     UserLocation location,
     UserRole? myRole,
-    int gridSizeMeters,
   ) {
     final isSelf = location.uid == myUid;
     final user = findUser(users, location.uid);
@@ -296,22 +281,9 @@ class GameLocationMap extends HookWidget {
       role: displayRole,
     );
 
-    // 鬼視点で逃走者の位置だけ、正確な点ではなくグリッドセルに丸める
-    // (issue #39)。丸め判定と描画点の計算自体はテスト可能な純粋関数
-    // (resolveMarkerPosition)に切り出している。
-    final resolved = resolveMarkerPosition(
-      latitude: location.latitude,
-      longitude: location.longitude,
-      isSelf: isSelf,
-      viewerRole: myRole,
-      targetRole: targetRole,
-      gridSizeMeters: gridSizeMeters,
-    );
-    final point = resolved.point;
-    final cellBounds = resolved.cellBounds;
-
     final marker = Marker(
-      point: point,
+      // どの役割から見ても実座標に置く(issue #118でグリッドを廃止)。
+      point: latlong.LatLng(location.latitude, location.longitude),
       // ラベル表示のため横幅を拡張(名前が長い場合は省略表示)。
       // 縦はアイコン(白フチ込みで40) + ラベル(~15) で余裕を持たせる。
       width: markerWidth,
@@ -347,21 +319,7 @@ class GameLocationMap extends HookWidget {
       ),
     );
 
-    final gridPolygon = cellBounds == null
-        ? null
-        : Polygon<Object>(
-            points: [
-              latlong.LatLng(cellBounds.south, cellBounds.west),
-              latlong.LatLng(cellBounds.south, cellBounds.east),
-              latlong.LatLng(cellBounds.north, cellBounds.east),
-              latlong.LatLng(cellBounds.north, cellBounds.west),
-            ],
-            color: color.withValues(alpha: 0.25),
-            borderStrokeWidth: 2,
-            borderColor: color,
-          );
-
-    return (id: location.uid, marker: marker, gridPolygon: gridPolygon);
+    return (id: location.uid, marker: marker);
   }
 
   UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
@@ -397,46 +355,6 @@ const markerIconCenterAlignment = Alignment(
   0,
   (markerIconSize / 2 - markerHeight / 2) / (markerHeight / 2),
 );
-
-/// GPSピンの描画位置を決める純粋関数(issue #39)。
-///
-/// 鬼視点で逃走者の位置を見るとき(isSelfがfalseかつviewerRoleが鬼、
-/// targetRoleが逃走者のとき)だけ、正確な座標ではなくグリッドセル
-/// (gridCellFor)の中心を返す(このときcellBoundsも併せて返すので、
-/// 呼び出し側はそのままセルの矩形描画に使える)。それ以外(自分・同ロール・
-/// 逃走者視点で見る鬼)は常に正確な座標をそのまま返し、cellBoundsはnull。
-///
-/// 円だと中心が推測できてしまうため矩形のグリッドセルへ丸める方式にしている
-/// (issue #39の背景)。マーカーの描画点自体をセル中心に置き換えるのは、
-/// 実座標のままセルの矩形だけ追加しても、ピンの位置で真の座標が
-/// 分かってしまい曖昧化にならないため。
-@visibleForTesting
-({latlong.LatLng point, GridCellBounds? cellBounds}) resolveMarkerPosition({
-  required double latitude,
-  required double longitude,
-  required bool isSelf,
-  required UserRole? viewerRole,
-  required UserRole? targetRole,
-  required int gridSizeMeters,
-}) {
-  final isGridObfuscated =
-      !isSelf &&
-      viewerRole == UserRole.demon &&
-      targetRole == UserRole.fugitive;
-  if (!isGridObfuscated) {
-    return (point: latlong.LatLng(latitude, longitude), cellBounds: null);
-  }
-
-  final cellBounds = gridCellFor(
-    latitude: latitude,
-    longitude: longitude,
-    gridSizeMeters: gridSizeMeters,
-  );
-  return (
-    point: latlong.LatLng(cellBounds.centerLat, cellBounds.centerLng),
-    cellBounds: cellBounds,
-  );
-}
 
 /// GPSピンに表示するラベルテキストを返す(issue #13、役割表記はissue #42)。
 ///
@@ -576,19 +494,108 @@ class AnimatedMarkerLayer extends HookWidget {
       return null;
     }, targetKeys);
 
+    final points = [
+      for (final entry in markers) displayed(entry.id, entry.marker.point, t),
+    ];
+
+    // 同じ場所にいる人のピンは重なり、一番上の1人しか見えない
+    // (issue #123)。画面上で近すぎるピンは、座標は変えずに見た目だけ
+    // 少しずつずらして全員が見えるようにする。画面座標で判定するので、
+    // ズームを変えると重なりの判定もやり直される(MapCameraの変化で
+    // このウィジェットが再描画されるため)。
+    final camera = MapCamera.maybeOf(context);
+    final shifts = camera == null
+        ? List<Offset>.filled(points.length, Offset.zero)
+        : spreadOverlappingMarkers([
+            for (final point in points) camera.latLngToScreenOffset(point),
+          ]);
+
     return MarkerLayer(
       markers: [
-        for (final entry in markers)
+        for (var i = 0; i < markers.length; i++)
           Marker(
-            key: entry.marker.key,
-            point: displayed(entry.id, entry.marker.point, t),
-            width: entry.marker.width,
-            height: entry.marker.height,
-            alignment: entry.marker.alignment,
-            rotate: entry.marker.rotate,
-            child: entry.marker.child,
+            key: markers[i].marker.key,
+            point: points[i],
+            width: markers[i].marker.width,
+            height: markers[i].marker.height,
+            alignment: markers[i].marker.alignment,
+            rotate: markers[i].marker.rotate,
+            child: shifts[i] == Offset.zero
+                ? markers[i].marker.child
+                : Transform.translate(
+                    offset: shifts[i],
+                    child: markers[i].marker.child,
+                  ),
           ),
       ],
     );
   }
+}
+
+/// 画面上でピン同士がこれより近ければ「重なっている」とみなす距離(論理px)。
+/// アイコン同士がぶつかり始める距離にしている。
+const double markerOverlapDistance = markerIconSize;
+
+/// 重なったピンをずらして並べるときの、隣り合うピン同士の中心の間隔
+/// (論理px)。名前のラベルが重ならない幅にしている。
+const double markerSpreadSpacing = markerWidth;
+
+/// 画面上で重なっているピンを、見えるように少しずつずらす量を返す
+/// (issue #123)。
+///
+/// [screenPoints] は各ピンの画面座標で、戻り値は同じ順の「ずらす量」。
+/// 重なっていないピンは [Offset.zero]。
+///
+/// 近すぎるピン同士(間接的なつながりも含む)を1つの組にまとめ、組の
+/// 重心を中心とする円周上に、隣同士が [spacing] 離れるよう並べ直す。
+/// 並び順は [screenPoints] の順(=参加者の並び順)で固定なので、位置が
+/// 更新されても誰がどこに出るかは入れ替わらない。2人なら左右に並ぶ。
+List<Offset> spreadOverlappingMarkers(
+  List<Offset> screenPoints, {
+  double overlapDistance = markerOverlapDistance,
+  double spacing = markerSpreadSpacing,
+}) {
+  final count = screenPoints.length;
+  // 素朴なunion-find。ピンは参加者の人数ぶん(数人〜十数人)しかない。
+  final parent = List<int>.generate(count, (i) => i);
+  int find(int i) {
+    var root = i;
+    while (parent[root] != root) {
+      root = parent[root];
+    }
+    return root;
+  }
+
+  for (var i = 0; i < count; i++) {
+    for (var j = i + 1; j < count; j++) {
+      if ((screenPoints[i] - screenPoints[j]).distance < overlapDistance) {
+        parent[find(j)] = find(i);
+      }
+    }
+  }
+
+  final groups = <int, List<int>>{};
+  for (var i = 0; i < count; i++) {
+    groups.putIfAbsent(find(i), () => []).add(i);
+  }
+
+  final shifts = List<Offset>.filled(count, Offset.zero);
+  for (final members in groups.values) {
+    final n = members.length;
+    if (n < 2) continue;
+    var center = Offset.zero;
+    for (final i in members) {
+      center += screenPoints[i];
+    }
+    center /= n.toDouble();
+    // 円周上で隣り合うピンの弦の長さが spacing になる半径。
+    final radius = spacing / (2 * math.sin(math.pi / n));
+    for (var k = 0; k < n; k++) {
+      // 左(π)から時計回りに並べる。2人なら左右に並ぶ。
+      final angle = math.pi + 2 * math.pi * k / n;
+      final target = center + Offset(math.cos(angle), math.sin(angle)) * radius;
+      shifts[members[k]] = target - screenPoints[members[k]];
+    }
+  }
+  return shifts;
 }

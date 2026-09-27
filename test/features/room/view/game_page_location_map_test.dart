@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
-import 'package:kakureru/features/room/location_grid.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
 import 'package:latlong2/latlong.dart' as latlong;
@@ -68,47 +67,33 @@ Future<void> _pumpMap(
 Marker _otherMarker(WidgetTester tester) =>
     tester.widget<MarkerLayer>(find.byType(MarkerLayer)).markers.last;
 
-/// 地図に描かれているグリッドセルの矩形。無ければ空。
-List<Polygon<Object>> _gridPolygons(WidgetTester tester) {
+/// 地図に描かれている多角形(プレイエリア等)。無ければ空。
+List<Polygon<Object>> _polygons(WidgetTester tester) {
   final finder = find.byType(PolygonLayer<Object>);
   if (finder.evaluate().isEmpty) return const [];
   return tester.widget<PolygonLayer<Object>>(finder).polygons;
 }
 
 void main() {
-  // 純粋関数(gridCellFor / resolveMarkerPosition)のテストは揃っているが、
-  // それらを呼ぶ側の配線には一切テストが無かった。viewerRole/targetRoleを
-  // 取り違える、グリッドサイズの定数を変える、といった壊れ方は
-  // 純粋関数のテストでは全て素通りするため、ここで押さえる。
-  group('_LocationMap のグリッド曖昧化まわりの配線 (issue #39)', () {
-    testWidgets('鬼視点では逃走者のピンがセル中心へ丸められ、セルの矩形が描かれる', (tester) async {
+  // 以前は鬼から見た逃走者を100mのマス目に丸めていた(issue #39)が、
+  // 廃止した(issue #118)。丸めが残っていないことを役割の両方向で押さえる。
+  group('_LocationMap のピン位置 (issue #118: グリッド廃止)', () {
+    testWidgets('鬼視点でも逃走者のピンは実座標で、マス目の矩形も描かれない', (tester) async {
       await _pumpMap(tester, myRole: UserRole.demon);
 
-      final expectedCell = gridCellFor(
-        latitude: _otherLat,
-        longitude: _otherLng,
-        gridSizeMeters: 100,
-      );
-      final marker = _otherMarker(tester);
-
-      expect(marker.point, isNot(_otherExactPoint));
-      expect(marker.point.latitude, expectedCell.centerLat);
-      expect(marker.point.longitude, expectedCell.centerLng);
-      expect(_gridPolygons(tester), hasLength(1));
+      expect(_otherMarker(tester).point, _otherExactPoint);
+      expect(_polygons(tester), isEmpty);
     });
 
-    testWidgets('逃走者視点では鬼のピンは実座標のままで、セルの矩形も描かれない', (tester) async {
+    testWidgets('逃走者視点でも鬼のピンは実座標', (tester) async {
       await _pumpMap(
         tester,
         myRole: UserRole.fugitive,
         otherRole: UserRole.demon,
       );
 
-      // このテストと1つ上のテストの組で、viewerRole/targetRoleの取り違え
-      // (「逃走者が鬼を矩形で見て、鬼が逃走者を正確な点で見る」という
-      // 機能の完全反転)を検知する。
       expect(_otherMarker(tester).point, _otherExactPoint);
-      expect(_gridPolygons(tester), isEmpty);
+      expect(_polygons(tester), isEmpty);
     });
   });
 

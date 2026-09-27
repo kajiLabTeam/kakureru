@@ -110,4 +110,114 @@ void main() {
       expect(_otherPoint(tester), c);
     });
   });
+
+  group('spreadOverlappingMarkers (issue #123)', () {
+    test('離れているピンは動かさない', () {
+      final shifts = spreadOverlappingMarkers(const [
+        Offset.zero,
+        Offset(200, 0),
+      ]);
+      expect(shifts, [Offset.zero, Offset.zero]);
+    });
+
+    test('同じ点の2人は、左右に間隔ぶん離して並べる', () {
+      const p = Offset(100, 100);
+      final shifts = spreadOverlappingMarkers(
+        const [p, p],
+      );
+      final a = p + shifts[0];
+      final b = p + shifts[1];
+      expect((a - b).distance, closeTo(72, 1e-9));
+      // 1人目が左、2人目が右。
+      expect(a.dx, lessThan(b.dx));
+      expect(a.dy, closeTo(b.dy, 1e-9));
+    });
+
+    test('同じ点の3人は、互いに間隔以上離れる', () {
+      const p = Offset(50, 50);
+      final shifts = spreadOverlappingMarkers(
+        const [p, p, p],
+      );
+      final placed = [for (final s in shifts) p + s];
+      for (var i = 0; i < 3; i++) {
+        for (var j = i + 1; j < 3; j++) {
+          expect(
+            (placed[i] - placed[j]).distance,
+            greaterThanOrEqualTo(72 - 1e-9),
+          );
+        }
+      }
+    });
+
+    test('重なっている組と離れているピンが混ざっても、離れているピンは動かない', () {
+      final shifts = spreadOverlappingMarkers(const [
+        Offset.zero,
+        Offset(500, 500),
+        Offset(5, 0),
+      ]);
+      expect(shifts[1], Offset.zero);
+      expect(shifts[0], isNot(Offset.zero));
+      expect(shifts[2], isNot(Offset.zero));
+    });
+
+    test('組の中心は変えない(全体として元の場所のまわりに並ぶ)', () {
+      const points = [Offset(10, 10), Offset(12, 14), Offset(8, 9)];
+      final shifts = spreadOverlappingMarkers(points);
+      var before = Offset.zero;
+      var after = Offset.zero;
+      for (var i = 0; i < points.length; i++) {
+        before += points[i];
+        after += points[i] + shifts[i];
+      }
+      expect((before - after).distance, lessThan(1e-9));
+    });
+  });
+
+  testWidgets('同じ座標にいる2人のピンは、重ならずに両方見える位置に描かれる (issue #123)', (
+    tester,
+  ) async {
+    const same = latlong.LatLng(35.681, 139.767);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: buildLocationMapForTest(
+            myUid: _myUid,
+            users: const [
+              RoomUser(id: _myUid, displayName: 'わたし'),
+              RoomUser(id: _otherUid, displayName: 'あいて'),
+            ],
+            locations: [
+              UserLocation(
+                uid: _myUid,
+                latitude: same.latitude,
+                longitude: same.longitude,
+              ),
+              UserLocation(
+                uid: _otherUid,
+                latitude: same.latitude,
+                longitude: same.longitude,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final self = tester.getCenter(find.textContaining('自分'));
+    final other = tester.getCenter(find.textContaining('あいて'));
+    // ラベル同士が重ならない程度に離れている。
+    expect(
+      (self - other).distance,
+      greaterThanOrEqualTo(markerSpreadSpacing - 1),
+    );
+    // 座標そのものは変えていない(見た目だけずらしている)。
+    final points = tester
+        .widget<MarkerLayer>(find.byType(MarkerLayer))
+        .markers
+        .map((m) => m.point);
+    expect(points, everyElement(same));
+    // 2人なので左右に並ぶ。
+    expect((self.dy - other.dy).abs(), lessThan(1));
+  });
 }
