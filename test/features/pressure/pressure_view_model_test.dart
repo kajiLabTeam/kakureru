@@ -116,6 +116,62 @@ void main() {
       expect(repo.checkCalls, 1);
     });
 
+    // Copilotのレビュー指摘(PR #125)。「もう一回」でゲーム画面から待機
+    // 画面へ戻るとき、古いゲーム画面は新しい待機画面より後に破棄される。
+    // そこで購読を止めると、待機画面は購読の無いまま残っていた。
+    test('ゲーム画面が待機画面より後に離れても、待機画面の購読は止めない', () async {
+      final repo = _FakePressureRepository(available: true);
+      final controller = StreamController<double>.broadcast();
+      addTearDown(controller.close);
+      repo.pressureStream = controller.stream;
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      // ゲーム画面が気圧を使っている。
+      await notifier.init('room1');
+      // 待機画面が開く(ゲーム画面はまだ破棄されていない)。
+      await notifier.init('room1');
+      // 遅れてゲーム画面が破棄される。
+      notifier.stopSendingAndDispose();
+
+      controller.add(1005);
+      await pumpEventQueue();
+      expect(container.read(pressureViewModelProvider).myPressureHPa, 1005);
+      expect(repo.watchCalls, 1);
+    });
+
+    test('気圧を使う画面が全部離れたら、購読を止める', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      // readyNotifierのinit(待機画面)に加えてゲーム画面もinitする。
+      await notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      expect(container.read(pressureViewModelProvider).myPressureHPa, 1013);
+
+      // 待機画面も離れる。
+      notifier.release();
+      expect(container.read(pressureViewModelProvider).myPressureHPa, isNull);
+    });
+
+    test('initしていない画面のreleaseは何もしない', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      notifier
+        ..release()
+        ..release();
+
+      // 1回目のreleaseで止まり、2回目は数が負にならず何も起きない。
+      repo.pressureStream = Stream<double>.value(1000);
+      await notifier.init('room1');
+      expect(repo.watchCalls, 2);
+      notifier.release();
+      expect(container.read(pressureViewModelProvider).myPressureHPa, isNull);
+    });
+
     test('購読中に何度initしても、購読は1本だけ', () async {
       final repo = _FakePressureRepository(available: true);
       final container = _container(repo);

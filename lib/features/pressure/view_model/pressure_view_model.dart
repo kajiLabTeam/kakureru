@@ -55,6 +55,15 @@ class PressureViewModel extends Notifier<PressureState> {
   /// 張り直す。nullなら購読していない。
   StreamSubscription<double>? _pressureSub;
 
+  /// 気圧を使っている画面の数。[init]で増え、[release]で減る。
+  ///
+  /// 待機画面とゲーム画面は遷移の途中で一瞬両方マウントされる。「もう
+  /// 一回」でゲーム画面から待機画面へ戻るとき、古いゲーム画面は新しい
+  /// 待機画面より後に破棄される。そこで無条件に購読を止めると、待機画面は
+  /// 購読の無いまま残り、キャリブレーションできなくなる(PR #125の
+  /// Copilotの指摘)。最後の1画面が離れたときだけ止める。
+  int _holders = 0;
+
   /// 待機画面・ゲーム画面に入った時に呼ぶ。センサーの有無を確認し、使える
   /// なら気圧の購読を始める(何度呼んでも安全)。判定結果は他の参加者にも
   /// 伝わるようroomIdのRTDBへ記録する(待機画面の一覧・集計表示用)。
@@ -63,7 +72,11 @@ class PressureViewModel extends Notifier<PressureState> {
   /// しない。以前は「available のときだけ早期return」だったので、センサー
   /// 非搭載端末では待機→ゲームの遷移のたびに [checkSensorAvailable] の
   /// タイムアウト(最大3秒)を待ち直していた(issue #30)。
+  ///
+  /// 呼んだ画面は、離れるときに必ず[release](ゲーム画面なら
+  /// [stopSendingAndDispose])を呼ぶこと。
   Future<void> init(String roomId) async {
+    _holders++;
     if (state.sensorAvailability != PressureSensorAvailability.checking) {
       // 判定は済んでいる。ただしRTDBへの記録はルームごとに要るため、
       // 判定済みの結果をそのまま書き直しておく(別のルームに入り直した
@@ -209,12 +222,24 @@ class PressureViewModel extends Notifier<PressureState> {
     _repo.startSendingToRoom(roomId);
   }
 
-  /// ゲーム画面を離れる時に呼ぶ。送信とセンサー購読を止める。
-  ///
-  /// 直近の気圧も捨てる。残すと、次に待機画面を開いたとき止まったセンサーの
-  /// 古い値でキャリブレーションが通ってしまう(issue #121)。センサーの有無の
-  /// 判定結果は端末固有なので残す(非搭載端末で判定を待ち直さないため)。
+  /// ゲーム画面を離れる時に呼ぶ。RTDBへの送信を止め、[release]する。
   void stopSendingAndDispose() {
+    _repo.stopSendingToRoom();
+    release();
+  }
+
+  /// [init]を呼んだ画面が離れる時に呼ぶ。気圧を使う画面が無くなったら
+  /// センサー購読を止める。
+  ///
+  /// 止めるときは直近の気圧も捨てる。残すと、次に待機画面を開いたとき
+  /// 止まったセンサーの古い値でキャリブレーションが通ってしまう
+  /// (issue #121)。センサーの有無の判定結果は端末固有なので残す
+  /// (非搭載端末で判定を待ち直さないため)。
+  void release() {
+    if (_holders == 0) return;
+    _holders--;
+    if (_holders > 0) return;
+
     _epoch++;
     // 進行中の判定は、この世代の終了で無効になる(_checkAndStartが何もせず
     // 終わる)。次のinitが相乗りしないよう手放し、判定をやり直させる。
