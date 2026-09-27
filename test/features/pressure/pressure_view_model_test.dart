@@ -96,6 +96,66 @@ Future<PressureViewModel> readyNotifier(
 
 void main() {
   group('PressureViewModel.init', () {
+    // 9/24のプレイテストで、2回目のゲームでは初参加の1人しか気圧を
+    // 送れていなかった(issue #121)。ゲーム画面を離れるとセンサー購読を
+    // 止めるのに、判定済みの2回目以降のinitが購読を張り直していなかった。
+    test('ゲーム画面を離れた後に入り直すと、センサーの購読を張り直す', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+      expect(repo.watchCalls, 1);
+
+      notifier.stopSendingAndDispose();
+      repo.pressureStream = Stream<double>.value(1000);
+      await notifier.init('room2');
+      await pumpEventQueue();
+
+      expect(repo.watchCalls, 2);
+      expect(container.read(pressureViewModelProvider).myPressureHPa, 1000);
+      // 判定は済んでいるので、センサーの有無は調べ直さない。
+      expect(repo.checkCalls, 1);
+    });
+
+    test('購読中に何度initしても、購読は1本だけ', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      // 待機画面→ゲーム画面の遷移で続けて呼ばれる状況。
+      await notifier.init('room1');
+      await notifier.init('room1');
+
+      expect(repo.watchCalls, 1);
+    });
+
+    test('ゲーム画面を離れたら、古い気圧の値を捨てる', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      notifier.stopSendingAndDispose();
+
+      // 残すと、止まったセンサーの古い値でキャリブレーションが通ってしまう。
+      expect(container.read(pressureViewModelProvider).myPressureHPa, isNull);
+      expect(
+        container.read(pressureViewModelProvider).sensorAvailability,
+        PressureSensorAvailability.available,
+      );
+    });
+
+    test('センサー非搭載なら、入り直しても判定も購読もしない', () async {
+      final repo = _FakePressureRepository(available: false);
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      await notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      await notifier.init('room2');
+
+      expect(repo.checkCalls, 1);
+      expect(repo.watchCalls, 0);
+    });
+
     test('センサー非搭載なら、2回目以降は再判定しない', () async {
       final repo = _FakePressureRepository(available: false);
       final container = _container(repo);

@@ -51,6 +51,10 @@ class PressureViewModel extends Notifier<PressureState> {
   /// 自分を始めた世代のままかどうかを見る。
   int _epoch = 0;
 
+  /// 自分の気圧の購読。[stopSendingAndDispose]で解除し、次の[init]で
+  /// 張り直す。nullなら購読していない。
+  StreamSubscription<double>? _pressureSub;
+
   /// 待機画面・ゲーム画面に入った時に呼ぶ。センサーの有無を確認し、使える
   /// なら気圧の購読を始める(何度呼んでも安全)。判定結果は他の参加者にも
   /// 伝わるようroomIdのRTDBへ記録する(待機画面の一覧・集計表示用)。
@@ -64,13 +68,13 @@ class PressureViewModel extends Notifier<PressureState> {
       // 判定は済んでいる。ただしRTDBへの記録はルームごとに要るため、
       // 判定済みの結果をそのまま書き直しておく(別のルームに入り直した
       // 場合でも、そのルームのusers/{uid}に載るように)。
-      unawaited(
-        _repo.reportSensorAvailability(
-          roomId,
-          available:
-              state.sensorAvailability == PressureSensorAvailability.available,
-        ),
-      );
+      final available =
+          state.sensorAvailability == PressureSensorAvailability.available;
+      unawaited(_repo.reportSensorAvailability(roomId, available: available));
+      // ゲーム画面を離れたときにセンサー購読は止めている。判定結果だけを
+      // 見て何もしないと、2回目以降のゲームでは気圧が1件も取れず、送信も
+      // されなくなる(issue #121)。搭載端末なら購読を張り直す。
+      if (available) _startWatching();
       return;
     }
 
@@ -120,7 +124,13 @@ class PressureViewModel extends Notifier<PressureState> {
     state = state.copyWith(
       sensorAvailability: PressureSensorAvailability.available,
     );
-    _repo.watchMyPressure().listen((value) {
+    _startWatching();
+  }
+
+  /// 自分の気圧の購読を始める。すでに購読中なら何もしない。
+  void _startWatching() {
+    if (_pressureSub != null) return;
+    _pressureSub = _repo.watchMyPressure().listen((value) {
       state = state.copyWith(myPressureHPa: value);
     });
   }
@@ -198,9 +208,18 @@ class PressureViewModel extends Notifier<PressureState> {
   }
 
   /// ゲーム画面を離れる時に呼ぶ。送信とセンサー購読を止める。
+  ///
+  /// 直近の気圧も捨てる。残すと、次に待機画面を開いたとき止まったセンサーの
+  /// 古い値でキャリブレーションが通ってしまう(issue #121)。センサーの有無の
+  /// 判定結果は端末固有なので残す(非搭載端末で判定を待ち直さないため)。
   void stopSendingAndDispose() {
     _epoch++;
+    unawaited(_pressureSub?.cancel());
+    _pressureSub = null;
     _repo.disposeSensor();
+    if (state.myPressureHPa != null) {
+      state = state.copyWith(myPressureHPa: null);
+    }
   }
 }
 
