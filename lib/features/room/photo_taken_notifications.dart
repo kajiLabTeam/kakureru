@@ -36,11 +36,14 @@ List<RoomPhoto> photosToNotify({
   ];
 }
 
-/// 通知の本文。撮った人の名前を「さん」付けで並べる。
+/// 通知の本文。新しい写真[photos]を撮った人の名前を「さん」付けで並べる。
 ///
-/// 同じ人が続けて撮っても名前は1回だけ出す。
-String photoTakenMessage(List<String> displayNames) {
-  final names = <String>{for (final name in displayNames) '$nameさん'};
+/// 同じ人が続けて撮っても名前は1回だけ出す。同一人物かどうかは名前では
+/// なくuidで判断する(同じ名前の別人を1人にまとめてしまわないため)。
+/// 参加者一覧[users]に見つからない人は「誰か」と出す。
+String photoTakenMessage(List<RoomPhoto> photos, List<RoomUser> users) {
+  final uids = <String>{for (final photo in photos) photo.uid};
+  final names = [for (final uid in uids) '${_displayNameOf(users, uid)}さん'];
   return '${names.join('、')}が足元の写真を撮りました';
 }
 
@@ -57,18 +60,27 @@ void usePhotoTakenNotifications(
   required String? myUid,
 }) {
   final previousIds = useRef<Set<String>?>(null);
-  // 役割と名前を引くための参加者一覧。listenのコールバックで`ref.read`
-  // すると、他に購読している人がいないとき値がまだ無い。自分でwatchして
-  // 最新の一覧をrefに入れておく。
-  final latestUsers = useRef<List<RoomUser>>(const []);
-  latestUsers.value =
-      ref.watch(roomStreamProvider(roomId)).value?.users ?? latestUsers.value;
+  // 役割と名前を引くためのルーム。他に購読している人がいないと値が
+  // 読めないので、自分でもwatchして購読を保つ。値そのものは、写真が届いた
+  // 時点の最新をコールバックの中で読む(buildの時点の値をとっておくと、
+  // ルームと写真が同時に届いたとき古い役割で判定してしまうため)。
+  ref.watch(roomStreamProvider(roomId));
+
+  // 写真の一覧がすでに読み込まれている(写真タブで先に購読していた等)と、
+  // ref.listenはその値では呼ばれず、次の更新が基準になってしまう。そこで
+  // 増えた写真を見落とさないよう、読み込み済みの一覧を先に基準にする。
+  // まだ読み込み中ならnullのままで、最初に届いた一覧が基準になる。
+  previousIds.value ??= ref
+      .read(photosStreamProvider(roomId))
+      .value
+      ?.map((photo) => photo.id)
+      .toSet();
 
   ref.listen(photosStreamProvider(roomId), (prev, next) {
     final photos = next.value;
     if (photos == null) return;
 
-    final users = latestUsers.value;
+    final users = ref.read(roomStreamProvider(roomId)).value?.users ?? const [];
     final newPhotos = photosToNotify(
       previousIds: previousIds.value,
       photos: photos,
@@ -78,9 +90,7 @@ void usePhotoTakenNotifications(
     previousIds.value = {for (final photo in photos) photo.id};
     if (newPhotos.isEmpty) return;
 
-    final message = photoTakenMessage([
-      for (final photo in newPhotos) _displayNameOf(users, photo.uid),
-    ]);
+    final message = photoTakenMessage(newPhotos, users);
     // 画面OFF・バックグラウンドでも気づけるよう、端末通知は必ず出す。
     unawaited(showPhotoTakenNotification(message));
     // 画面を見ているときはSnackBarでも出す。写真の拡大表示など別の画面を
