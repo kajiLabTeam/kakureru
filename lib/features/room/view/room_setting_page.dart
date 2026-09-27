@@ -27,7 +27,7 @@ class RoomSettingPage extends HookConsumerWidget {
   /// 適当に30分を仮の上限にしている(判断を委ねられた項目)。
   static const _releaseWaitMaxMinutes = 30;
 
-  /// 全体時間の上限(分)。同様に仮の上限。
+  /// 鬼ごっこの時間(鬼放出後)の上限(分)。同様に仮の上限。
   static const _gameDurationMaxMinutes = 180;
 
   @override
@@ -116,8 +116,6 @@ class RoomSettingPage extends HookConsumerWidget {
     final areaSizeError = useState<String?>(null);
     final save = useAsyncAction(context);
 
-    final isValid = gameDurationMin.value * 60 > releaseWaitMin.value * 60;
-
     return Scaffold(
       appBar: AppBar(title: const Text('ルーム設定')),
       body: roomAsync.when(
@@ -144,21 +142,14 @@ class RoomSettingPage extends HookConsumerWidget {
                   onChanged: (v) => releaseWaitMin.value = v,
                 ),
                 _MinuteStepper(
-                  label: '全体時間',
+                  // 放出後から数える(issue #119)。放出待ちの時間は含まない。
+                  label: '鬼ごっこの時間(放出後)',
                   minutes: gameDurationMin.value,
                   step: 5,
                   min: 1,
                   max: _gameDurationMaxMinutes,
                   onChanged: (v) => gameDurationMin.value = v,
                 ),
-                if (!isValid)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      '全体時間は鬼放出までの待機時間より長くしてください',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                  ),
                 const Divider(),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -259,7 +250,7 @@ class RoomSettingPage extends HookConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: FilledButton(
-                    onPressed: isValid && !save.isRunning
+                    onPressed: !save.isRunning
                         ? () => save.run(() async {
                             await ref
                                 .read(roomRepositoryProvider)
