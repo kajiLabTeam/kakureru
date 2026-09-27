@@ -17,7 +17,9 @@ void main() {
     test('鬼ごっこの時間は放出後から数える(放出待ち5分・30分なら開始から35分後に終わる)', () {
       final schedule = computeGameSchedule(
         startedAt: startedAt,
-        setting: const RoomSetting(releaseWaitSec: 300),
+        // 既定値に頼らず、テストの前提(30分)をここに明示する。
+        // ignore: avoid_redundant_argument_values
+        setting: const RoomSetting(releaseWaitSec: 300, gameDurationSec: 1800),
       );
       // 9/24のプレイテストでは開始から30分で終わり、放出後の残り時間が
       // 25分から始まっていた。
