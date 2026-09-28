@@ -15,14 +15,14 @@ rooms/
       createdAt
       startedAt           サーバー時刻で確定
       releasedAt          startedAt + releaseWaitSec
-      endsAt              startedAt + gameDurationSec
+      endsAt              releasedAt + gameDurationSec（放出後から数える。issue #119）
       endedAt
       pendingDemonUid     ホストが指名した、鬼になる予定の人のuid（本人が受諾したらnullに戻す）
       demonRevokeUid      ホストが取り消した、鬼を辞めさせる予定の人のuid（本人が受諾したらnullに戻す）
     setting/
       gameArea            [{lat, lng}, ...] 3点以上
       releaseWaitSec
-      gameDurationSec
+      gameDurationSec     鬼ごっこの時間（鬼放出後）。放出待ちの時間は含まない
       photoIntervalSec
       fugitiveInfoDelaySec
       senseDistanceRadiusM

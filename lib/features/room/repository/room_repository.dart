@@ -155,10 +155,14 @@ class RoomRepository {
       settingSnapshot.value as Map<dynamic, dynamic>? ?? {},
     );
 
+    final schedule = computeGameSchedule(
+      startedAt: startedAt,
+      setting: setting,
+    );
     await _db.ref('rooms/$roomId/meta').update({
       'status': RoomStatus.playing.raw,
-      'releasedAt': startedAt + setting.releaseWaitSec * 1000,
-      'endsAt': startedAt + setting.gameDurationSec * 1000,
+      'releasedAt': schedule.releasedAt,
+      'endsAt': schedule.endsAt,
     });
     unawaited(
       _eventLog.log(roomId, type: GameEventType.gameStarted, uid: _uid),
@@ -498,4 +502,21 @@ class RoomRepository {
     await _db.ref('rooms/$roomId/users/$_uid').remove();
     await _db.ref('rooms/$roomId/locations/$_uid').remove();
   }
+}
+
+/// ゲーム開始時刻 [startedAt] と設定から、鬼放出と終了の時刻を決める。
+///
+/// 設定の「鬼ごっこの時間」(`gameDurationSec`)は**鬼放出後から**数える
+/// (issue #119)。以前は開始から数えていたため、30分・放出待ち5分の設定だと
+/// 放出後のカウントダウンが25分から始まり、「30分なのに25分しかない」と
+/// 受け取られた。
+({int releasedAt, int endsAt}) computeGameSchedule({
+  required int startedAt,
+  required RoomSetting setting,
+}) {
+  final releasedAt = startedAt + setting.releaseWaitSec * 1000;
+  return (
+    releasedAt: releasedAt,
+    endsAt: releasedAt + setting.gameDurationSec * 1000,
+  );
 }
