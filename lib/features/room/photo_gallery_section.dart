@@ -63,7 +63,7 @@ String photoGallerySectionSubtitle({
     final paddedSeconds = seconds.toString().padLeft(2, '0');
     return 'つぎの撮影まで $minutes:$paddedSeconds';
   }
-  return '$photoCount人ぶん';
+  return '$photoCount人分';
 }
 
 /// [photos]のうち、[myUid]の視点で「見られる」ものだけを返す。

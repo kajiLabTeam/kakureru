@@ -256,7 +256,7 @@ class _SampleFloor extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           const Text(
-            '1階ぶんくらい 上かも',
+            '1階分くらい 上かも',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
