@@ -161,10 +161,10 @@ const _photoCaptureDueNotificationId = 3;
 /// 撮影間隔が来たタイミングで出す通知(issue #107フォローアップ)。
 ///
 /// バナーは画面内表示のため、他のタブ(地図/写真)を見ている・アプリを
-/// バックグラウンドにしている等で気づかれないことがある。役割を問わず出す
-/// (鬼は撮影ボタン自体が出ない=押しても何も起きないため、通知だけ届いても
-/// 実害は無い。むしろ鬼だけ通知が来ないと「気づいていないだけでは」と
-/// 混乱させる)。チャンネルを`kakureru_release`/`kakureru_area`と分けるのは、
+/// バックグラウンドにしている等で気づかれないことがある。鬼には出さない
+/// (鬼は撮影しないため。代わりに逃走者が撮ったことを
+/// [showPhotoTakenNotification]で知らせる。issue #120)。出し分けは呼び出し側
+/// (`shouldNotifyPhotoCaptureDue`)で行う。チャンネルを`kakureru_release`/`kakureru_area`と分けるのは、
 /// こちらは1ゲーム中に何度も繰り返し出るため、性格が違う通知と一緒に
 /// 端末側の設定をいじられたくないため。失敗してもログに残すだけ。
 Future<void> showPhotoCaptureDueNotification() {
@@ -183,5 +183,33 @@ Future<void> showPhotoCaptureDueNotification() {
       notificationDetails: const NotificationDetails(android: androidDetails),
     ),
     what: '撮影タイミングの通知',
+  );
+}
+
+/// 逃走者が写真を撮ったことを鬼に知らせる通知のID。他の通知とは別に取る。
+const _photoTakenNotificationId = 4;
+
+/// 逃走者が足元の写真を撮ったとき、鬼の端末に出す通知(issue #120)。
+///
+/// 鬼は写真を撮らないが全員の写真を見られる(`photoTileVisibilityOf`)。
+/// 新しい写真が来たことに気づけるよう、画面OFFやバックグラウンドでも
+/// 届く端末通知で知らせる。同じIDで出すので、続けて撮られたら最新の
+/// 内容に置き換わる(通知が積み上がらない)。失敗してもログに残すだけ。
+Future<void> showPhotoTakenNotification(String message) {
+  const androidDetails = AndroidNotificationDetails(
+    'kakureru_photo_taken',
+    '写真の撮影の通知',
+    channelDescription: '鬼のとき、逃走者が足元の写真を撮ったら通知します',
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+  return _runOrLogFailure(
+    () => _plugin.show(
+      id: _photoTakenNotificationId,
+      title: 'かくれんぼ',
+      body: message,
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    ),
+    what: '写真の撮影の通知',
   );
 }

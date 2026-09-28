@@ -45,6 +45,10 @@ class PhotoCaptureController {
 /// を渡す。バックグラウンドでの自動撮影は行わず、間隔が来たら
 /// [PhotoCaptureState.isDue]をtrueにしてバナー表示を促すだけ(Phase 1)。
 ///
+/// [notifyWhenDue]がfalseなら、間隔が来ても端末通知は出さない(鬼は撮影
+/// しないため。issue #120)。途中で鬼になることがあるので、タイマーが
+/// 発火した時点の値を使う。
+///
 /// このタイマー/アップロード状態はGamePageが消えたら一緒に消えてよい
 /// (次に入った時はlastPhotoAtから間隔を復元できる)ため、AGENTS.mdの
 /// 判断基準に従いRiverpodではなくhooksで持つ(useGameSessionが束ねる
@@ -56,8 +60,17 @@ PhotoCaptureController usePhotoCaptureController(
   required String? myUid,
   required int intervalSec,
   required int? lastPhotoAt,
+  required bool notifyWhenDue,
 }) {
   final stateHook = useState(const PhotoCaptureState());
+  // タイマーのコールバックは作った時点の引数を閉じ込めるので、最新の値を
+  // 参照できるようにrefへ入れておく。
+  final notifyWhenDueRef = useRef(notifyWhenDue)..value = notifyWhenDue;
+  void notifyDueIfNeeded() {
+    if (!notifyWhenDueRef.value) return;
+    unawaited(showPhotoCaptureDueNotification());
+  }
+
   final repository = useMemoized(PhotoRepository.new, const []);
   final dueTimerRef = useRef<Timer?>(null);
 
@@ -70,9 +83,8 @@ PhotoCaptureController usePhotoCaptureController(
         if (!context.mounted) return;
         stateHook.value = stateHook.value.copyWith(isDue: true);
         // バナーは他のタブを見ている・バックグラウンド中だと気づかれない
-        // ため、通知でも知らせる(役割は問わない。鬼は撮影ボタン自体が
-        // 出ないだけで、通知が来ても実害は無い)。
-        unawaited(showPhotoCaptureDueNotification());
+        // ため、通知でも知らせる(鬼には出さない)。
+        notifyDueIfNeeded();
       },
     );
   }
@@ -89,7 +101,7 @@ PhotoCaptureController usePhotoCaptureController(
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
         stateHook.value = stateHook.value.copyWith(isDue: true);
-        unawaited(showPhotoCaptureDueNotification());
+        notifyDueIfNeeded();
       });
     } else {
       scheduleDueTimer(nextDueAtMillis);

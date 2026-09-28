@@ -11,10 +11,15 @@ import 'package:kakureru/features/room/view_model/photo_capture_controller.dart'
 /// (PhotoRepositoryと違い注入口が無い)、実機かエミュレータ無しでは検証できない。
 /// ここでは注入無しに検証できる「間隔が来たらisDueを立てる」タイマー挙動だけを見る。
 class _Harness extends HookWidget {
-  const _Harness({required this.intervalSec, required this.lastPhotoAt});
+  const _Harness({
+    required this.intervalSec,
+    required this.lastPhotoAt,
+    this.notifyWhenDue = true,
+  });
 
   final int intervalSec;
   final int? lastPhotoAt;
+  final bool notifyWhenDue;
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +29,7 @@ class _Harness extends HookWidget {
       myUid: 'uid1',
       intervalSec: intervalSec,
       lastPhotoAt: lastPhotoAt,
+      notifyWhenDue: notifyWhenDue,
     );
     return Text(controller.state.isDue ? 'due' : 'not-due');
   }
@@ -33,11 +39,16 @@ Future<void> _pump(
   WidgetTester tester, {
   required int intervalSec,
   required int? lastPhotoAt,
+  bool notifyWhenDue = true,
 }) {
   return tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: _Harness(intervalSec: intervalSec, lastPhotoAt: lastPhotoAt),
+        body: _Harness(
+          intervalSec: intervalSec,
+          lastPhotoAt: lastPhotoAt,
+          notifyWhenDue: notifyWhenDue,
+        ),
       ),
     ),
   );
@@ -126,6 +137,38 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
 
     expect(calls.map((c) => c.method), contains('show'));
+  });
+
+  // 鬼は撮影しないので「撮ってください」の通知は出さない(issue #120)。
+  testWidgets('通知しない指定なら、間隔が来てもisDueだけ立てて通知は出さない', (tester) async {
+    await _pump(
+      tester,
+      intervalSec: 5,
+      lastPhotoAt: null,
+      notifyWhenDue: false,
+    );
+
+    await tester.pump(const Duration(seconds: 6));
+
+    expect(find.text('due'), findsOneWidget);
+    expect(calls.map((c) => c.method), isNot(contains('show')));
+  });
+
+  testWidgets('タイマーの途中で通知しない指定に変わったら、発火時点の指定に従う', (tester) async {
+    // 逃走者として始まり、間隔が来る前に鬼になった状況。
+    await _pump(tester, intervalSec: 5, lastPhotoAt: null);
+    await tester.pump(const Duration(seconds: 2));
+    await _pump(
+      tester,
+      intervalSec: 5,
+      lastPhotoAt: null,
+      notifyWhenDue: false,
+    );
+
+    await tester.pump(const Duration(seconds: 4));
+
+    expect(find.text('due'), findsOneWidget);
+    expect(calls.map((c) => c.method), isNot(contains('show')));
   });
 
   testWidgets('画面が破棄されるとタイマーは片付き、残タイマーで失敗しない', (tester) async {
