@@ -586,3 +586,26 @@ top-Mクランプに巻き込まれて削られた)の直接の原因でもあ�
 - 物理APの集約は「末尾1文字だけが違うBSSID = 同じAP」という前提に依存する。
   愛工大のAP(`c8:a6:08:...`)では成り立つが、他ベンダーのAPでは別のAPが
   まとまってしまう可能性がある(判定が少し甘くなる方向)。
+
+## 10. ゲーム画面の手がかりカード(暫定の係数)
+
+ゲーム画面の手がかりカード(`lib/features/room/view/game/clue_card.dart`)は、
+近い/遠いの判定(上記の`proximity_calculator.dart`。変更していない)とは別に、
+表示専用の値を出している。**以下の係数・閾値はすべて暫定**で、実機の
+プレイテストで調整する前提。コード側の定義にも同じく「暫定」と書いてある。
+
+| 表示 | 式・閾値 | 定義場所 |
+|---|---|---|
+| 近さメーター(0〜100) | (0.7 × clamp((14 − d)/12, 0, 1) + 0.3 × 上位5AP一致率) × 100。dはRSSI差の中央値(dB) | `lib/features/wifi/wifi_clue_math.dart` の `calculateClueMeter` と `clueMeter*` 定数 |
+| 電波の一致 n/3 | 共通APの上位3つのうち、RSSI差が7dB以内の数 | 同 `countMatchingSignals` / `signalMatchToleranceDbm` |
+| 傾向 | 約6秒前の値と比べて+5以上=近づいた、−5以下=離れた、それ以外=変わらない | 同 `clueTrendOf` / `clueTrendLookback` / `clueTrendThreshold` |
+| 高さ(階) | (気圧差hPa ÷ 0.4) を四捨五入し、±3階で頭打ち。気圧差は小数1桁で表示 | `lib/features/room/model/clue_floor_math.dart` の `hectoPascalPerFloor` / `maxClueFloors` |
+
+傾向の履歴は端末の画面内(`ClueTrendScope`)にだけ持ち、RTDBへは送らない。
+
+実機で確認すること:
+
+- メーターがスキャンのたびにどれくらい揺れるか(止まっていても±5を超えて
+  「近づいた/離れた」が出てしまわないか)。
+- 傾向の反応の速さ(6秒で比べるのが、走って近づく速度に対して遅すぎ/速すぎないか)。
+- 0.4hPa/階が、実際の建物の階高で合っているか。

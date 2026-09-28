@@ -481,7 +481,7 @@ void main() {
         fugitiveInfoDelaySec: 30,
         nowMillis: 0,
       );
-      expect(reason, '鬼の放出まで 2:31');
+      expect(reason, '鬼の放出まで 02:31');
     });
 
     test('放出後はnull(逃走者が見えているはず)', () {

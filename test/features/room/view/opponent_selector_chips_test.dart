@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
@@ -33,7 +32,8 @@ void main() {
     List<RoomUser> roster, {
     double width = availableWidth,
     ValueChanged<String>? onSelect,
-    List<RelativeVerticalPosition> verticalPositions = const [],
+    List<WifiProximityEntry>? entries,
+    String? leadingLabel,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -42,13 +42,18 @@ void main() {
             width: width,
             child: OpponentSelectorChips(
               roster: roster,
-              entries: [
-                for (final user in roster)
-                  WifiProximityEntry(uid: user.id, level: ProximityLevel.close),
-              ],
-              verticalPositions: verticalPositions,
+              entries:
+                  entries ??
+                  [
+                    for (final user in roster)
+                      WifiProximityEntry(
+                        uid: user.id,
+                        level: ProximityLevel.close,
+                      ),
+                  ],
               selectedUid: roster.isEmpty ? null : roster.first.id,
               onSelect: onSelect ?? (_) {},
+              leadingLabel: leadingLabel,
             ),
           ),
         ),
@@ -86,7 +91,7 @@ void main() {
     });
 
     testWidgets('チップ幅は人数によらず(横幅-隙間)/1.8で一定', (tester) async {
-      final expected =
+      const expected =
           (availableWidth - opponentChipSpacing) / opponentChipsVisibleCount;
 
       for (final count in [2, 4, 6, 10]) {
@@ -120,7 +125,7 @@ void main() {
       const wide = 600.0;
       await tester.pumpWidget(target(rosterOf(10), width: wide));
 
-      final expected = (wide - opponentChipSpacing) / opponentChipsVisibleCount;
+      const expected = (wide - opponentChipSpacing) / opponentChipsVisibleCount;
       for (final width in chipWidths(tester)) {
         expect(width, closeTo(expected, 0.01));
       }
@@ -164,84 +169,56 @@ void main() {
     });
   });
 
-  group('opponentChipSummary', () {
-    test('Wi-Fiと上下を「・」でつなぐ', () {
-      expect(
-        opponentChipSummary(
-          level: ProximityLevel.close,
-          verticalPosition: const RelativeVerticalPosition(
-            uid: 'u0',
-            deltaMeters: 8,
-          ),
-        ),
-        '近い・上かも',
-      );
-      expect(
-        opponentChipSummary(
-          level: ProximityLevel.far,
-          verticalPosition: const RelativeVerticalPosition(
-            uid: 'u0',
-            deltaMeters: 0,
-          ),
-        ),
-        '遠い・同じ高さ',
-      );
-      expect(
-        opponentChipSummary(
-          level: ProximityLevel.far,
-          verticalPosition: const RelativeVerticalPosition(
-            uid: 'u0',
-            deltaMeters: -8,
-          ),
-        ),
-        '遠い・下かも',
-      );
+  group('opponentChipStatus', () {
+    test('近さだけを「〜かも」で返す(高さはチップに出さない)', () {
+      expect(opponentChipStatus(ProximityLevel.close), '近いかも');
+      expect(opponentChipStatus(ProximityLevel.far), '遠いかも');
     });
 
-    test('上下が出せないときはWi-Fi側だけを返す', () {
-      // 気圧センサー非対応・未キャリブレーションのときGamePageが渡す
-      // verticalPositionsは空になるので、ここがnullで来る。
-      expect(
-        opponentChipSummary(
-          level: ProximityLevel.close,
-          verticalPosition: null,
-        ),
-        '近い',
-      );
-    });
-
-    test('Wi-Fiが検知できていなければ「検知なし」', () {
-      expect(
-        opponentChipSummary(level: null, verticalPosition: null),
-        '検知なし',
-      );
-      expect(
-        opponentChipSummary(
-          level: ProximityLevel.notDetected,
-          verticalPosition: null,
-        ),
-        '検知なし',
-      );
+    test('Wi-Fiが検知できていなければ「まだ分からない」', () {
+      expect(opponentChipStatus(null), 'まだ分からない');
+      expect(opponentChipStatus(ProximityLevel.notDetected), 'まだ分からない');
     });
   });
 
   group('チップの中身', () {
-    testWidgets('名前と要約を出す(アバターは出さない)', (tester) async {
+    testWidgets('名前と近さを出す(アバターは出さない)', (tester) async {
       await tester.pumpWidget(
         target(
           rosterOf(3),
-          verticalPositions: const [
-            RelativeVerticalPosition(uid: 'u0', deltaMeters: 8),
+          entries: const [
+            WifiProximityEntry(uid: 'u0', level: ProximityLevel.close),
+            WifiProximityEntry(uid: 'u1', level: ProximityLevel.far),
           ],
         ),
       );
 
       expect(find.text('逃走者0'), findsOneWidget);
-      expect(find.text('近い・上かも'), findsOneWidget);
-      // 上下が届いていない相手はWi-Fi側だけ。
-      expect(find.text('近い'), findsNWidgets(2));
+      expect(find.text('近いかも'), findsOneWidget);
+      expect(find.text('遠いかも'), findsOneWidget);
+      // 判定が届いていない相手は「まだ分からない」。
+      expect(find.text('まだ分からない'), findsOneWidget);
       // 頭文字を出す丸(CircleAvatar)はもう使わない。
       expect(find.byType(CircleAvatar), findsNothing);
+      // 未検知でも半透明にしない(名前が読めなくなるため)。
+      expect(find.byType(Opacity), findsNothing);
+    });
+
+    testWidgets('チップは44dp以上の高さを持つ', (tester) async {
+      await tester.pumpWidget(target(rosterOf(2)));
+
+      for (var i = 0; i < 2; i++) {
+        expect(
+          tester.getSize(chipFinder().at(i)).height,
+          greaterThanOrEqualTo(opponentChipMinHeight),
+        );
+      }
+    });
+
+    testWidgets('左の見出しを指定すると出す', (tester) async {
+      await tester.pumpWidget(target(rosterOf(2), leadingLabel: '鬼を選ぶ'));
+
+      expect(find.text('鬼を選ぶ'), findsOneWidget);
     });
   });
 }

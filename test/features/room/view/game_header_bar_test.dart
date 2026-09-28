@@ -15,6 +15,7 @@ void main() {
     WidgetTester tester, {
     RoleTheme? roleTheme,
     int? countdownSec,
+    VoidCallback? onHelp,
     List<Widget> actions = const [],
   }) {
     return tester.pumpWidget(
@@ -27,6 +28,7 @@ void main() {
           appBar: GameHeaderBar(
             roleTheme: roleTheme,
             countdownSec: countdownSec,
+            onHelp: onHelp,
             actions: actions,
           ),
         ),
@@ -51,10 +53,10 @@ void main() {
     );
 
     final label = tester.widget<Text>(find.text('あなたは 鬼'));
-    final timer = tester.widget<Text>(find.text('2:05'));
+    final timer = tester.widget<Text>(find.text('02:05'));
 
-    // モック2a-03の13px/17px(280px枠)を実機幅へスケールした値。以前は
-    // モックの数値をそのまま15px/19pxで実装していて小さすぎた。
+    // ゲーム画面モック(393dp幅)の17px/20px。以前は280px枠のモックの数値を
+    // そのまま15px/19pxで実装していて小さすぎた(issue #76)。
     expect(label.style!.fontSize, gameHeaderLabelFontSize);
     expect(timer.style!.fontSize, gameHeaderTimerFontSize);
     expect(gameHeaderLabelFontSize, greaterThan(15));
@@ -63,7 +65,7 @@ void main() {
     expect(timer.style!.fontFamily, 'monospace');
   });
 
-  testWidgets('役割が決まっていれば、役割の色を背景に敷いて文字を白にする', (tester) async {
+  testWidgets('役割が決まっていれば、濃い役割色を背景に敷いて文字を白にする', (tester) async {
     await pumpHeader(
       tester,
       roleTheme: roleThemeOf(UserRole.fugitive),
@@ -71,15 +73,16 @@ void main() {
     );
 
     final appBar = tester.widget<AppBar>(find.byType(AppBar));
-    expect(appBar.backgroundColor, roleThemeOf(UserRole.fugitive).color);
+    // ピン色(#4A9C5D)ではなく、白文字が読める濃い方(#3A7F4A)。
+    expect(appBar.backgroundColor, const Color(0xFF3A7F4A));
     // AppBarThemeのtitleTextStyleが非nullだとforegroundColorは混ざらない
     // (Flutterの仕様)ので、ここは明示的に白を指定する必要がある。
     expect(renderedColorOf(tester, 'あなたは 逃走者'), Colors.white);
-    expect(renderedColorOf(tester, '0:00'), Colors.white);
+    expect(renderedColorOf(tester, '00:00'), Colors.white);
   });
 
   testWidgets('役割が未確定なら、白地に白で消えないようテーマの文字色を継承する', (tester) async {
-    await pumpHeader(tester, roleTheme: null, countdownSec: 125);
+    await pumpHeader(tester, countdownSec: 125);
 
     // 背景はAppBarThemeの白になる。ここで白を指定すると文字が消える。
     final appBar = tester.widget<AppBar>(find.byType(AppBar));
@@ -101,10 +104,10 @@ void main() {
 
   testWidgets('役割が未確定なら「ゲーム中」だけを出し、残り時間は出さない', (tester) async {
     // 放出前かどうかで残り時間の意味が変わるため、役割が決まるまでは出さない。
-    await pumpHeader(tester, roleTheme: null, countdownSec: 125);
+    await pumpHeader(tester, countdownSec: 125);
 
     expect(find.text('ゲーム中'), findsOneWidget);
-    expect(find.text('2:05'), findsNothing);
+    expect(find.text('02:05'), findsNothing);
     expect(find.text('--:--'), findsNothing);
   });
 
@@ -120,6 +123,32 @@ void main() {
     expect(find.byIcon(Icons.bug_report), findsOneWidget);
   });
 
+  testWidgets('「?」は44dp四方で、押すとonHelpを呼ぶ', (tester) async {
+    var tapped = 0;
+    await pumpHeader(
+      tester,
+      roleTheme: roleThemeOf(UserRole.demon),
+      countdownSec: 60,
+      onHelp: () => tapped++,
+    );
+
+    final help = find.byTooltip('遊び方と使ってよい場所');
+    expect(tester.getSize(help).width, greaterThanOrEqualTo(44));
+    expect(tester.getSize(help).height, greaterThanOrEqualTo(44));
+    await tester.tap(help);
+    expect(tapped, 1);
+  });
+
+  testWidgets('onHelpが無ければ「?」を出さない', (tester) async {
+    await pumpHeader(
+      tester,
+      roleTheme: roleThemeOf(UserRole.demon),
+      countdownSec: 60,
+    );
+
+    expect(find.byIcon(Icons.help_outline), findsNothing);
+  });
+
   testWidgets('小さい画面でも溢れない', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 480));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -128,6 +157,7 @@ void main() {
       tester,
       roleTheme: roleThemeOf(UserRole.fugitive),
       countdownSec: 3599,
+      onHelp: () {},
       actions: const [Icon(Icons.bug_report)],
     );
 

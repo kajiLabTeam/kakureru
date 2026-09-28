@@ -6,12 +6,12 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
-import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
+import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/area_alert.dart';
@@ -23,6 +23,8 @@ import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/game_notifications.dart';
 import 'package:kakureru/features/room/game_over_navigation.dart';
 import 'package:kakureru/features/room/game_session.dart';
+import 'package:kakureru/features/room/model/clue_floor_math.dart';
+import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/opponent_roster_status.dart';
 import 'package:kakureru/features/room/photo_capture_config.dart';
@@ -31,16 +33,18 @@ import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
-import 'package:kakureru/features/room/view/game/area_rules_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_confirm_dialog.dart';
+import 'package:kakureru/features/room/view/game/clue_card.dart';
+import 'package:kakureru/features/room/view/game/clue_guide_page.dart';
+import 'package:kakureru/features/room/view/game/clue_trend_scope.dart';
 import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
 import 'package:kakureru/features/room/view/game/game_header_bar.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/game/game_status_cards.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/game/map_photo_tab_bar.dart';
-import 'package:kakureru/features/room/view/game/opponent_detail_card.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
 import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
 import 'package:kakureru/features/room/view/game/photo_capture_banner.dart';
@@ -51,6 +55,7 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
+import 'package:kakureru/features/wifi/wifi_clue_math.dart';
 
 /// 位置が送れていないときに画面上部へ出す赤い警告文。問題なければnull。
 ///
@@ -154,6 +159,48 @@ class GamePage extends HookConsumerWidget {
     // hooksで持つ(AGENTS.md規約)。
     final pageIndex = useState(0);
     final pageController = usePageController();
+
+    // 手がかりの見方(ゲーム画面モック04)を、初めてゲーム画面に入ったとき
+    // だけ自動で出す。見たかどうかは端末に残す(shared_preferences)。
+    // 2回目以降はヘッダーの「?」からいつでも開ける。
+    //
+    // 画面遷移をuseEffectの中で同期的に呼ぶと、ビルド中にNavigatorを
+    // 触ることになるため、次のフレームに回してからmountedを確かめて開く。
+    useEffect(() {
+      var disposed = false;
+      Future<void> showGuideOnce() async {
+        final prefs = ref.read(playerPreferencesRepositoryProvider);
+        if (await prefs.loadClueGuideSeen()) return;
+        if (disposed || !context.mounted) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (disposed || !context.mounted) return;
+          unawaited(prefs.saveClueGuideSeen());
+          unawaited(showClueGuide(context));
+        });
+      }
+
+      unawaited(showGuideOnce());
+      return () {
+        disposed = true;
+      };
+    }, const []);
+
+    // 写真タブの「新着」の赤い点。最後に写真タブを開いたときの枚数より
+    // 増えていれば出す。画面に入った時点で既にある写真は見たことにする
+    // (入るたびに点が付くと、新着の意味が無くなるため)。
+    // 画面内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
+    final photos = photosAsync.value ?? const [];
+    final seenPhotoCount = useRef<int?>(null);
+    if (photosAsync.hasValue) {
+      seenPhotoCount.value ??= photos.length;
+    }
+    if (pageIndex.value == 1 && photosAsync.hasValue) {
+      seenPhotoCount.value = photos.length;
+    }
+    final hasNewPhotos =
+        pageIndex.value != 1 &&
+        seenPhotoCount.value != null &&
+        photos.length > seenPhotoCount.value!;
 
     // デバッグ用の偽プレイヤーを出しているかどうか(issue #67)。多人数での
     // 見え方は端末を人数分集めないと確認できないため、デバッグビルドでだけ
@@ -309,21 +356,22 @@ class GamePage extends HookConsumerWidget {
       child: Stack(
         children: [
           Scaffold(
+            backgroundColor: gameBackground,
             // 役割文言と残り時間の帯。文字サイズなど見た目の細部は
             // GameHeaderBar側にある(widgetテストを書けるようにするため
             // 切り出している)。
             appBar: GameHeaderBar(
               roleTheme: headerRoleTheme,
               countdownSec: countdownSec,
-              // 1つめはデバッグビルド限定の、偽プレイヤーの表示/非表示トグル
+              // 「?」で手がかりの見方(モック04)を開く。使ってよい場所の
+              // 一覧(issue #108)は、見方の画面の中から開ける。
+              onHelp: () => unawaited(showClueGuide(context)),
+              // デバッグビルド限定の、偽プレイヤーの表示/非表示トグル
               // (issue #67)。RTDBには一切書かず、この端末の画面にだけ
               // 偽の相手を足す。kDebugModeがfalseのリリースビルドでは
               // このボタン自体が存在しない。
-              // 2つめは使ってよい場所の一覧(issue #108)。こちらは
-              // リリースビルドでも常に出る。
               actions: const [
                 if (kDebugMode) DebugMockPlayersToggle(),
-                AreaRulesButton(),
               ],
             ),
             body: roomAsync.when(
@@ -430,15 +478,7 @@ class GamePage extends HookConsumerWidget {
                     room.users.any(
                       (u) => u.role == opponentRole && !isVisibleToMe(u.id),
                     );
-                final hiddenReason = myRole == null || !anyOpponentHiddenFromMe
-                    ? null
-                    : hiddenOpponentReason(
-                        viewerRole: myRole,
-                        phase: phase,
-                        releasedAt: room.releasedAt,
-                        fugitiveInfoDelaySec: room.setting.fugitiveInfoDelaySec,
-                        nowMillis: now,
-                      );
+                final beforeRelease = phase == GamePhase.beforeRelease;
 
                 // BLEで対象の役割の相手が至近距離(3m程度)にいるかどうか(issue #16)。
                 // 「捕まった」ボタン(常時表示・自己申告)とは別に、確実な捕捉を
@@ -489,7 +529,10 @@ class GamePage extends HookConsumerWidget {
                     selectedOpponentUid.value != null &&
                         rosterUids.contains(selectedOpponentUid.value)
                     ? selectedOpponentUid.value
-                    : visibleNearestOpponentUid;
+                    : visibleNearestOpponentUid ??
+                          (opponentRoster.isEmpty
+                              ? null
+                              : opponentRoster.first.id);
                 final selectedComparisons = effectiveSelectedUid != null
                     ? ref.watch(
                         wifiComparisonsForProvider((
@@ -567,19 +610,36 @@ class GamePage extends HookConsumerWidget {
                         alert: outsideAreaAlert,
                         // 偽プレイヤーのピンにも名前と役割色を出すため、
                         // 地図には表示用の一覧を渡す(issue #67)。
-                        map: GameLocationMap(
-                          locations: visibleLocations,
-                          users: displayUsers,
-                          myUid: myUid,
-                          cachedPosition: cachedPosition.value,
-                          gameArea: room.setting.gameArea,
+                        map: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: GameLocationMap(
+                                locations: visibleLocations,
+                                users: displayUsers,
+                                myUid: myUid,
+                                cachedPosition: cachedPosition.value,
+                                gameArea: room.setting.gameArea,
+                              ),
+                            ),
+                            // 逃走者のピンは実際の位置そのものではない、と
+                            // 鬼に断っておく(モック02)。正確な点だと思って
+                            // 探すと見つからず、不具合と区別が付かないため。
+                            if (myRole == UserRole.demon)
+                              const Positioned(
+                                left: 12,
+                                bottom: 10,
+                                child: _MapCaption(
+                                  '逃走者はマス目のどこかにいます'
+                                  '（正確な点ではありません）',
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
                     // マップの下は、対象役割の相手をタップで選べるチップ一覧と、
-                    // 選んだ1人だけの詳細カード(UI改修モック2a-03「逃走者を
-                    // 選んで詳細を見る」)。人数が増えても見やすいよう、対象を
-                    // 常に1人だけに絞って詳細(上下判定+Wi-Fi距離感)を出す
+                    // 選んだ1人だけの手がかりカード(モック01/02)。人数が
+                    // 増えても見やすいよう、対象を常に1人だけに絞る
                     // (issue #29フォローアップ)。
                     //
                     // チップ一覧が出せないときは、その理由を明示するカードに
@@ -587,63 +647,84 @@ class GamePage extends HookConsumerWidget {
                     // の相手がそもそも居ない」「居るがまだ検知できていない」
                     // の3つは、以前は一律「検知なし」と出していて区別が付か
                     // なかった(issue #30)。
-                    if (opponentRoster.isEmpty)
+                    if (opponentRoster.isEmpty || effectiveSelectedUid == null)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: HiddenOpponentCard(
-                          message: emptyOpponentMessage(
-                            // 役割がまだ確定していない間の扱いは
-                            // opponentRoleの既定と揃える(鬼と確定するまで
-                            // 逃走者側として扱う)。
-                            viewerRole: myRole ?? UserRole.fugitive,
-                            opponentCountInRoom: room.users
-                                .where((u) => u.role == opponentRole)
-                                .length,
-                            hiddenReason: hiddenReason,
-                          ),
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          beforeRelease ? 12 : 10,
+                          16,
+                          0,
+                        ),
+                        child: Column(
+                          children: [
+                            HiddenOpponentCard(
+                              message: emptyOpponentMessage(
+                                // 役割がまだ確定していない間の扱いは
+                                // opponentRoleの既定と揃える(鬼と確定するまで
+                                // 逃走者側として扱う)。
+                                viewerRole: myRole ?? UserRole.fugitive,
+                                opponentCountInRoom: room.users
+                                    .where((u) => u.role == opponentRole)
+                                    .length,
+                                hiddenByVisibility: anyOpponentHiddenFromMe,
+                                beforeRelease: beforeRelease,
+                                revealRemainingSec: opponentRevealRemainingSec(
+                                  viewerRole: myRole ?? UserRole.fugitive,
+                                  releasedAt: room.releasedAt,
+                                  fugitiveInfoDelaySec:
+                                      room.setting.fugitiveInfoDelaySec,
+                                  nowMillis: now,
+                                ),
+                              ),
+                            ),
+                            // 放出前の逃走者には「鬼になる」がまだ押せない
+                            // 理由を添える(モック03)。
+                            if (myRole == UserRole.fugitive && beforeRelease)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 10),
+                                child: Text(
+                                  '「鬼になる」は、鬼が3m以内に来ると'
+                                  '押せるようになります',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: gameMuted,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       )
-                    else ...[
+                    else
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: Text(
-                          opponentRole == UserRole.fugitive
-                              ? '逃走者を選んで詳細を見る'
-                              : '鬼を選んで詳細を見る',
-                          style: const TextStyle(color: appMuted, fontSize: 11),
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                        child: Column(
+                          children: [
+                            OpponentSelectorChips(
+                              roster: opponentRoster,
+                              entries: visibleWifiEntries,
+                              selectedUid: effectiveSelectedUid,
+                              onSelect: (uid) =>
+                                  selectedOpponentUid.value = uid,
+                              leadingLabel: opponentRole == UserRole.fugitive
+                                  ? '逃走者\nを選ぶ'
+                                  : '鬼を選ぶ',
+                            ),
+                            const SizedBox(height: 8),
+                            _SelectedClueCard(
+                              roomId: roomId,
+                              room: room,
+                              myUid: myUid,
+                              uid: effectiveSelectedUid,
+                              users: displayUsers,
+                              wifiEntries: visibleWifiEntries,
+                              verticalPositions: visibleVerticalPositions,
+                              comparisons: selectedComparisons,
+                              pressureState: pressureState,
+                            ),
+                          ],
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: OpponentSelectorChips(
-                          roster: opponentRoster,
-                          entries: visibleWifiEntries,
-                          verticalPositions: visibleVerticalPositions,
-                          selectedUid: effectiveSelectedUid,
-                          onSelect: (uid) => selectedOpponentUid.value = uid,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: OpponentDetailCard(
-                          user: effectiveSelectedUid == null
-                              ? null
-                              : findUser(displayUsers, effectiveSelectedUid),
-                          pressureState: pressureState,
-                          isCalibrated: isCalibrated(room, myUid),
-                          verticalPosition: verticalFor(
-                            visibleVerticalPositions,
-                            effectiveSelectedUid,
-                          ),
-                          wifiLevel: levelFor(
-                            visibleWifiEntries,
-                            effectiveSelectedUid,
-                          ),
-                          comparisons: selectedComparisons,
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: 8),
                   ],
                 );
@@ -657,6 +738,7 @@ class GamePage extends HookConsumerWidget {
                   children: [
                     MapPhotoTabBar(
                       selectedIndex: pageIndex.value,
+                      hasNewPhotos: hasNewPhotos,
                       onSelect: (index) {
                         pageIndex.value = index;
                         pageController.animateToPage(
@@ -676,7 +758,7 @@ class GamePage extends HookConsumerWidget {
                             roomId: roomId,
                             room: room,
                             myUid: myUid,
-                            photos: photosAsync.value ?? const [],
+                            photos: photos,
                             nowMillis: now,
                             photoCapture: photoCapture,
                           ),
@@ -713,4 +795,108 @@ UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
     if (location.uid == uid) return location;
   }
   return null;
+}
+
+/// 地図の左下に重ねる小さな注記(モック02)。
+class _MapCaption extends StatelessWidget {
+  const _MapCaption(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 10, color: gameInkSoft),
+      ),
+    );
+  }
+}
+
+/// 選んだ相手1人ぶんの手がかりカード(モックC1〜C5)。
+///
+/// メーターの傾向(近づいた/離れた)には過去の値が要るため、履歴を持つ
+/// [ClueTrendScope]で包む。GamePage本体ではルームのデータを受け取った
+/// 後でしか相手が決まらず、そこではhooksを呼べないため切り出している。
+class _SelectedClueCard extends ConsumerWidget {
+  const _SelectedClueCard({
+    required this.roomId,
+    required this.room,
+    required this.myUid,
+    required this.uid,
+    required this.users,
+    required this.wifiEntries,
+    required this.verticalPositions,
+    required this.comparisons,
+    required this.pressureState,
+  });
+
+  final String roomId;
+  final Room room;
+  final String? myUid;
+  final String uid;
+  final List<RoomUser> users;
+  final List<WifiProximityEntry> wifiEntries;
+  final List<RelativeVerticalPosition> verticalPositions;
+  final List<WifiApComparison> comparisons;
+  final PressureState pressureState;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 偽プレイヤー(issue #67)にはスキャン結果が無いので、メーターはnull
+    // (=「まだ分からない」)になる。
+    final meter = ref.watch(clueMeterForProvider((roomId, uid)));
+    final vertical = verticalFor(verticalPositions, uid);
+
+    // 途中からの高さ合わせ。条件は待機画面のキャリブレーションと同じ
+    // (ホストが先に基準を取っていないと参加者は合わせられない)。
+    final isHost = room.hostUserId == myUid;
+    final canCalibrate =
+        pressureState.sensorAvailability !=
+            PressureSensorAvailability.checking &&
+        pressureState.myPressureHPa != null &&
+        !pressureState.isCalibrating &&
+        (isHost || room.basePressure != null);
+
+    return ClueTrendScope(
+      uid: uid,
+      meter: meter,
+      builder: (context, trend) => ClueCard(
+        name: findUser(users, uid)?.displayName ?? '',
+        role: roleOf(users, uid),
+        verdict: clueVerdictOf(level: levelFor(wifiEntries, uid), meter: meter),
+        meter: meter,
+        matchCount: countMatchingSignals(comparisons),
+        trend: trend,
+        heightStatus: clueHeightStatusOf(
+          availability: pressureState.sensorAvailability,
+          isCalibrated: isCalibrated(room, myUid),
+          hasOpponentHeight: vertical != null,
+        ),
+        opponentLowerHPa: vertical == null
+            ? null
+            : opponentLowerPressureHPaOf(vertical.deltaMeters),
+        onHelp: () => unawaited(showClueGuide(context)),
+        onCalibrate: canCalibrate
+            ? () {
+                final notifier = ref.read(pressureViewModelProvider.notifier);
+                if (isHost) {
+                  unawaited(notifier.calibrateAsHost(roomId));
+                } else {
+                  unawaited(
+                    notifier.calibrateAsParticipant(roomId, room.basePressure),
+                  );
+                }
+              }
+            : null,
+        isCalibrating: pressureState.isCalibrating,
+      ),
+    );
+  }
 }

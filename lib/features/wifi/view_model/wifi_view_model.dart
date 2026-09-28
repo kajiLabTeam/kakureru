@@ -12,6 +12,7 @@ import 'package:kakureru/features/wifi/model/wifi_scan_result.dart';
 import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:kakureru/features/wifi/repository/wifi_scan_repository.dart';
+import 'package:kakureru/features/wifi/wifi_clue_math.dart';
 
 final wifiScanRepositoryProvider = Provider((ref) => WifiScanRepository());
 
@@ -234,6 +235,23 @@ final wifiComparisonsForProvider =
         selfScan.bssidRssi,
         targetScan.bssidRssi,
       );
+    });
+
+/// 指定した相手との手がかりメーターの値(0〜100)。共通APが無い、
+/// またはどちらかのスキャン結果がまだ届いていなければnull。
+///
+/// 式と係数(暫定)は`wifi_clue_math.dart`の[calculateClueMeter]を参照。
+/// 近い/遠いの判定([wifiProximityLevelsProvider])とは独立の表示用の値で、
+/// 判定そのものには使わない。
+final clueMeterForProvider =
+    Provider.family<double?, (String roomId, String targetUid)>((ref, args) {
+      final (_, targetUid) = args;
+      final myUid = FirebaseAuth.instance.currentUser?.uid;
+      final locations = ref.watch(locationViewModelProvider).locations;
+      final selfScan = _scanFor(locations, myUid);
+      final targetScan = _scanFor(locations, targetUid);
+      if (selfScan == null || targetScan == null) return null;
+      return calculateClueMeter(selfScan.bssidRssi, targetScan.bssidRssi);
     });
 
 UserLocation? _findLocation(List<UserLocation> locations, String? uid) {

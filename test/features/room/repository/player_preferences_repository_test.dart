@@ -42,4 +42,31 @@ void main() {
       await expectLater(repo.loadDisplayName(), completes);
     });
   });
+
+  group('手がかりの見方を見たか', () {
+    test('保存前はfalse(初回は説明を出す)', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = PlayerPreferencesRepository();
+
+      expect(await repo.loadClueGuideSeen(), isFalse);
+    });
+
+    test('一度記録すればtrue', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = PlayerPreferencesRepository();
+
+      await repo.saveClueGuideSeen();
+
+      expect(await repo.loadClueGuideSeen(), isTrue);
+    });
+
+    test('名前の保存とは独立している', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = PlayerPreferencesRepository();
+
+      await repo.saveDisplayName('たろう');
+
+      expect(await repo.loadClueGuideSeen(), isFalse);
+    });
+  });
 }

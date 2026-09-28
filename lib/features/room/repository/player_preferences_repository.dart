@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// よう、値ごとに独立したメソッドとして公開する。
 class PlayerPreferencesRepository {
   static const _displayNameKey = 'player.displayName';
+  static const _clueGuideSeenKey = 'player.clueGuideSeen';
 
   /// 保存済みの表示名を返す。未保存、または読み込みに失敗した場合はnull。
   Future<String?> loadDisplayName() async {
@@ -27,6 +28,29 @@ class PlayerPreferencesRepository {
       await prefs.setString(_displayNameKey, displayName);
     } on Object {
       // 保存できなくても致命的ではないため握りつぶす。
+    }
+  }
+
+  /// 「手がかりの見方」(ゲーム画面の初回説明)を見たことがあるか。
+  ///
+  /// 未保存ならfalse。読み込みに失敗したときもfalseを返す(説明がもう一度
+  /// 出るだけで済むほうが、一度も出ないより害が小さいため)。
+  Future<bool> loadClueGuideSeen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_clueGuideSeenKey) ?? false;
+    } on Object {
+      return false;
+    }
+  }
+
+  /// 「手がかりの見方」を見たことを記録する。失敗しても例外は投げない。
+  Future<void> saveClueGuideSeen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_clueGuideSeenKey, true);
+    } on Object {
+      // 次のゲームでもう一度説明が出るだけなので握りつぶす。
     }
   }
 }
