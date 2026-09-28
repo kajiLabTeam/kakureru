@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:clock/clock.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kakureru/core/utils/local_notifications.dart';
 import 'package:kakureru/features/room/model/photo_capture_state.dart';
+import 'package:kakureru/features/room/model/photo_slot.dart';
 import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/repository/photo_repository.dart';
 
@@ -40,17 +43,30 @@ class PhotoCaptureController {
 
 /// ゲーム画面に常駐する撮影プロンプトのタイマーとアップロードを扱うフック。
 ///
-/// [roomId]・[intervalSec]（`RoomSetting.photoIntervalSec`）・[lastPhotoAt]
-/// （自分の`RoomUser.lastPhotoAt`。アプリ再起動をまたいで間隔を復元するため）
-/// を渡す。バックグラウンドでの自動撮影は行わず、間隔が来たら
-/// [PhotoCaptureState.isDue]をtrueにしてバナー表示を促すだけ(Phase 1)。
+/// 撮影を促すタイミングはギャラリーと同じ「スロット」(`photo_slot.dart`)に
+/// 揃える: 鬼の放出([releasedAt] = `meta/releasedAt`)から[intervalSec]
+/// (`RoomSetting.photoIntervalSec`)たった時点を1回目とし
+/// ([photoScheduleStartMillis])、以後[intervalSec]ごとに区切って、今のスロットでまだ撮って
+/// いなければ[PhotoCaptureState.isDue]をtrueにしてバナー表示を促す。
+/// 撮影済みかどうかは[lastPhotoAt](自分の`RoomUser.lastPhotoAt`。アプリ
+/// 再起動をまたいでも復元できる)で判定する。バックグラウンドでの自動撮影は
+/// 行わない(Phase 1)。
+///
+/// 以前は「前回の撮影(未撮影なら画面を開いた時刻)+間隔」で判定していた
+/// ため、スロットの区切りとずれて、最初のスロットの通知がスロットの終わりに
+/// しか来ない・終わり際に撮ると次のスロットの通知がほぼ1スロット分遅れる、
+/// という取りこぼしがあった。また基準をゲーム開始(`meta/startedAt`)に
+/// していたため、鬼の放出待ちの間にすぐ通知が来ていた。
+///
+/// releasedAt/lastPhotoAtはサーバー時刻なので、[serverTimeOffsetMillis]
+/// (`.info/serverTimeOffset`)で端末時計を補正して比べる。
 ///
 /// [notifyWhenDue]がfalseなら、間隔が来ても端末通知は出さない(鬼は撮影
 /// しないため。issue #120)。途中で鬼になることがあるので、タイマーが
-/// 発火した時点の値を使う。
+/// 発火した時点の値を使う。通知は1スロットにつき1回まで。
 ///
 /// このタイマー/アップロード状態はGamePageが消えたら一緒に消えてよい
-/// (次に入った時はlastPhotoAtから間隔を復元できる)ため、AGENTS.mdの
+/// (次に入った時はlastPhotoAtから復元できる)ため、AGENTS.mdの
 /// 判断基準に従いRiverpodではなくhooksで持つ(useGameSessionが束ねる
 /// 各種Riverpod NotifierとGameAlertsは共有状態なので対象外、こちらは
 /// この画面だけのローカル状態)。
@@ -59,59 +75,108 @@ PhotoCaptureController usePhotoCaptureController(
   required String roomId,
   required String? myUid,
   required int intervalSec,
+  required int? releasedAt,
   required int? lastPhotoAt,
+  required int serverTimeOffsetMillis,
   required bool notifyWhenDue,
 }) {
   final stateHook = useState(const PhotoCaptureState());
-  // タイマーのコールバックは作った時点の引数を閉じ込めるので、最新の値を
-  // 参照できるようにrefへ入れておく。
+  // タイマーのコールバックやアップロード完了時の処理は作った時点の引数を
+  // 閉じ込めるので、最新の値を参照できるようにrefへ入れておく。
   final notifyWhenDueRef = useRef(notifyWhenDue)..value = notifyWhenDue;
-  void notifyDueIfNeeded() {
-    if (!notifyWhenDueRef.value) return;
-    unawaited(showPhotoCaptureDueNotification());
-  }
+  final intervalSecRef = useRef(intervalSec)..value = intervalSec;
+  final releasedAtRef = useRef(releasedAt)..value = releasedAt;
+  final lastPhotoAtRef = useRef(lastPhotoAt)..value = lastPhotoAt;
+  final offsetRef = useRef(serverTimeOffsetMillis)
+    ..value = serverTimeOffsetMillis;
+  // アップロード成功からRTDBのlastPhotoAtが届くまでの間に判定し直しても
+  // 「まだ撮っていない」とならないよう、手元でも撮影時刻を持っておく。
+  final uploadedAtRef = useRef<int?>(null);
+  // 同じスロットで通知を重ねないため、最後に通知したスロット番号。
+  final notifiedSlotRef = useRef<int?>(null);
 
   final repository = useMemoized(PhotoRepository.new, const []);
   final dueTimerRef = useRef<Timer?>(null);
 
-  void scheduleDueTimer(int nextDueAtMillis) {
+  int serverNow() => clock.now().millisecondsSinceEpoch + offsetRef.value;
+
+  /// [nowMillis]時点で撮影を促すべきかを判定して反映し、次のスロットの
+  /// 区切りで判定し直すタイマーを張る。
+  void evaluate(int nowMillis) {
     dueTimerRef.value?.cancel();
-    final delayMillis = nextDueAtMillis - DateTime.now().millisecondsSinceEpoch;
+    dueTimerRef.value = null;
+    final interval = intervalSecRef.value;
+    final start = photoScheduleStartMillis(
+      releasedAt: releasedAtRef.value,
+      intervalSec: interval,
+    );
+    if (start == null) return;
+
+    final photoAt = lastPhotoAtRef.value;
+    final uploadedAt = uploadedAtRef.value;
+    final takenAt = photoAt == null
+        ? uploadedAt
+        : uploadedAt == null
+        ? photoAt
+        : math.max(photoAt, uploadedAt);
+
+    final due = isPhotoCaptureDue(
+      startedAt: start,
+      lastPhotoAt: takenAt,
+      nowMillis: nowMillis,
+      intervalSec: interval,
+    );
+    if (due != stateHook.value.isDue) {
+      stateHook.value = stateHook.value.copyWith(isDue: due);
+    }
+    if (due) {
+      final slot = currentPhotoSlotIndex(
+        startedAt: start,
+        nowMillis: nowMillis,
+        intervalSec: interval,
+      );
+      // バナーは他のタブを見ている・バックグラウンド中だと気づかれない
+      // ため、通知でも知らせる(鬼には出さない)。
+      if (notifiedSlotRef.value != slot) {
+        notifiedSlotRef.value = slot;
+        if (notifyWhenDueRef.value) {
+          unawaited(showPhotoCaptureDueNotification());
+        }
+      }
+    }
+
+    final nextBoundary = nextPhotoSlotBoundaryMillis(
+      startedAt: start,
+      nowMillis: nowMillis,
+      intervalSec: interval,
+    );
+    final delayMillis = nextBoundary - serverNow();
     dueTimerRef.value = Timer(
       Duration(milliseconds: delayMillis < 0 ? 0 : delayMillis),
       () {
         if (!context.mounted) return;
-        stateHook.value = stateHook.value.copyWith(isDue: true);
-        // バナーは他のタブを見ている・バックグラウンド中だと気づかれない
-        // ため、通知でも知らせる(鬼には出さない)。
-        notifyDueIfNeeded();
+        // 区切りの時刻そのもので判定する(端末時計がタイマーより僅かに
+        // 遅れていても前のスロットと判定しないため)。スリープ等で発火が
+        // 遅れた場合は実際の時刻で判定する。
+        evaluate(math.max(nextBoundary, serverNow()));
       },
     );
   }
 
   useEffect(() {
-    final baseMillis = lastPhotoAt ?? DateTime.now().millisecondsSinceEpoch;
-    final nextDueAtMillis = baseMillis + intervalSec * 1000;
-
-    if (nextDueAtMillis <= DateTime.now().millisecondsSinceEpoch) {
-      // 既に間隔を過ぎている(再起動直後 等)。useEffect内で同期的に
-      // state.value = ... を書くとビルド中のNavigator操作の
-      // 「!_debugLocked」アサーション失敗と同種の事故につながった経緯が
-      // あるため(game_alerts.dart参照)、フレーム確定後に回す。
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
-        stateHook.value = stateHook.value.copyWith(isDue: true);
-        notifyDueIfNeeded();
-      });
-    } else {
-      scheduleDueTimer(nextDueAtMillis);
-    }
-
+    // useEffect内で同期的にstate.value = ... を書くとビルド中の
+    // Navigator操作の「!_debugLocked」アサーション失敗と同種の事故に
+    // つながった経緯があるため(game_alerts.dart参照)、フレーム確定後に回す。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      evaluate(serverNow());
+    });
     return () => dueTimerRef.value?.cancel();
-    // scheduleDueTimer/stateHookはeffect内でのみ参照するクロージャの再生成
-    // 元であり、依存に加えるとタイマーが無限に張り直されてしまうため除外する。
+    // evaluate/stateHookはeffect内でのみ参照するクロージャの再生成元であり、
+    // 依存に加えるとタイマーが無限に張り直されてしまうため除外する
+    // (最新の値はrefから読む)。
     // ignore: exhaustive_keys
-  }, [roomId, intervalSec, lastPhotoAt]);
+  }, [roomId, intervalSec, releasedAt, lastPhotoAt, serverTimeOffsetMillis]);
 
   Future<void> uploadWithRetry(Uint8List bytes) async {
     final uid = myUid;
@@ -164,15 +229,14 @@ PhotoCaptureController usePhotoCaptureController(
         );
 
         if (!context.mounted) return;
-        scheduleDueTimer(
-          DateTime.now().millisecondsSinceEpoch + intervalSec * 1000,
-        );
+        uploadedAtRef.value = serverNow();
         stateHook.value = stateHook.value.copyWith(
           isUploading: false,
-          isDue: false,
           pendingBytes: null,
           lastErrorMessage: null,
         );
+        // isDueを下ろし、次のスロットの区切りで判定し直すタイマーを張る。
+        evaluate(serverNow());
         return;
       } on PhotoTooLargeException {
         if (!context.mounted) return;

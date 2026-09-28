@@ -244,8 +244,14 @@ class GameAlerts extends Notifier<GameAlertsState> {
     final myUid = ref.read(myUidProvider);
     final roomId = _roomId;
     if (myUid == null || roomId == null || myUid != room.hostUserId) return;
+    String? displayName;
+    for (final user in room.users) {
+      if (user.id == myUid) displayName = user.displayName;
+    }
     unawaited(
-      ref.read(eventLogRepositoryProvider).log(roomId, type: type, uid: myUid),
+      ref
+          .read(eventLogRepositoryProvider)
+          .log(roomId, type: type, uid: myUid, displayName: displayName),
     );
   }
 

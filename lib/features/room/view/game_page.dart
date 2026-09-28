@@ -213,8 +213,9 @@ class GamePage extends HookConsumerWidget {
     // ゲーム画面に滞在している間だけ、位置情報・気圧・Wi-Fi・BLEを動かす。
     useGameSession(ref, roomId: roomId, myUid: myUid);
 
-    // 撮影プロンプトのタイマー。間隔はsetting/photoIntervalSec、前回の撮影
-    // 時刻はusers/{uid}/lastPhotoAt(アプリ再起動をまたいで復元するため)。
+    // 撮影プロンプトのタイマー。鬼の放出(meta/releasedAt)から
+    // setting/photoIntervalSecたった時点を1回目とし、以後その間隔ごとの
+    // スロットで、今のスロットに撮ったか(users/{uid}/lastPhotoAt)を見る。
     // PHOTO_API_BASE_URL未設定の環境では機能を無効化するだけで、
     // タイマー自体は動かしたままにしても実害は無いためフックは常に呼ぶ
     // (呼び出しを条件分岐するとhooksの呼び出し順が崩れるため)。
@@ -224,6 +225,8 @@ class GamePage extends HookConsumerWidget {
       roomId: roomId,
       myUid: myUid,
       intervalSec: room?.setting.photoIntervalSec ?? 300,
+      releasedAt: room?.releasedAt,
+      serverTimeOffsetMillis: offset,
       lastPhotoAt: myUid == null
           ? null
           : findUser(room?.users ?? const [], myUid)?.lastPhotoAt,

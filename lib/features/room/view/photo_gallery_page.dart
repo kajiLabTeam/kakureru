@@ -50,7 +50,11 @@ class PhotoGalleryPage extends StatelessWidget {
         myRole == UserRole.fugitive &&
         (photoCapture.state.isDue || photoCapture.state.pendingBytes != null);
 
-    final startedAt = room.startedAt;
+    // 撮影スロットの基準。鬼の放出から1間隔後が1回目(通知と同じ基準)。
+    final startedAt = photoScheduleStartMillis(
+      releasedAt: room.releasedAt,
+      intervalSec: room.setting.photoIntervalSec,
+    );
     if (startedAt == null) {
       return ListView(
         padding: const EdgeInsets.all(16),
@@ -238,7 +242,7 @@ class _GalleryGuide extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 32),
       child: Text(
-        'ゲームが始まったら$intervalMinutes分ごとに足元の写真を撮ってください',
+        '鬼が放たれてから$intervalMinutes分ごとに足元の写真を撮ってください',
         style: const TextStyle(color: Colors.black54),
       ),
     );

@@ -35,10 +35,15 @@ enum GameEventType {
 ///
 /// 値の無いフィールド(`null`)はキーごと省く。`at` には[timestamp]を
 /// そのまま入れる(本番では`ServerValue.timestamp`)。
+///
+/// [displayName]は記録時点の表示名。`users/{uid}`が後から消えたり
+/// 書き換わったりしても、誰の記録かをイベント単体で分かるようにする
+/// (プレイテスト後にusersだけ消えていた件の再発防止)。
 Map<String, Object> buildGameEventPayload({
   required GameEventType type,
   required String uid,
   required Object timestamp,
+  String? displayName,
   String? targetUid,
   double? lat,
   double? lng,
@@ -50,6 +55,7 @@ Map<String, Object> buildGameEventPayload({
     'type': type.raw,
     'at': timestamp,
     'uid': uid,
+    'displayName': ?displayName,
     'targetUid': ?targetUid,
     'lat': ?lat,
     'lng': ?lng,
@@ -75,10 +81,14 @@ class EventLogRepository {
   late final FirebaseDatabase _db = _dbOverride ?? FirebaseDatabase.instance;
 
   /// イベントを1件追記する。失敗しても例外は投げない。
+  ///
+  /// [displayName]を省略すると`users/{uid}/displayName`から引いて添える。
+  /// 引けなくてもイベント自体は(名前なしで)記録する。
   Future<void> log(
     String roomId, {
     required GameEventType type,
     required String uid,
+    String? displayName,
     String? targetUid,
     double? lat,
     double? lng,
@@ -88,6 +98,7 @@ class EventLogRepository {
     @visibleForTesting void Function(String message)? onError,
   }) async {
     try {
+      final name = displayName ?? await _lookupDisplayName(roomId, uid);
       await _db
           .ref('rooms/$roomId/events')
           .push()
@@ -96,6 +107,7 @@ class EventLogRepository {
               type: type,
               uid: uid,
               timestamp: ServerValue.timestamp,
+              displayName: name,
               targetUid: targetUid,
               lat: lat,
               lng: lng,
@@ -106,6 +118,21 @@ class EventLogRepository {
           );
     } on Object catch (e) {
       (onError ?? debugPrint)('[EventLog] ${type.raw}の記録に失敗: $e');
+    }
+  }
+
+  /// `users/{uid}/displayName`を読む。読めない・空のときはnull
+  /// (名前が無いことを理由にイベントの記録まで諦めない)。
+  Future<String?> _lookupDisplayName(String roomId, String uid) async {
+    try {
+      final snapshot = await _db
+          .ref('rooms/$roomId/users/$uid/displayName')
+          .get();
+      final value = snapshot.value;
+      return value is String && value.isNotEmpty ? value : null;
+    } on Object catch (e) {
+      debugPrint('[EventLog] displayNameの取得に失敗: $e');
+      return null;
     }
   }
 }

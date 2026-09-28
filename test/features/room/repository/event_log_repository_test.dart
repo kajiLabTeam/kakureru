@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/room/repository/event_log_repository.dart';
 
+import '../../../helpers/fake_rtdb.dart';
+
 void main() {
   group('buildGameEventPayload', () {
     test('catchは位置・精度・気圧・屋内フラグをすべて含める', () {
@@ -48,6 +50,17 @@ void main() {
       expect(payload['indoor'], false);
     });
 
+    test('displayNameがあれば含める', () {
+      final payload = buildGameEventPayload(
+        type: GameEventType.caught,
+        uid: 'u1',
+        timestamp: 1,
+        displayName: 'たろう',
+      );
+
+      expect(payload['displayName'], 'たろう');
+    });
+
     test('targetUidがあれば含める', () {
       final payload = buildGameEventPayload(
         type: GameEventType.caught,
@@ -69,6 +82,60 @@ void main() {
       'game_ended',
       'photo_taken',
     ]);
+  });
+
+  group('EventLogRepository.log のdisplayName', () {
+    Map<String, Object?> onlyEvent(FakeRtdb db) {
+      final events = db.read('rooms/room-1/events')! as Map;
+      return Map<String, Object?>.from(events.values.single as Map);
+    }
+
+    test('渡したdisplayNameをイベントに残す', () async {
+      final db = FakeRtdb();
+
+      await EventLogRepository(db: db).log(
+        'room-1',
+        type: GameEventType.caught,
+        uid: 'u1',
+        displayName: 'たろう',
+      );
+
+      expect(onlyEvent(db)['displayName'], 'たろう');
+      expect(onlyEvent(db)['uid'], 'u1');
+    });
+
+    test('省略するとusers/{uid}/displayNameから引いて残す', () async {
+      final db = FakeRtdb({
+        'rooms': <String, Object?>{
+          'room-1': <String, Object?>{
+            'users': <String, Object?>{
+              'u1': <String, Object?>{'displayName': 'はなこ'},
+            },
+          },
+        },
+      });
+
+      await EventLogRepository(db: db).log(
+        'room-1',
+        type: GameEventType.photoTaken,
+        uid: 'u1',
+      );
+
+      expect(onlyEvent(db)['displayName'], 'はなこ');
+    });
+
+    test('名前が引けなくてもイベント自体は記録する', () async {
+      final db = FakeRtdb();
+
+      await EventLogRepository(db: db).log(
+        'room-1',
+        type: GameEventType.gameStarted,
+        uid: 'u1',
+      );
+
+      expect(onlyEvent(db), isNot(contains('displayName')));
+      expect(onlyEvent(db)['type'], 'game_started');
+    });
   });
 
   test('書き込みに失敗しても例外を投げずにログへ出す', () async {

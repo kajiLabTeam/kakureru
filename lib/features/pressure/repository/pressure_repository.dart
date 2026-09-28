@@ -101,14 +101,17 @@ class PressureRepository {
   /// 気圧センサーの有無を、ホスト・参加者を把握できるようRTDBに記録する。
   /// 未搭載の端末はキャリブレーション不要であることを他の参加者にも
   /// 伝えるための情報で、必須では無いため失敗しても無視してよい。
+  ///
+  /// `users/{uid}`への`update`で書き、他のフィールド(displayName・role等)
+  /// には触れない。
   Future<void> reportSensorAvailability(
     String roomId, {
     required bool available,
   }) async {
     try {
-      await _db
-          .ref('rooms/$roomId/users/$_uid/pressureSensorAvailable')
-          .set(available);
+      await _db.ref('rooms/$roomId/users/$_uid').update({
+        'pressureSensorAvailable': available,
+      });
     } on Object {
       // 待機画面の表示が多少不正確になるだけで、キャリブレーション自体は
       // 可能なため致命的ではない。
