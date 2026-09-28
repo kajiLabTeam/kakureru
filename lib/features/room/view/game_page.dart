@@ -619,30 +619,12 @@ class GamePage extends HookConsumerWidget {
                         alert: outsideAreaAlert,
                         // 偽プレイヤーのピンにも名前と役割色を出すため、
                         // 地図には表示用の一覧を渡す(issue #67)。
-                        map: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: GameLocationMap(
-                                locations: visibleLocations,
-                                users: displayUsers,
-                                myUid: myUid,
-                                cachedPosition: cachedPosition.value,
-                                gameArea: room.setting.gameArea,
-                              ),
-                            ),
-                            // 逃走者のピンは実際の位置そのものではない、と
-                            // 鬼に断っておく(モック02)。正確な点だと思って
-                            // 探すと見つからず、不具合と区別が付かないため。
-                            if (myRole == UserRole.demon)
-                              const Positioned(
-                                left: 12,
-                                bottom: 10,
-                                child: _MapCaption(
-                                  '逃走者はマス目のどこかにいます'
-                                  '（正確な点ではありません）',
-                                ),
-                              ),
-                          ],
+                        map: GameLocationMap(
+                          locations: visibleLocations,
+                          users: displayUsers,
+                          myUid: myUid,
+                          cachedPosition: cachedPosition.value,
+                          gameArea: room.setting.gameArea,
                         ),
                       ),
                     ),
@@ -820,28 +802,6 @@ UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
     if (location.uid == uid) return location;
   }
   return null;
-}
-
-/// 地図の左下に重ねる小さな注記(モック02)。
-class _MapCaption extends StatelessWidget {
-  const _MapCaption(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 10, color: gameInkSoft),
-      ),
-    );
-  }
 }
 
 /// 選んだ相手1人ぶんの手がかりカード(モックC1〜C5)。
