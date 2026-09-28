@@ -126,7 +126,7 @@ class LocationRepository {
     final result = await FlutterForegroundTask.startService(
       serviceId: 1000,
       serviceTypes: const [ForegroundServiceTypes.location],
-      notificationTitle: 'かくれんぼ',
+      notificationTitle: 'kakureru',
       notificationText: '位置情報を送信しています',
       callback: startLocationTaskCallback,
     );

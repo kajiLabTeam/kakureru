@@ -92,7 +92,7 @@ class RoomHomePage extends HookConsumerWidget {
     return Theme(
       data: buildGameToneTheme(Theme.of(context)),
       child: Scaffold(
-        appBar: AppBar(title: const Text('かくれんぼ')),
+        appBar: AppBar(title: const Text('kakureru')),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(

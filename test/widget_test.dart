@@ -45,7 +45,7 @@ void main() {
       const ProviderScope(child: MaterialApp(home: RoomHomePage())),
     );
 
-    expect(find.text('かくれんぼ'), findsOneWidget);
+    expect(find.text('kakureru'), findsOneWidget);
     expect(find.text('ルームを作る'), findsOneWidget);
     expect(find.text('ルームに参加'), findsOneWidget);
   });
