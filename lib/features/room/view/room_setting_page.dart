@@ -12,6 +12,9 @@ import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
+import 'package:kakureru/features/room/view/game/game_tone_theme.dart';
+import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:latlong2/latlong.dart' as latlong;
@@ -116,140 +119,157 @@ class RoomSettingPage extends HookConsumerWidget {
     final areaSizeError = useState<String?>(null);
     final save = useAsyncAction(context);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('ルーム設定')),
-      body: roomAsync.when(
-        data: (room) {
-          if (room.hostUserId != myUid || room.status != RoomStatus.waiting) {
-            // ホスト以外・WAITING以外は開けない画面。ここに来ること自体
-            // 想定外だが、来てしまったら閉じるだけにする。
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (Navigator.of(context).canPop()) Navigator.of(context).pop();
-            });
-            return const SizedBox.shrink();
-          }
+    // ゲーム画面と同じトーン(生成りの地・白いカード・丸い黒ボタン)で包む。
+    return Theme(
+      data: buildGameToneTheme(Theme.of(context)),
+      child: Scaffold(
+        appBar: AppBar(title: const Text('ルーム設定')),
+        body: roomAsync.when(
+          data: (room) {
+            if (room.hostUserId != myUid || room.status != RoomStatus.waiting) {
+              // ホスト以外・WAITING以外は開けない画面。ここに来ること自体
+              // 想定外だが、来てしまったら閉じるだけにする。
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+              });
+              return const SizedBox.shrink();
+            }
 
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _MinuteStepper(
-                  label: '鬼放出までの待機時間',
-                  minutes: releaseWaitMin.value,
-                  step: 1,
-                  min: 1,
-                  max: _releaseWaitMaxMinutes,
-                  onChanged: (v) => releaseWaitMin.value = v,
-                ),
-                _MinuteStepper(
-                  // 放出後から数える(issue #119)。放出待ちの時間は含まない。
-                  label: '鬼ごっこの時間(放出後)',
-                  minutes: gameDurationMin.value,
-                  step: 5,
-                  min: 1,
-                  max: _gameDurationMaxMinutes,
-                  onChanged: (v) => gameDurationMin.value = v,
-                ),
-                const Divider(),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Text('プレイエリア(ドラッグで矩形を指定)'),
-                ),
-                SizedBox(
-                  height: 320,
-                  child: _AreaMap(
-                    initialCenter: initialCenter.value ?? fallbackMapCenter,
-                    myLocation: myLocation.value,
-                    gameArea: gameArea.value,
-                    isDrawing: isDrawing.value,
-                    dragStart: dragStart.value,
-                    dragCurrent: dragCurrent.value,
-                    hasSizeError: areaSizeError.value != null,
-                    onDragStart: (point) {
-                      // 新しいドラッグを始めたら前回のエラー状態はクリアする。
-                      areaSizeError.value = null;
-                      dragStart.value = point;
-                      dragCurrent.value = point;
-                    },
-                    onDragUpdate: (point) => dragCurrent.value = point,
-                    onDragEnd: () {
-                      final start = dragStart.value;
-                      final current = dragCurrent.value;
-                      if (start == null || current == null) return;
-
-                      // 矩形の対角線の長さでサイズを検証する。数px程度の
-                      // タップに近いドラッグ(退化した矩形)や、地図を
-                      // 世界スケールまで引いてから引いた極端に大きい矩形を
-                      // 弾く(理由はgame_map_options.dartのコメント参照)。
-                      final diagonalMeters = Geolocator.distanceBetween(
-                        start.latitude,
-                        start.longitude,
-                        current.latitude,
-                        current.longitude,
-                      );
-                      final error = describeGameAreaSizeError(diagonalMeters);
-                      areaSizeError.value = error;
-                      if (error == null) {
-                        gameArea.value = calculateRectangleCorners(
-                          LatLng(lat: start.latitude, lng: start.longitude),
-                          LatLng(lat: current.latitude, lng: current.longitude),
-                        );
-                        dragStart.value = null;
-                        dragCurrent.value = null;
-                      }
-                      // エラー時はリセットせず、仮矩形を赤枠のまま残して
-                      // エラーメッセージと視覚的に結びつける
-                      // (次のドラッグ開始 or 有効なドラッグで上書きされる)。
-                    },
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  GameToneCard(
+                    title: '時間',
+                    padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                    child: Column(
+                      children: [
+                        _MinuteStepper(
+                          label: '鬼放出までの待機時間',
+                          minutes: releaseWaitMin.value,
+                          step: 1,
+                          min: 1,
+                          max: _releaseWaitMaxMinutes,
+                          onChanged: (v) => releaseWaitMin.value = v,
+                        ),
+                        _MinuteStepper(
+                          // 放出後から数える(issue #119)。放出待ちの時間は含まない。
+                          label: '鬼ごっこの時間(放出後)',
+                          minutes: gameDurationMin.value,
+                          step: 5,
+                          min: 1,
+                          max: _gameDurationMaxMinutes,
+                          onChanged: (v) => gameDurationMin.value = v,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      if (myLocation.value == null)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 8),
-                          child: Text(
+                  const SizedBox(height: 12),
+                  GameToneCard(
+                    title: 'プレイエリア(ドラッグで矩形を指定)',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          height: 320,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: _AreaMap(
+                              initialCenter:
+                                  initialCenter.value ?? fallbackMapCenter,
+                              myLocation: myLocation.value,
+                              gameArea: gameArea.value,
+                              isDrawing: isDrawing.value,
+                              dragStart: dragStart.value,
+                              dragCurrent: dragCurrent.value,
+                              hasSizeError: areaSizeError.value != null,
+                              onDragStart: (point) {
+                                // 新しいドラッグを始めたら前回のエラー状態はクリアする。
+                                areaSizeError.value = null;
+                                dragStart.value = point;
+                                dragCurrent.value = point;
+                              },
+                              onDragUpdate: (point) =>
+                                  dragCurrent.value = point,
+                              onDragEnd: () {
+                                final start = dragStart.value;
+                                final current = dragCurrent.value;
+                                if (start == null || current == null) return;
+
+                                // 矩形の対角線の長さでサイズを検証する。数px程度の
+                                // タップに近いドラッグ(退化した矩形)や、地図を
+                                // 世界スケールまで引いてから引いた極端に大きい矩形を
+                                // 弾く(理由はgame_map_options.dartのコメント参照)。
+                                final diagonalMeters =
+                                    Geolocator.distanceBetween(
+                                      start.latitude,
+                                      start.longitude,
+                                      current.latitude,
+                                      current.longitude,
+                                    );
+                                final error = describeGameAreaSizeError(
+                                  diagonalMeters,
+                                );
+                                areaSizeError.value = error;
+                                if (error == null) {
+                                  gameArea.value = calculateRectangleCorners(
+                                    LatLng(
+                                      lat: start.latitude,
+                                      lng: start.longitude,
+                                    ),
+                                    LatLng(
+                                      lat: current.latitude,
+                                      lng: current.longitude,
+                                    ),
+                                  );
+                                  dragStart.value = null;
+                                  dragCurrent.value = null;
+                                }
+                                // エラー時はリセットせず、仮矩形を赤枠のまま残して
+                                // エラーメッセージと視覚的に結びつける
+                                // (次のドラッグ開始 or 有効なドラッグで上書きされる)。
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (myLocation.value == null)
+                          const _Notice(
                             '現在地を取得中です(位置情報がOFFだとピンは出ません)',
-                            style: TextStyle(color: Colors.grey),
+                            color: gameMuted,
                           ),
-                        ),
-                      if (gameArea.value.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 8),
-                          child: Text(
+                        if (gameArea.value.isEmpty)
+                          const _Notice(
                             '未設定です。ドラッグして範囲を指定してください',
-                            style: TextStyle(color: Colors.orange),
+                            color: gameNoticeAccent,
+                          ),
+                        if (areaSizeError.value != null)
+                          _Notice(areaSizeError.value!, color: gameNewBadge),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            isDrawing.value = !isDrawing.value;
+                            // モード切り替え時に仮矩形とエラー表示も持ち越さない
+                            // (描画をやめたのに赤枠だけ残るのを防ぐ)。
+                            dragStart.value = null;
+                            dragCurrent.value = null;
+                            areaSizeError.value = null;
+                          },
+                          icon: Icon(
+                            isDrawing.value
+                                ? Icons.pan_tool_outlined
+                                : Icons.edit,
+                            size: 18,
+                          ),
+                          label: Text(
+                            isDrawing.value ? '描画をやめる(地図の移動に戻す)' : 'エリアを描く',
                           ),
                         ),
-                      if (areaSizeError.value != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Text(
-                            areaSizeError.value!,
-                            style: const TextStyle(color: Colors.red),
-                          ),
-                        ),
-                      OutlinedButton(
-                        onPressed: () {
-                          isDrawing.value = !isDrawing.value;
-                          // モード切り替え時に仮矩形とエラー表示も持ち越さない
-                          // (描画をやめたのに赤枠だけ残るのを防ぐ)。
-                          dragStart.value = null;
-                          dragCurrent.value = null;
-                          areaSizeError.value = null;
-                        },
-                        child: Text(
-                          isDrawing.value ? '描画をやめる(地図の移動に戻す)' : 'エリアを描く',
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: FilledButton(
+                  const SizedBox(height: 16),
+                  FilledButton(
                     onPressed: !save.isRunning
                         ? () => save.run(() async {
                             await ref
@@ -269,26 +289,55 @@ class RoomSettingPage extends HookConsumerWidget {
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text('保存'),
                   ),
-                ),
-                if (save.error != null)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      userFacingErrorMessage(save.error!),
-                      style: const TextStyle(color: Colors.red),
+                  if (save.error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        userFacingErrorMessage(save.error!),
+                        style: const TextStyle(
+                          color: gameNewBadge,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
+        ),
+      ),
+    );
+  }
+}
+
+/// エリアの状態(取得中・未設定・サイズ超過)を知らせる一行。
+class _Notice extends StatelessWidget {
+  const _Notice(this.text, {required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -314,10 +363,12 @@ class _MinuteStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Expanded(child: Text(label)),
+          Expanded(
+            child: Text(label, style: const TextStyle(fontSize: 14)),
+          ),
           IconButton(
             icon: const Icon(Icons.remove_circle_outline),
             onPressed: minutes - step >= min
@@ -326,7 +377,15 @@ class _MinuteStepper extends StatelessWidget {
           ),
           SizedBox(
             width: 56,
-            child: Text('$minutes分', textAlign: TextAlign.center),
+            child: Text(
+              '$minutes分',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: gameInk,
+              ),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.add_circle_outline),
@@ -424,9 +483,9 @@ class _AreaMap extends HookWidget {
               if (gameArea.length >= 3)
                 Polygon(
                   points: toLatLngPoints(gameArea),
-                  color: Colors.blue.withValues(alpha: 0.2),
+                  color: selfColor.withValues(alpha: 0.15),
                   borderStrokeWidth: 2,
-                  borderColor: Colors.blue,
+                  borderColor: selfColor,
                   pattern: StrokePattern.dashed(segments: const [8, 4]),
                 ),
               if (dragStart != null && dragCurrent != null)
@@ -443,11 +502,10 @@ class _AreaMap extends HookWidget {
                       ),
                     ),
                   ),
-                  color: (hasSizeError ? Colors.red : Colors.orange).withValues(
-                    alpha: 0.2,
-                  ),
+                  color: (hasSizeError ? gameNewBadge : gameNoticeAccent)
+                      .withValues(alpha: 0.2),
                   borderStrokeWidth: 2,
-                  borderColor: hasSizeError ? Colors.red : Colors.orange,
+                  borderColor: hasSizeError ? gameNewBadge : gameNoticeAccent,
                   pattern: StrokePattern.dashed(segments: const [8, 4]),
                 ),
             ],
@@ -465,7 +523,7 @@ class _AreaMap extends HookWidget {
                   alignment: Alignment.topCenter,
                   child: const Icon(
                     Icons.location_pin,
-                    color: Colors.blue,
+                    color: selfColor,
                     size: 36,
                   ),
                 ),

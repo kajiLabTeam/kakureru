@@ -10,6 +10,7 @@ import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/repository/room_repository.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/game_result_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
@@ -555,6 +556,30 @@ void main() {
       expect(roomRepo.leaveRoomCalls, [_roomId]);
       expect(find.text('ホーム画面'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('見た目', () {
+    testWidgets('ゲーム画面と同じ生成りの地で、「ホームに戻る」は灰ではなく濃いインク', (
+      tester,
+    ) async {
+      await _pumpResultPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        myUid: _hostUid,
+      );
+
+      final scaffold = find.byType(Scaffold);
+      expect(
+        Theme.of(tester.element(scaffold)).scaffoldBackgroundColor,
+        gameBackground,
+      );
+      final homeButton = find.widgetWithText(OutlinedButton, 'ホームに戻る');
+      final material = tester.widget<Material>(
+        find.descendant(of: homeButton, matching: find.byType(Material)).first,
+      );
+      expect(material.textStyle?.color, gameInk);
+      expect(material.color, Colors.white);
     });
   });
 }

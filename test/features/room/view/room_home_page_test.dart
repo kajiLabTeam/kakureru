@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/room/room_create_error.dart';
 import 'package:kakureru/features/room/room_join_error.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/room_home_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
@@ -15,8 +16,18 @@ Finder _codeField() => find.byType(TextField).last;
 FilledButton _createRoomButton(WidgetTester tester) =>
     tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ルームを作る'));
 
-OutlinedButton _joinRoomButton(WidgetTester tester) => tester
-    .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'ルームに参加'));
+FilledButton _joinRoomButton(WidgetTester tester) =>
+    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ルームに参加'));
+
+/// [label]のボタンに実際に塗られている地の色。
+Color? _buttonFill(WidgetTester tester, String label) => tester
+    .widget<Material>(
+      find.descendant(
+        of: find.widgetWithText(FilledButton, label),
+        matching: find.byType(Material),
+      ),
+    )
+    .color;
 
 /// ホーム画面を立ち上げ、保存名がまだ届いていない状態にする。
 ///
@@ -97,7 +108,7 @@ Future<void> _tapJoinAndFail(WidgetTester tester, Object error) async {
   await tester.enterText(_codeField(), '1234');
   await tester.pump();
 
-  await tester.tap(find.widgetWithText(OutlinedButton, 'ルームに参加'));
+  await tester.tap(find.widgetWithText(FilledButton, 'ルームに参加'));
   await tester.pump();
 }
 
@@ -164,6 +175,20 @@ void main() {
 
       // 「ルームを作る」側はコードと無関係に押せるままであること。
       expect(_createRoomButton(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('参加ボタンは押せるときゲーム画面と同じ黒、押せないときだけ灰になる', (
+      tester,
+    ) async {
+      await _pumpHomePageWithSavedName(tester, 'たろう');
+
+      // 以前は押せる状態でも灰色の枠線ボタンで、押せないように見えていた。
+      expect(_buttonFill(tester, 'ルームに参加'), gameSelected);
+
+      await tester.enterText(_codeField(), '1234');
+      await tester.pump();
+      expect(_buttonFill(tester, 'ルームに参加'), gameInk);
+      expect(_buttonFill(tester, 'ルームを作る'), gameInk);
     });
 
     testWidgets('コードが4桁でも名前が無ければ参加ボタンは押せない', (tester) async {
