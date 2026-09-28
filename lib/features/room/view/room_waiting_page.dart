@@ -87,7 +87,10 @@ class RoomWaitingPage extends HookConsumerWidget {
         if (!context.mounted) return;
         pressureNotifier.clearCalibrationFailure();
       });
-      return null;
+      // 画面を離れたら気圧の利用を返す。ゲーム画面と一瞬重なる遷移中も、
+      // 最後に離れた画面でだけセンサーが止まる(PressureViewModel.release)。
+      // 後始末でrefに触れないよう、生きているうちに掴んだnotifierを使う。
+      return pressureNotifier.release;
     }, const []);
 
     // Wi-Fiスキャンが実際に通るかを画面を開いたときに1回だけ確かめる

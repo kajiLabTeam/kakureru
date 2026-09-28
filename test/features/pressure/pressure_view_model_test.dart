@@ -96,6 +96,122 @@ Future<PressureViewModel> readyNotifier(
 
 void main() {
   group('PressureViewModel.init', () {
+    // 9/24のプレイテストで、2回目のゲームでは初参加の1人しか気圧を
+    // 送れていなかった(issue #121)。ゲーム画面を離れるとセンサー購読を
+    // 止めるのに、判定済みの2回目以降のinitが購読を張り直していなかった。
+    test('ゲーム画面を離れた後に入り直すと、センサーの購読を張り直す', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+      expect(repo.watchCalls, 1);
+
+      notifier.stopSendingAndDispose();
+      repo.pressureStream = Stream<double>.value(1000);
+      await notifier.init('room2');
+      await pumpEventQueue();
+
+      expect(repo.watchCalls, 2);
+      expect(container.read(pressureViewModelProvider).myPressureHPa, 1000);
+      // 判定は済んでいるので、センサーの有無は調べ直さない。
+      expect(repo.checkCalls, 1);
+    });
+
+    // Copilotのレビュー指摘(PR #125)。「もう一回」でゲーム画面から待機
+    // 画面へ戻るとき、古いゲーム画面は新しい待機画面より後に破棄される。
+    // そこで購読を止めると、待機画面は購読の無いまま残っていた。
+    test('ゲーム画面が待機画面より後に離れても、待機画面の購読は止めない', () async {
+      final repo = _FakePressureRepository(available: true);
+      final controller = StreamController<double>.broadcast();
+      addTearDown(controller.close);
+      repo.pressureStream = controller.stream;
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      // ゲーム画面が気圧を使っている。
+      await notifier.init('room1');
+      // 待機画面が開く(ゲーム画面はまだ破棄されていない)。
+      await notifier.init('room1');
+      // 遅れてゲーム画面が破棄される。
+      notifier.stopSendingAndDispose();
+
+      controller.add(1005);
+      await pumpEventQueue();
+      expect(container.read(pressureViewModelProvider).myPressureHPa, 1005);
+      expect(repo.watchCalls, 1);
+    });
+
+    test('気圧を使う画面が全部離れたら、購読を止める', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      // readyNotifierのinit(待機画面)に加えてゲーム画面もinitする。
+      await notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      expect(container.read(pressureViewModelProvider).myPressureHPa, 1013);
+
+      // 待機画面も離れる。
+      notifier.release();
+      expect(container.read(pressureViewModelProvider).myPressureHPa, isNull);
+    });
+
+    test('initしていない画面のreleaseは何もしない', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      notifier
+        ..release()
+        ..release();
+
+      // 1回目のreleaseで止まり、2回目は数が負にならず何も起きない。
+      repo.pressureStream = Stream<double>.value(1000);
+      await notifier.init('room1');
+      expect(repo.watchCalls, 2);
+      notifier.release();
+      expect(container.read(pressureViewModelProvider).myPressureHPa, isNull);
+    });
+
+    test('購読中に何度initしても、購読は1本だけ', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      // 待機画面→ゲーム画面の遷移で続けて呼ばれる状況。
+      await notifier.init('room1');
+      await notifier.init('room1');
+
+      expect(repo.watchCalls, 1);
+    });
+
+    test('ゲーム画面を離れたら、古い気圧の値を捨てる', () async {
+      final repo = _FakePressureRepository(available: true);
+      final container = _container(repo);
+      final notifier = await readyNotifier(container, repo);
+
+      notifier.stopSendingAndDispose();
+
+      // 残すと、止まったセンサーの古い値でキャリブレーションが通ってしまう。
+      expect(container.read(pressureViewModelProvider).myPressureHPa, isNull);
+      expect(
+        container.read(pressureViewModelProvider).sensorAvailability,
+        PressureSensorAvailability.available,
+      );
+    });
+
+    test('センサー非搭載なら、入り直しても判定も購読もしない', () async {
+      final repo = _FakePressureRepository(available: false);
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      await notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      await notifier.init('room2');
+
+      expect(repo.checkCalls, 1);
+      expect(repo.watchCalls, 0);
+    });
+
     test('センサー非搭載なら、2回目以降は再判定しない', () async {
       final repo = _FakePressureRepository(available: false);
       final container = _container(repo);
@@ -178,6 +294,56 @@ void main() {
         container.read(pressureViewModelProvider).sensorAvailability,
         PressureSensorAvailability.checking,
       );
+    });
+
+    // CodeRabbitのレビュー指摘(PR #125)。判定中に離れてすぐ入り直すと、
+    // 新しいinitが古い判定(離脱で無効になったもの)に相乗りし、状態が
+    // checkingのまま購読も始まらなかった。
+    test('判定中に画面を離れてすぐ入り直しても、新しい判定で購読を始める', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..gate = Completer<void>();
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      final first = notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      final second = notifier.init('room1');
+      // 古い判定には相乗りせず、判定をやり直す。
+      expect(repo.checkCalls, 2);
+
+      repo.gate!.complete();
+      await Future.wait([first, second]);
+
+      expect(
+        container.read(pressureViewModelProvider).sensorAvailability,
+        PressureSensorAvailability.available,
+      );
+      expect(repo.watchCalls, 1);
+    });
+
+    test('古い判定が後から終わっても、進行中の新しい判定を忘れない', () async {
+      final repo = _FakePressureRepository(available: true)
+        ..gate = Completer<void>();
+      final container = _container(repo);
+      final notifier = container.read(pressureViewModelProvider.notifier);
+
+      final first = notifier.init('room1');
+      notifier.stopSendingAndDispose();
+      final oldGate = repo.gate!;
+      repo.gate = Completer<void>();
+      final second = notifier.init('room1');
+
+      // 古い判定だけ先に終わる。
+      oldGate.complete();
+      await first;
+
+      // 新しい判定はまだ進行中なので、ここで呼ばれたinitは相乗りする。
+      final third = notifier.init('room1');
+      expect(repo.checkCalls, 2);
+
+      repo.gate!.complete();
+      await Future.wait([second, third]);
+      expect(repo.watchCalls, 1);
     });
 
     test('画面を離れた後でも、入り直せば判定と購読をやり直す', () async {
