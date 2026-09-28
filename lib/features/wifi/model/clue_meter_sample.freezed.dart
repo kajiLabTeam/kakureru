@@ -14,6 +14,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ClueMeterSample {
 
+/// 測った時刻(端末の時計)。
  DateTime get at;/// 0〜100。`calculateClueMeter`の戻り値。
  double get meter;
 /// Create a copy of ClueMeterSample
@@ -211,6 +212,7 @@ class _ClueMeterSample implements ClueMeterSample {
   const _ClueMeterSample({required this.at, required this.meter});
   
 
+/// 測った時刻(端末の時計)。
 @override final  DateTime at;
 /// 0〜100。`calculateClueMeter`の戻り値。
 @override final  double meter;
