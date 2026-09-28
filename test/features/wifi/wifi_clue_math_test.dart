@@ -85,8 +85,11 @@ void main() {
   });
 
   group('countMatchingSignals', () {
-    WifiApComparison ap(int self, int target) =>
-        WifiApComparison(bssid: '$self/$target', selfRssi: self, targetRssi: target);
+    WifiApComparison ap(int self, int target) => WifiApComparison(
+      bssid: '$self/$target',
+      selfRssi: self,
+      targetRssi: target,
+    );
 
     test('RSSI差7dB以下のAPだけを数える', () {
       expect(
@@ -118,8 +121,10 @@ void main() {
 
   group('clueTrendOf', () {
     final t0 = DateTime(2026, 9, 28, 12);
-    ClueMeterSample at(int seconds, double meter) =>
-        ClueMeterSample(at: t0.add(Duration(seconds: seconds)), meter: meter);
+    ClueMeterSample at(int seconds, double meter) => ClueMeterSample(
+      at: t0.add(Duration(seconds: seconds)),
+      meter: meter,
+    );
 
     test('履歴が無ければ変わらない', () {
       expect(clueTrendOf(const []), ClueTrend.unchanged);
@@ -162,8 +167,10 @@ void main() {
 
   group('appendClueSample', () {
     final t0 = DateTime(2026, 9, 28, 12);
-    ClueMeterSample at(int seconds, double meter) =>
-        ClueMeterSample(at: t0.add(Duration(seconds: seconds)), meter: meter);
+    ClueMeterSample at(int seconds, double meter) => ClueMeterSample(
+      at: t0.add(Duration(seconds: seconds)),
+      meter: meter,
+    );
 
     test('末尾に足す', () {
       expect(appendClueSample([at(0, 1)], at(10, 2)), [at(0, 1), at(10, 2)]);

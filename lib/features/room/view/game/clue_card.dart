@@ -293,22 +293,26 @@ class ClueCard extends StatelessWidget {
   }
 
   Widget _verdictRow(OpponentAccent accent, {required bool showTrend}) {
-    final (IconData icon, Color circle, Color iconColor, Color textColor) =
-        switch (verdict) {
-          ClueVerdict.close => (
-            Icons.track_changes,
-            accent.tint,
-            accent.ink,
-            accent.ink,
-          ),
-          ClueVerdict.far => (Icons.adjust, gameTrack, gameMuted, gameInkSoft),
-          ClueVerdict.unknown => (
-            Icons.wifi_off,
-            gameTrack,
-            gameFaint,
-            gameMuted,
-          ),
-        };
+    final (
+      IconData icon,
+      Color circle,
+      Color iconColor,
+      Color textColor,
+    ) = switch (verdict) {
+      ClueVerdict.close => (
+        Icons.track_changes,
+        accent.tint,
+        accent.ink,
+        accent.ink,
+      ),
+      ClueVerdict.far => (Icons.adjust, gameTrack, gameMuted, gameInkSoft),
+      ClueVerdict.unknown => (
+        Icons.wifi_off,
+        gameTrack,
+        gameFaint,
+        gameMuted,
+      ),
+    };
     return Row(
       children: [
         Container(
