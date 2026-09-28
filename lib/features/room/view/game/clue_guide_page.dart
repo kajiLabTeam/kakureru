@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:kakureru/features/room/view/game/area_rules_dialog.dart';
 import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 
 /// 「手がかりの見方」を全画面で開く(ゲーム画面モック04)。
 ///
-/// 初回はGamePageが自動で1回だけ開き、以後はヘッダーと手がかりカードの
-/// 「?」からいつでも開ける。閉じる(「わかった」「スキップ」「戻る」)まで
-/// 待つ`Future`を返す。
+/// 初回はGamePageが自動で1回だけ開き、以後は手がかりカードの「?」から
+/// いつでも開ける(ヘッダーの「?」は使ってよい場所の一覧を開く)。
+/// 閉じる(「わかった」「戻る」)まで待つ`Future`を返す。
 Future<void> showClueGuide(BuildContext context) {
   return Navigator.of(context).push<void>(
     MaterialPageRoute(
@@ -19,9 +18,7 @@ Future<void> showClueGuide(BuildContext context) {
 
 /// 手がかりカードの読み方を3枚のカードで説明する画面。
 ///
-/// 見た目だけの静的な画面で、状態は持たない。最後に「使ってよい場所」の
-/// 一覧へのリンクを置く(ヘッダーのボタンをこの画面の「?」に置き換えた
-/// ため、場所の一覧へはここから辿る)。
+/// 見た目だけの静的な画面で、状態は持たない。
 class ClueGuidePage extends StatelessWidget {
   /// 手がかりの見方の画面を作る。
   const ClueGuidePage({super.key});
@@ -37,30 +34,17 @@ class ClueGuidePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      '手がかりの見方',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: gameInk,
-                      ),
-                    ),
+              const Padding(
+                padding: EdgeInsets.only(top: 10, bottom: 16),
+                child: Text(
+                  '手がかりの見方',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: gameInk,
                   ),
-                  TextButton(
-                    onPressed: close,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(44, 44),
-                      foregroundColor: gameMuted,
-                      textStyle: const TextStyle(fontSize: 13),
-                    ),
-                    child: const Text('スキップ'),
-                  ),
-                ],
+                ),
               ),
-              const _Progress(),
               Expanded(
                 child: ListView(
                   children: const [
@@ -91,7 +75,7 @@ class ClueGuidePage extends StatelessWidget {
                     SizedBox(height: 16),
                     Text(
                       'どれも推定なので「〜かも」と出ます。\n'
-                      'あとから、ヘッダーの ? でいつでも読み直せます。',
+                      'あとから、手がかりカードの ? でいつでも読み直せます。',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 11,
@@ -102,19 +86,7 @@ class ClueGuidePage extends StatelessWidget {
                   ],
                 ),
               ),
-              TextButton(
-                onPressed: () => showAreaRulesDialog(context),
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(44, 44),
-                  foregroundColor: gameInkSoft,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-                child: const Text('使ってよい場所を見る'),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               SizedBox(
                 height: 52,
                 child: FilledButton(
@@ -136,34 +108,6 @@ class ClueGuidePage extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// 上部の3分割の進み具合。画面は1枚なので、モックどおり1つ目だけ塗る。
-class _Progress extends StatelessWidget {
-  const _Progress();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 16),
-      child: Row(
-        children: [
-          for (var i = 0; i < 3; i++) ...[
-            if (i > 0) const SizedBox(width: 5),
-            Expanded(
-              child: Container(
-                height: 4,
-                decoration: BoxDecoration(
-                  color: i == 0 ? const Color(0xFF3A7F4A) : gameEmptyDot,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }

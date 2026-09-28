@@ -47,21 +47,10 @@ void main() {
     expect(find.byType(ClueGuidePage), findsNothing);
   });
 
-  testWidgets('「スキップ」で閉じ、タップ領域は44dp以上', (tester) async {
+  testWidgets('スキップ・場所の一覧へのリンクは出さない', (tester) async {
     await open(tester);
 
-    final skip = find.widgetWithText(TextButton, 'スキップ');
-    expect(tester.getSize(skip).height, greaterThanOrEqualTo(44));
-    await tester.tap(skip);
-    await tester.pumpAndSettle();
-    expect(find.byType(ClueGuidePage), findsNothing);
-  });
-
-  testWidgets('「使ってよい場所を見る」で場所の一覧を開く', (tester) async {
-    await open(tester);
-
-    await tester.tap(find.text('使ってよい場所を見る'));
-    await tester.pumpAndSettle();
-    expect(find.text('使用していい範囲'), findsOneWidget);
+    expect(find.text('スキップ'), findsNothing);
+    expect(find.text('使ってよい場所を見る'), findsNothing);
   });
 }

@@ -45,7 +45,7 @@ class GameHeaderBar extends StatelessWidget implements PreferredSizeWidget {
   /// 残り秒数。計算できていなければnull(`--:--`と出す)。
   final int? countdownSec;
 
-  /// 右端の「?」(遊び方と使ってよい場所)を押したときに呼ぶ。
+  /// 右端の「?」(使ってよい場所の一覧)を押したときに呼ぶ。
   /// nullなら「?」を出さない。
   final VoidCallback? onHelp;
 
@@ -113,7 +113,7 @@ class GameHeaderBar extends StatelessWidget implements PreferredSizeWidget {
               dimension: 44,
               child: IconButton(
                 onPressed: help,
-                tooltip: '遊び方と使ってよい場所',
+                tooltip: '使ってよい場所',
                 padding: EdgeInsets.zero,
                 icon: Icon(
                   Icons.help_outline,

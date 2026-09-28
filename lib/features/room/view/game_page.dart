@@ -33,6 +33,7 @@ import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
+import 'package:kakureru/features/room/view/game/area_rules_dialog.dart';
 import 'package:kakureru/features/room/view/game/become_demon_button.dart';
 import 'package:kakureru/features/room/view/game/become_demon_confirm_dialog.dart';
 import 'package:kakureru/features/room/view/game/clue_card.dart';
@@ -162,7 +163,7 @@ class GamePage extends HookConsumerWidget {
 
     // 手がかりの見方(ゲーム画面モック04)を、初めてゲーム画面に入ったとき
     // だけ自動で出す。見たかどうかは端末に残す(shared_preferences)。
-    // 2回目以降はヘッダーの「?」からいつでも開ける。
+    // 2回目以降は手がかりカードの「?」からいつでも開ける。
     //
     // 画面遷移をuseEffectの中で同期的に呼ぶと、ビルド中にNavigatorを
     // 触ることになるため、次のフレームに回してからmountedを確かめて開く。
@@ -363,9 +364,9 @@ class GamePage extends HookConsumerWidget {
             appBar: GameHeaderBar(
               roleTheme: headerRoleTheme,
               countdownSec: countdownSec,
-              // 「?」で手がかりの見方(モック04)を開く。使ってよい場所の
-              // 一覧(issue #108)は、見方の画面の中から開ける。
-              onHelp: () => unawaited(showClueGuide(context)),
+              // 「?」で使ってよい場所の一覧(issue #108)を開く。手がかりの
+              // 見方(モック04)は、手がかりカードの「?」から開ける。
+              onHelp: () => unawaited(showAreaRulesDialog(context)),
               // デバッグビルド限定の、偽プレイヤーの表示/非表示トグル
               // (issue #67)。RTDBには一切書かず、この端末の画面にだけ
               // 偽の相手を足す。kDebugModeがfalseのリリースビルドでは

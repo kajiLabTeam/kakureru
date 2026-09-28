@@ -132,7 +132,7 @@ void main() {
       onHelp: () => tapped++,
     );
 
-    final help = find.byTooltip('遊び方と使ってよい場所');
+    final help = find.byTooltip('使ってよい場所');
     expect(tester.getSize(help).width, greaterThanOrEqualTo(44));
     expect(tester.getSize(help).height, greaterThanOrEqualTo(44));
     await tester.tap(help);
