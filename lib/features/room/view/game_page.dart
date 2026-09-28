@@ -648,84 +648,100 @@ class GamePage extends HookConsumerWidget {
                     // の相手がそもそも居ない」「居るがまだ検知できていない」
                     // の3つは、以前は一律「検知なし」と出していて区別が付か
                     // なかった(issue #30)。
-                    if (opponentRoster.isEmpty || effectiveSelectedUid == null)
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          beforeRelease ? 12 : 10,
-                          16,
-                          0,
-                        ),
-                        child: Column(
-                          children: [
-                            HiddenOpponentCard(
-                              message: emptyOpponentMessage(
-                                // 役割がまだ確定していない間の扱いは
-                                // opponentRoleの既定と揃える(鬼と確定するまで
-                                // 逃走者側として扱う)。
-                                viewerRole: myRole ?? UserRole.fugitive,
-                                opponentCountInRoom: room.users
-                                    .where((u) => u.role == opponentRole)
-                                    .length,
-                                hiddenByVisibility: anyOpponentHiddenFromMe,
-                                beforeRelease: beforeRelease,
-                                revealRemainingSec: opponentRevealRemainingSec(
-                                  viewerRole: myRole ?? UserRole.fugitive,
-                                  releasedAt: room.releasedAt,
-                                  fugitiveInfoDelaySec:
-                                      room.setting.fugitiveInfoDelaySec,
-                                  nowMillis: now,
-                                ),
+                    //
+                    // 差し替えや手がかりカードの状態(C1〜C5)で高さが変わる
+                    // ため、AnimatedSizeで地図の伸び縮みを滑らかにする。
+                    // 差し替え時の段差そのものはHiddenOpponentCardの最低の
+                    // 高さで小さくしてある(issue #29フォローアップ)。
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOut,
+                      alignment: Alignment.topCenter,
+                      child:
+                          opponentRoster.isEmpty || effectiveSelectedUid == null
+                          ? Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                16,
+                                beforeRelease ? 12 : 10,
+                                16,
+                                0,
                               ),
-                            ),
-                            // 放出前の逃走者には「鬼になる」がまだ押せない
-                            // 理由を添える(モック03)。
-                            if (myRole == UserRole.fugitive && beforeRelease)
-                              const Padding(
-                                padding: EdgeInsets.only(top: 10),
-                                child: Text(
-                                  '「鬼になる」は、鬼が3m以内に来ると'
-                                  '押せるようになります',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: gameMuted,
+                              child: Column(
+                                children: [
+                                  HiddenOpponentCard(
+                                    message: emptyOpponentMessage(
+                                      // 役割がまだ確定していない間の扱いは
+                                      // opponentRoleの既定と揃える(鬼と確定するまで
+                                      // 逃走者側として扱う)。
+                                      viewerRole: myRole ?? UserRole.fugitive,
+                                      opponentCountInRoom: room.users
+                                          .where((u) => u.role == opponentRole)
+                                          .length,
+                                      hiddenByVisibility:
+                                          anyOpponentHiddenFromMe,
+                                      beforeRelease: beforeRelease,
+                                      revealRemainingSec:
+                                          opponentRevealRemainingSec(
+                                            viewerRole:
+                                                myRole ?? UserRole.fugitive,
+                                            releasedAt: room.releasedAt,
+                                            fugitiveInfoDelaySec: room
+                                                .setting
+                                                .fugitiveInfoDelaySec,
+                                            nowMillis: now,
+                                          ),
+                                    ),
                                   ),
-                                ),
+                                  // 放出前の逃走者には「鬼になる」がまだ押せない
+                                  // 理由を添える(モック03)。
+                                  if (myRole == UserRole.fugitive &&
+                                      beforeRelease)
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 10),
+                                      child: Text(
+                                        '「鬼になる」は、鬼が3m以内に来ると'
+                                        '押せるようになります',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: gameMuted,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
-                          ],
-                        ),
-                      )
-                    else
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                        child: Column(
-                          children: [
-                            OpponentSelectorChips(
-                              roster: opponentRoster,
-                              entries: visibleWifiEntries,
-                              selectedUid: effectiveSelectedUid,
-                              onSelect: (uid) =>
-                                  selectedOpponentUid.value = uid,
-                              leadingLabel: opponentRole == UserRole.fugitive
-                                  ? '逃走者\nを選ぶ'
-                                  : '鬼を選ぶ',
+                            )
+                          : Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                              child: Column(
+                                children: [
+                                  OpponentSelectorChips(
+                                    roster: opponentRoster,
+                                    entries: visibleWifiEntries,
+                                    selectedUid: effectiveSelectedUid,
+                                    onSelect: (uid) =>
+                                        selectedOpponentUid.value = uid,
+                                    leadingLabel:
+                                        opponentRole == UserRole.fugitive
+                                        ? '逃走者\nを選ぶ'
+                                        : '鬼を選ぶ',
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _SelectedClueCard(
+                                    roomId: roomId,
+                                    room: room,
+                                    myUid: myUid,
+                                    uid: effectiveSelectedUid,
+                                    users: displayUsers,
+                                    wifiEntries: visibleWifiEntries,
+                                    verticalPositions: visibleVerticalPositions,
+                                    comparisons: selectedComparisons,
+                                    pressureState: pressureState,
+                                  ),
+                                ],
+                              ),
                             ),
-                            const SizedBox(height: 8),
-                            _SelectedClueCard(
-                              roomId: roomId,
-                              room: room,
-                              myUid: myUid,
-                              uid: effectiveSelectedUid,
-                              users: displayUsers,
-                              wifiEntries: visibleWifiEntries,
-                              verticalPositions: visibleVerticalPositions,
-                              comparisons: selectedComparisons,
-                              pressureState: pressureState,
-                            ),
-                          ],
-                        ),
-                      ),
+                    ),
                     const SizedBox(height: 8),
                   ],
                 );

@@ -72,6 +72,15 @@ IconData gameStatusIconData(GameStatusIcon icon) {
   }
 }
 
+/// [HiddenOpponentCard]の最低の高さ。
+///
+/// 相手が見えるようになると、このカードは「チップ一覧(48)+間隔(8)+
+/// 手がかりカード(最小211)」に差し替わる。高さの差が大きいと、その瞬間に
+/// 地図の表示領域が急に縮んでガタつくため、差し替え先の最小と揃えておく
+/// (issue #29フォローアップ)。差し替え先の高さが変わると
+/// game_status_cards_test.dartのテストが落ちるので、そこで合わせ直す。
+const double hiddenOpponentCardMinHeight = 267;
+
 /// 相手の手がかりが出せないときに、その理由といつ出るかを明示するカード
 /// (ゲーム画面モック03)。何も表示しないと不具合と区別が付かない。
 ///
@@ -89,6 +98,11 @@ class HiddenOpponentCard extends StatelessWidget {
     final pill = message.pill;
     return Container(
       width: double.infinity,
+      constraints: const BoxConstraints(
+        minHeight: hiddenOpponentCardMinHeight,
+      ),
+      // 最低の高さより中身が短いときは、上に寄せず真ん中に置く。
+      alignment: Alignment.center,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
