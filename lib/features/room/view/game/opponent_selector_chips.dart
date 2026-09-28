@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:kakureru/core/theme/app_theme.dart';
-import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
-import 'package:kakureru/features/pressure/pressure_math.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
@@ -37,40 +35,25 @@ double opponentChipWidthFor({
   return (availableWidth - opponentChipSpacing) / opponentChipsVisibleCount;
 }
 
-/// チップに出す1行の要約。「近い・上かも」「遠い・同じ高さ」など。
+/// チップに出す近さの一言。「近いかも」「遠いかも」「まだ分からない」。
 ///
-/// 上下が出せないとき([verticalPosition]がnull。気圧センサー非対応・
-/// 未キャリブレーション・まだ相手の気圧が届いていない)はWi-Fi側だけを返す。
-/// GamePageが渡す`visibleVerticalPositions`はそれらの場合に空になるので、
-/// 別途ゲート条件を渡す必要はない。
-String opponentChipSummary({
-  required ProximityLevel? level,
-  required RelativeVerticalPosition? verticalPosition,
-}) {
-  final String wifi;
+/// 高さは選んだ相手の手がかりカードにだけ出し、チップには出さない
+/// (ゲーム画面モックのチップは近さだけ)。Wi-Fiの判定はどれも推定なので
+/// 手がかりカードと同じく「〜かも」と言い切らない形にする。
+String opponentChipStatus(ProximityLevel? level) {
   switch (level) {
     case ProximityLevel.close:
-      wifi = '近い';
+      return '近いかも';
     case ProximityLevel.far:
-      wifi = '遠い';
+      return '遠いかも';
     case ProximityLevel.notDetected:
     case null:
-      wifi = '検知なし';
+      return 'まだ分からない';
   }
-
-  if (verticalPosition == null) return wifi;
-
-  final String vertical;
-  switch (relativeHeightOf(verticalPosition.deltaMeters)) {
-    case RelativeHeight.above:
-      vertical = '上かも';
-    case RelativeHeight.below:
-      vertical = '下かも';
-    case RelativeHeight.same:
-      vertical = '同じ高さ';
-  }
-  return '$wifi・$vertical';
 }
+
+/// チップ1枚の最低の高さ。タップ領域44dpを確保する。
+const double opponentChipMinHeight = 44;
 
 /// 相手を1人選ぶための横並びのチップ(UI改修モック2a-03)。
 ///
@@ -84,12 +67,12 @@ class OpponentSelectorChips extends StatelessWidget {
   /// すべての引数はGamePageが計算して渡す(このウィジェットはproviderを
   /// 一切読まない)。
   const OpponentSelectorChips({
-    super.key,
     required this.roster,
     required this.entries,
-    required this.verticalPositions,
     required this.selectedUid,
     required this.onSelect,
+    this.leadingLabel,
+    super.key,
   });
 
   /// 並べる相手の一覧(自分と逆の役割で、いま見えている人)。
@@ -98,17 +81,33 @@ class OpponentSelectorChips extends StatelessWidget {
   /// Wi-Fiの3段階判定。載っていない相手は「検知なし」として出す。
   final List<WifiProximityEntry> entries;
 
-  /// 気圧による上下判定。載っていない相手は上下を出さない。
-  final List<RelativeVerticalPosition> verticalPositions;
-
   /// いま選ばれている相手のuid。未選択ならnull。
   final String? selectedUid;
 
   /// チップがタップされたときに呼ぶ。
   final ValueChanged<String> onSelect;
 
+  /// チップ列の左に出す小さな見出し(「鬼を選ぶ」など)。nullなら出さない。
+  final String? leadingLabel;
+
   @override
   Widget build(BuildContext context) {
+    final label = leadingLabel;
+    final chips = _buildChips();
+    if (label == null) return chips;
+    return Row(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, height: 1.3, color: gameMuted),
+        ),
+        const SizedBox(width: opponentChipSpacing),
+        Expanded(child: chips),
+      ],
+    );
+  }
+
+  Widget _buildChips() {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = opponentChipWidthFor(
@@ -132,64 +131,57 @@ class OpponentSelectorChips extends StatelessWidget {
 
   Widget _buildChip(RoomUser user) {
     final isSelected = user.id == selectedUid;
-    final color = colorForRole(user.role);
+    final accent = opponentAccentOf(user.role);
     final level = levelFor(entries, user.id);
-    final isNotDetected = level == null || level == ProximityLevel.notDetected;
 
-    return Opacity(
-      opacity: isNotDetected ? 0.5 : 1.0,
-      child: GestureDetector(
-        onTap: () => onSelect(user.id),
-        // 枠だけで塗りの無い(未選択の)チップでも、余白を含めた全体が
-        // タップに反応するようにする。
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: isSelected ? color : appFaintBorder,
-              width: 2,
+    return GestureDetector(
+      onTap: () => onSelect(user.id),
+      // 枠だけで塗りの無い(未選択の)チップでも、余白を含めた全体が
+      // タップに反応するようにする。
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: opponentChipMinHeight),
+        // 枠の太さが変わっても中身が動かないよう、選択時は1dpぶん余白を削る。
+        padding: EdgeInsets.symmetric(
+          horizontal: isSelected ? 9 : 10,
+          vertical: isSelected ? 5 : 6,
+        ),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? accent.border : gameBorder,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          color: isSelected ? accent.chipTint : Colors.white,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 未選択でも名前は濃いまま出す。選ばれているかどうかは枠と
+            // 塗りで示す(名前を薄くすると、そもそも誰がいるのか読めない)。
+            Text(
+              user.displayName,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: const TextStyle(
+                fontSize: 14,
+                color: gameInk,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            borderRadius: BorderRadius.circular(12),
-            color: isSelected ? color.withValues(alpha: 0.07) : null,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 未選択でも名前は濃いまま出す。選ばれているかどうかは枠と
-              // 塗りで示す(名前を薄くすると、そもそも誰がいるのか読めない)。
-              Text(
-                user.displayName,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: appInk,
-                  fontWeight: FontWeight.w600,
-                ),
+            Text(
+              opponentChipStatus(level),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 10,
+                color: isSelected ? accent.ink : gameMuted,
               ),
-              const SizedBox(height: 3),
-              Text(
-                opponentChipSummary(
-                  level: level,
-                  verticalPosition: verticalFor(verticalPositions, user.id),
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                style: TextStyle(fontSize: 12, color: _levelColor(level)),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
-  }
-
-  /// 「近い」だけ強調色(赤)にし、それ以外は落ち着いた色にする
-  /// (詳細カードと同じ強弱付け)。
-  Color _levelColor(ProximityLevel? level) {
-    return level == ProximityLevel.close
-        ? const Color(0xFFE5484D)
-        : const Color(0xFFAAAAAA);
   }
 }

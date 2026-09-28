@@ -1,7 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:kakureru/core/theme/app_theme.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 
-/// 「鬼になる」ボタン(アイコン+ラベル+押せない理由)。
+/// 「鬼になる」の帯の高さ(モックの56px)。検知の有無で変わらない。
+const double becomeDemonRowHeight = 56;
+
+/// 押せる状態の「鬼になる」ボタンの地(鬼の濃い赤)。
+const becomeDemonEnabledColor = Color(0xFFC0343A);
+
+/// 押せない状態の「鬼になる」ボタンの地と文字。
+const becomeDemonDisabledColor = Color(0xFFEDEAE2);
+const becomeDemonDisabledInk = gameFaint;
+
+/// 「鬼になる」の帯(左に押せる条件の説明、右にボタン)。
 ///
 /// ボタン自体は常に表示し、[isDetected](BLEで至近距離を検知したか)が
 /// falseの間はdisabledにする(issue #43。詳しい経緯はGamePage.build内の
@@ -11,11 +21,9 @@ import 'package:kakureru/core/theme/app_theme.dart';
 /// 部品にしている(widgetテストをそれらのproviderのfake抜きで書けるように
 /// するため)。
 ///
-/// 以前はGamePageと同じライブラリに居て、テストから触るために
-/// `@visibleForTesting` を付けていた。ファイル分割でGamePageから見ても
-/// 別ライブラリになり、「テストからしか使わない」という意味が実態と
-/// 合わなくなったため注釈は外した(providerに依存しない設計自体は
-/// 上記のとおり維持している)。
+/// 帯の高さは[becomeDemonRowHeight]で固定し、説明文も検知の有無で
+/// 変えない。押せる/押せないの切り替えでレイアウトが動くと、以前の
+/// チラつき問題(issue #43)が再発するため。
 class BecomeDemonButton extends StatelessWidget {
   /// すべての引数はGamePageが計算して渡す(このウィジェットはproviderを
   /// 一切読まない)。
@@ -37,49 +45,62 @@ class BecomeDemonButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: ThemeData(useMaterial3: true),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        child: Column(
-          // GamePage内では親Columnが非flexの子にmaxHeight:infinityを渡すため
-          // 指定が無くてもshrink-wrapする(本番の見た目は変わらない)。ただし
-          // Scaffoldのbodyへ直接置くなど有限のmaxHeightがルーズに渡る場面
-          // (widgetテスト)では画面いっぱいまで伸びてしまい、「検知の有無で
-          // 高さが変わらない」ことを高さで検証できなくなる(テストが空振り
-          // する)。制約に依存せずshrink-wrapさせるために明示する。
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FilledButton.icon(
-              icon: isSubmitting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.priority_high),
-              label: const Text('鬼になる'),
-              onPressed: isSubmitting || !isDetected ? null : onPressed,
+    final enabled = isDetected && !isSubmitting;
+    final Widget leading;
+    if (isSubmitting) {
+      leading = const SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+      );
+    } else if (enabled) {
+      leading = const Icon(Icons.priority_high, size: 16);
+    } else {
+      leading = const Icon(Icons.lock_outline, size: 16);
+    }
+
+    return Container(
+      height: becomeDemonRowHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: gameBorder)),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              '鬼が3m以内に近づくと\n「鬼になる」が押せます',
+              style: TextStyle(fontSize: 11, color: gameMuted, height: 1.4),
             ),
-            // 押せない理由をボタンのすぐ下に出す。disabledとenabledの
-            // 切り替えでレイアウトが動くと元のチラつき問題が再発するため、
-            // Visibility(maintainSize:true)で高さは常に確保しておき、
-            // 表示/非表示だけ切り替える。
-            Visibility(
-              visible: !isDetected,
-              maintainSize: true,
-              maintainAnimation: true,
-              maintainState: true,
-              child: const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Text(
-                  '鬼が3m以内に近づくと押せます',
-                  style: TextStyle(color: appMuted, fontSize: 11),
-                ),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.icon(
+            onPressed: enabled ? onPressed : null,
+            icon: leading,
+            label: const Text('鬼になる'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              fixedSize: const Size.fromHeight(44),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              shape: const StadiumBorder(),
+              backgroundColor: becomeDemonEnabledColor,
+              foregroundColor: Colors.white,
+              // 送信中はスピナーを白で見せたいので、押せない理由による
+              // 無効(灰)と送信中の無効(赤のまま)を分ける。
+              disabledBackgroundColor: isSubmitting
+                  ? becomeDemonEnabledColor
+                  : becomeDemonDisabledColor,
+              disabledForegroundColor: isSubmitting
+                  ? Colors.white
+                  : becomeDemonDisabledInk,
+              textStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

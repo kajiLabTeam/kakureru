@@ -24,5 +24,17 @@ void main() {
       expect(demon.label, isNot(fugitive.label));
       expect(demon.icon, isNot(fugitive.icon));
     });
+
+    test('白文字を載せる面は、ピン色より濃い色を使う', () {
+      // #4A9C5Dの上の白文字は3.4:1で読みにくいため、帯には濃い色を敷く。
+      expect(
+        roleThemeOf(UserRole.demon).surfaceColor,
+        const Color(0xFFC0343A),
+      );
+      expect(
+        roleThemeOf(UserRole.fugitive).surfaceColor,
+        const Color(0xFF3A7F4A),
+      );
+    });
   });
 }

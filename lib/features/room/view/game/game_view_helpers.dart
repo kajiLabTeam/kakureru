@@ -1,6 +1,6 @@
 /// ゲーム画面(`view/game/`配下)の各ウィジェットが共有する小さなヘルパー。
 ///
-/// 地図と相手詳細カードの両方から使うものだけをここに置く。片方からしか
+/// 地図・チップ・手がかりカードのうち複数から使うものだけをここに置く。片方からしか
 /// 使わないものは、その使う側のファイルに置いたままにする。
 library;
 
@@ -13,9 +13,9 @@ import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
 
-/// 自分自身を表す色(青)。docs/ui-mockup-2a.htmlの配色ルール
+/// 自分自身を表す色(青)。ゲーム画面モックの配色ルール
 /// (赤=鬼/青=自分/緑=逃走者)に合わせている。
-const selfColor = Color(0xFF3B82F6);
+const selfColor = Color(0xFF2F5FC4);
 
 /// 役割に対応する表示色。地図のピンと上下バーの両方で使う。
 /// role_theme.dartと同じ配色(鬼=赤/逃走者=緑)に揃え、役割が不明な間は
@@ -24,20 +24,51 @@ Color colorForRole(UserRole? role) {
   return role == null ? Colors.grey : roleThemeOf(role).color;
 }
 
-/// [colorForRole]が返す色を指す日本語の色名。
+/// 手がかり表示(チップ・手がかりカード)で使う、相手の役割ごとの色。
 ///
-/// 相手詳細カードの「青を緑に近づけよう」のように、**画面上の点の色を
-/// 名指しして操作を説明する**ために使う。役割が不明なときの'グレー'は
-/// [colorForRole]のフォールバックに合わせたもので、通常は通らない
-/// (相手一覧は役割で絞ってから作られるため)。
-String colorNameForRole(UserRole? role) {
+/// - `pin`: 点・メーターの塗り(地図のピンと同じ)
+/// - `border`: 選ばれたチップの枠(白文字を載せる面と同じ濃さ)
+/// - `tint`: 判定の丸・「近づいた」タグの下地
+/// - `chipTint`: 選ばれたチップの下地
+/// - `ink`: 薄い下地の上に載せる文字・アイコンの色
+///
+/// 逃走者の`pin`(#4A9C5D)は薄い下地の上だと文字として読みにくいため、
+/// 文字には一段濃い`ink`を使う(ゲーム画面モックの配色)。
+typedef OpponentAccent = ({
+  Color pin,
+  Color border,
+  Color tint,
+  Color chipTint,
+  Color ink,
+});
+
+/// [role]に対応する[OpponentAccent]。役割が不明な間はグレーにする。
+OpponentAccent opponentAccentOf(UserRole? role) {
   switch (role) {
     case UserRole.demon:
-      return '赤';
+      return (
+        pin: roleThemeOf(UserRole.demon).color,
+        border: roleThemeOf(UserRole.demon).surfaceColor,
+        tint: const Color(0xFFFCEDEC),
+        chipTint: const Color(0xFFFCF0EF),
+        ink: const Color(0xFFC0343A),
+      );
     case UserRole.fugitive:
-      return '緑';
+      return (
+        pin: roleThemeOf(UserRole.fugitive).color,
+        border: roleThemeOf(UserRole.fugitive).surfaceColor,
+        tint: const Color(0xFFEFF6F0),
+        chipTint: const Color(0xFFEFF6F0),
+        ink: const Color(0xFF2F6B3D),
+      );
     case null:
-      return 'グレー';
+      return (
+        pin: Colors.grey,
+        border: Colors.grey,
+        tint: const Color(0xFFF1EFE9),
+        chipTint: const Color(0xFFF1EFE9),
+        ink: const Color(0xFF6B6A64),
+      );
   }
 }
 

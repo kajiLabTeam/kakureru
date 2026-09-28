@@ -14,7 +14,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$RoleTheme {
 
- Color get color; String get label; IconData get icon;
+ Color get color; Color get surfaceColor; String get label; IconData get icon;
 /// Create a copy of RoleTheme
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -25,16 +25,16 @@ $RoleThemeCopyWith<RoleTheme> get copyWith => _$RoleThemeCopyWithImpl<RoleTheme>
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoleTheme&&(identical(other.color, color) || other.color == color)&&(identical(other.label, label) || other.label == label)&&(identical(other.icon, icon) || other.icon == icon));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoleTheme&&(identical(other.color, color) || other.color == color)&&(identical(other.surfaceColor, surfaceColor) || other.surfaceColor == surfaceColor)&&(identical(other.label, label) || other.label == label)&&(identical(other.icon, icon) || other.icon == icon));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,color,label,icon);
+int get hashCode => Object.hash(runtimeType,color,surfaceColor,label,icon);
 
 @override
 String toString() {
-  return 'RoleTheme(color: $color, label: $label, icon: $icon)';
+  return 'RoleTheme(color: $color, surfaceColor: $surfaceColor, label: $label, icon: $icon)';
 }
 
 
@@ -45,7 +45,7 @@ abstract mixin class $RoleThemeCopyWith<$Res>  {
   factory $RoleThemeCopyWith(RoleTheme value, $Res Function(RoleTheme) _then) = _$RoleThemeCopyWithImpl;
 @useResult
 $Res call({
- Color color, String label, IconData icon
+ Color color, Color surfaceColor, String label, IconData icon
 });
 
 
@@ -62,9 +62,10 @@ class _$RoleThemeCopyWithImpl<$Res>
 
 /// Create a copy of RoleTheme
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? color = null,Object? label = null,Object? icon = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? color = null,Object? surfaceColor = null,Object? label = null,Object? icon = null,}) {
   return _then(_self.copyWith(
 color: null == color ? _self.color : color // ignore: cast_nullable_to_non_nullable
+as Color,surfaceColor: null == surfaceColor ? _self.surfaceColor : surfaceColor // ignore: cast_nullable_to_non_nullable
 as Color,label: null == label ? _self.label : label // ignore: cast_nullable_to_non_nullable
 as String,icon: null == icon ? _self.icon : icon // ignore: cast_nullable_to_non_nullable
 as IconData,
@@ -152,10 +153,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( Color color,  String label,  IconData icon)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( Color color,  Color surfaceColor,  String label,  IconData icon)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _RoleTheme() when $default != null:
-return $default(_that.color,_that.label,_that.icon);case _:
+return $default(_that.color,_that.surfaceColor,_that.label,_that.icon);case _:
   return orElse();
 
 }
@@ -173,10 +174,10 @@ return $default(_that.color,_that.label,_that.icon);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( Color color,  String label,  IconData icon)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( Color color,  Color surfaceColor,  String label,  IconData icon)  $default,) {final _that = this;
 switch (_that) {
 case _RoleTheme():
-return $default(_that.color,_that.label,_that.icon);case _:
+return $default(_that.color,_that.surfaceColor,_that.label,_that.icon);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -193,10 +194,10 @@ return $default(_that.color,_that.label,_that.icon);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( Color color,  String label,  IconData icon)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( Color color,  Color surfaceColor,  String label,  IconData icon)?  $default,) {final _that = this;
 switch (_that) {
 case _RoleTheme() when $default != null:
-return $default(_that.color,_that.label,_that.icon);case _:
+return $default(_that.color,_that.surfaceColor,_that.label,_that.icon);case _:
   return null;
 
 }
@@ -208,10 +209,11 @@ return $default(_that.color,_that.label,_that.icon);case _:
 
 
 class _RoleTheme implements RoleTheme {
-  const _RoleTheme({required this.color, required this.label, required this.icon});
+  const _RoleTheme({required this.color, required this.surfaceColor, required this.label, required this.icon});
   
 
 @override final  Color color;
+@override final  Color surfaceColor;
 @override final  String label;
 @override final  IconData icon;
 
@@ -225,16 +227,16 @@ _$RoleThemeCopyWith<_RoleTheme> get copyWith => __$RoleThemeCopyWithImpl<_RoleTh
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoleTheme&&(identical(other.color, color) || other.color == color)&&(identical(other.label, label) || other.label == label)&&(identical(other.icon, icon) || other.icon == icon));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoleTheme&&(identical(other.color, color) || other.color == color)&&(identical(other.surfaceColor, surfaceColor) || other.surfaceColor == surfaceColor)&&(identical(other.label, label) || other.label == label)&&(identical(other.icon, icon) || other.icon == icon));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,color,label,icon);
+int get hashCode => Object.hash(runtimeType,color,surfaceColor,label,icon);
 
 @override
 String toString() {
-  return 'RoleTheme(color: $color, label: $label, icon: $icon)';
+  return 'RoleTheme(color: $color, surfaceColor: $surfaceColor, label: $label, icon: $icon)';
 }
 
 
@@ -245,7 +247,7 @@ abstract mixin class _$RoleThemeCopyWith<$Res> implements $RoleThemeCopyWith<$Re
   factory _$RoleThemeCopyWith(_RoleTheme value, $Res Function(_RoleTheme) _then) = __$RoleThemeCopyWithImpl;
 @override @useResult
 $Res call({
- Color color, String label, IconData icon
+ Color color, Color surfaceColor, String label, IconData icon
 });
 
 
@@ -262,9 +264,10 @@ class __$RoleThemeCopyWithImpl<$Res>
 
 /// Create a copy of RoleTheme
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? color = null,Object? label = null,Object? icon = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? color = null,Object? surfaceColor = null,Object? label = null,Object? icon = null,}) {
   return _then(_RoleTheme(
 color: null == color ? _self.color : color // ignore: cast_nullable_to_non_nullable
+as Color,surfaceColor: null == surfaceColor ? _self.surfaceColor : surfaceColor // ignore: cast_nullable_to_non_nullable
 as Color,label: null == label ? _self.label : label // ignore: cast_nullable_to_non_nullable
 as String,icon: null == icon ? _self.icon : icon // ignore: cast_nullable_to_non_nullable
 as IconData,

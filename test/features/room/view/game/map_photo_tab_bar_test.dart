@@ -7,6 +7,7 @@ void main() {
     WidgetTester tester, {
     required int selectedIndex,
     required ValueChanged<int> onSelect,
+    bool hasNewPhotos = false,
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -14,6 +15,7 @@ void main() {
           body: MapPhotoTabBar(
             selectedIndex: selectedIndex,
             onSelect: onSelect,
+            hasNewPhotos: hasNewPhotos,
           ),
         ),
       ),
@@ -53,5 +55,23 @@ void main() {
     await tester.pump();
 
     expect(selected, 0);
+  });
+
+  testWidgets('新しい写真があるときだけ赤い点を出す', (tester) async {
+    await pump(tester, selectedIndex: 0, onSelect: (_) {});
+    expect(find.byKey(const ValueKey('newPhotoBadge')), findsNothing);
+
+    await pump(tester, selectedIndex: 0, onSelect: (_) {}, hasNewPhotos: true);
+    expect(find.byKey(const ValueKey('newPhotoBadge')), findsOneWidget);
+  });
+
+  testWidgets('タブのタップ領域は高さ44dp以上ある', (tester) async {
+    await pump(tester, selectedIndex: 0, onSelect: (_) {});
+
+    final tapArea = find.ancestor(
+      of: find.text('写真'),
+      matching: find.byType(GestureDetector),
+    );
+    expect(tester.getSize(tapArea.first).height, greaterThanOrEqualTo(44));
   });
 }

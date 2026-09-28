@@ -9,8 +9,11 @@ import 'package:kakureru/features/room/role_theme.dart';
 /// 実機では小さすぎた(issue #76)。
 const double gameHeaderLabelFontSize = 17;
 
-/// 残り時間の文字サイズ。同じくモックの17px(280px枠)を実機幅へスケールした値。
-const double gameHeaderTimerFontSize = 22;
+/// 残り時間の文字サイズ。ゲーム画面モック(kakureru-ui-mock.html、393dp幅)の値。
+const double gameHeaderTimerFontSize = 20;
+
+/// ヘッダー帯の高さ(モックの56px)。
+const double gameHeaderHeight = 56;
 
 /// ゲーム画面のヘッダー(役割ラベル + 残り時間)。
 ///
@@ -32,6 +35,7 @@ class GameHeaderBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     required this.roleTheme,
     required this.countdownSec,
+    this.onHelp,
     this.actions = const [],
   });
 
@@ -41,20 +45,28 @@ class GameHeaderBar extends StatelessWidget implements PreferredSizeWidget {
   /// 残り秒数。計算できていなければnull(`--:--`と出す)。
   final int? countdownSec;
 
-  /// ヘッダー右端に足すウィジェット。GamePageはデバッグビルド限定の
+  /// 右端の「?」(使ってよい場所の一覧)を押したときに呼ぶ。
+  /// nullなら「?」を出さない。
+  final VoidCallback? onHelp;
+
+  /// 「?」の左に足すウィジェット。GamePageはデバッグビルド限定の
   /// 偽プレイヤートグルを渡す。
   final List<Widget> actions;
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => const Size.fromHeight(gameHeaderHeight);
 
   @override
   Widget build(BuildContext context) {
     final theme = roleTheme;
     final sec = countdownSec;
+    final help = onHelp;
     return AppBar(
       automaticallyImplyLeading: false,
-      backgroundColor: theme?.color,
+      toolbarHeight: gameHeaderHeight,
+      titleSpacing: 16,
+      // 白文字を載せるので、ピン色より濃い帯の色を使う(role_theme.dart)。
+      backgroundColor: theme?.surfaceColor,
       foregroundColor: theme != null ? Colors.white : null,
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -76,7 +88,7 @@ class GameHeaderBar extends StatelessWidget implements PreferredSizeWidget {
                 // foregroundColorを混ぜない)。
                 color: theme != null ? Colors.white : null,
                 fontSize: gameHeaderLabelFontSize,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -92,7 +104,26 @@ class GameHeaderBar extends StatelessWidget implements PreferredSizeWidget {
             ),
         ],
       ),
-      actions: actions,
+      actions: [
+        ...actions,
+        if (help != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, right: 8),
+            child: SizedBox.square(
+              dimension: 44,
+              child: IconButton(
+                onPressed: help,
+                tooltip: '使ってよい場所',
+                padding: EdgeInsets.zero,
+                icon: Icon(
+                  Icons.help_outline,
+                  size: 22,
+                  color: theme != null ? Colors.white : null,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
