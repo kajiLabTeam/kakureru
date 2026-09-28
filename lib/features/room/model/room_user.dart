@@ -25,6 +25,13 @@ abstract class RoomUser with _$RoomUser {
     int? becameDemonAt,
     int? lastPhotoAt,
     @Default(0) int joinedAt,
+
+    /// 退出したら`false`になる。未設定(この項目ができる前のデータ)は
+    /// 参加中とみなす。
+    bool? online,
+
+    /// 退出した時刻(サーバー時刻のミリ秒)。
+    int? leftAt,
   }) = _RoomUser;
 
   const RoomUser._();
@@ -43,4 +50,8 @@ abstract class RoomUser with _$RoomUser {
     json.remove('id');
     return json;
   }
+
+  /// ルームから退出済みか。退出してもRTDBのデータは消さない
+  /// (RoomRepository.leaveRoom参照)ため、参加者一覧から外すのに使う。
+  bool get hasLeft => online == false;
 }

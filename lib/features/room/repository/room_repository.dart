@@ -70,11 +70,14 @@ class RoomRepository {
       debugPrint('[createRoom] step3 setting set 完了');
 
       debugPrint('[createRoom] step4 rooms/$roomId/users/$_uid set 開始');
-      await _db.ref('rooms/$roomId/users/$_uid').set({
+      // setだとノード全体の置き換えになり、先に届いた他のフィールド
+      // (気圧センサーの有無など)を消してしまうため、updateで書く。
+      await _db.ref('rooms/$roomId/users/$_uid').update({
         'displayName': displayName,
         'isHost': true,
         'role': 'FUGITIVE',
         'joinedAt': ServerValue.timestamp,
+        'online': true,
       });
       debugPrint('[createRoom] step4 users set 完了');
     } catch (e) {
@@ -363,11 +366,17 @@ class RoomRepository {
       throw RoomJoinError.finished;
     }
 
-    await _db.ref('rooms/$roomId/users/$_uid').set({
+    // 同じルームへ入り直したときに、前回のキャリブレーション値
+    // (`pressureOffset`)や先に届いた`pressureSensorAvailable`を消さないよう、
+    // setではなくupdateで書く。退出の印(`online: false`/`leftAt`)は戻す。
+    await _db.ref('rooms/$roomId/users/$_uid').update({
       'displayName': displayName,
       'isHost': false,
       'role': 'FUGITIVE',
+      'becameDemonAt': null,
       'joinedAt': ServerValue.timestamp,
+      'online': true,
+      'leftAt': null,
     });
 
     return roomId;
@@ -391,6 +400,9 @@ class RoomRepository {
       final raw = entry.value;
       if (raw is! Map) continue;
       final user = RoomUser.fromMap(entry.key.toString(), raw);
+      // 退出済みの人は数えない(以前は退出でノードごと消えていたため、
+      // 数えないのが従来どおりの判定になる)。
+      if (user.hasLeft) continue;
       if (user.role == UserRole.fugitive) return true;
     }
     return false;
@@ -484,23 +496,29 @@ class RoomRepository {
     return controller.stream;
   }
 
-  /// ルームから退出する。RoomWaitingPage/GamePageの`PopScope`から、
-  /// 戻る操作(ハードウェア/AppBarの戻るボタン)で画面を離れたときに呼ばれる。
+  /// ルームから退出する。待機画面の破棄・結果画面の「ホームに戻る」/破棄・
+  /// 購読エラー画面の「ホームに戻る」から呼ばれる。
   ///
-  /// users/{uid} を消すだけでは locations/{uid} が残り、他の参加者の
-  /// 地図に離脱後もピンが残り続けてしまうため、自分の位置情報も合わせて
-  /// 消す(docs/rtdb-schema.md上、locations/{uid} は本人のみ書き込み可)。
+  /// **`users/{uid}`・`locations/{uid}`は消さない**。以前はここで両方を
+  /// `remove()`していたため、結果画面から帰った参加者のデータがRTDBから
+  /// 消え、プレイテスト後の集計で「eventsには居るのにusersに居ない」
+  /// 参加者が出た(roomCode 5189)。退出は`online: false`と`leftAt`で
+  /// 印を付けるだけにし、画面側では[RoomUser.hasLeft]の人を参加者から
+  /// 外す([Room.fromMap]参照)ことで、離脱通知や人数の数え方は従来どおりに
+  /// 保つ。部屋の掃除はルーム単位で行う方針(docs/rtdb-schema.md参照)。
+  ///
+  /// `update`で書くので、ノードが無い(作成途中で失敗した等)ときに
+  /// 呼んでも`online`/`leftAt`だけのノードができるが、[Room.fromMap]は
+  /// 退出済みとして除外するため画面には出ない。
   ///
   /// **既知の制約**: 戻る操作による明示的な離脱しか検知できない。アプリの
   /// 強制終了・クラッシュ・OSによるプロセスkillではこのメソッドが呼ばれず、
-  /// users/{uid}・locations/{uid}はRTDB上に残り続ける。厳密に検知するには
-  /// RTDBのonDisconnect()(presence機構)への移行が必要だが、Phase 1では
-  /// スコープ外としている。また、users削除の後にlocations削除を行う2段階の
-  /// 処理のため、ネットワーク瞬断等で後者だけ失敗すると、離脱通知(users基準)
-  /// は正しく出る一方で地図上の位置ピンだけ残る可能性がある。
+  /// `online`は`true`のまま残る。
   Future<void> leaveRoom(String roomId) async {
-    await _db.ref('rooms/$roomId/users/$_uid').remove();
-    await _db.ref('rooms/$roomId/locations/$_uid').remove();
+    await _db.ref('rooms/$roomId/users/$_uid').update({
+      'online': false,
+      'leftAt': ServerValue.timestamp,
+    });
   }
 }
 
