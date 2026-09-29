@@ -108,11 +108,13 @@ void main() {
       );
 
       // マーカーwidgetは72x56で、子はColumn[アイコン40, ラベル]が上詰め。
-      // Alignment.center(=widget全体の中心)だとアイコン中心は座標より
-      // 8論理px北にずれるため、その分だけ上へ寄せた値を指定している。
+      // flutter_mapのalignmentは「座標から見てwidgetをどちらに置くか」なので、
+      // アイコン中心(上端から20)を座標に合わせるにはwidgetを下へ寄せる
+      // (yが正)。描画された位置そのものは animated_marker_layer_test.dart
+      // で確かめている。
       expect(
         _otherMarker(tester).alignment,
-        const Alignment(0, (40 / 2 - 56 / 2) / (56 / 2)),
+        const Alignment(0, (56 / 2 - 40 / 2) / (56 / 2)),
       );
     });
   });

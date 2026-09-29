@@ -253,4 +253,152 @@ void main() {
     // 2人なので左右に並ぶ。
     expect((self.dy - other.dy).abs(), lessThan(1));
   });
+
+  group('ずらしたピンの本当の位置', () {
+    Future<void> pumpTwoAt(
+      WidgetTester tester,
+      latlong.LatLng mine,
+      latlong.LatLng others,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: buildLocationMapForTest(
+              myUid: _myUid,
+              users: const [
+                RoomUser(id: _myUid, displayName: 'わたし'),
+                RoomUser(id: _otherUid, displayName: 'あいて'),
+              ],
+              locations: [
+                UserLocation(
+                  uid: _myUid,
+                  latitude: mine.latitude,
+                  longitude: mine.longitude,
+                ),
+                UserLocation(
+                  uid: _otherUid,
+                  latitude: others.latitude,
+                  longitude: others.longitude,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('ずらしたピンごとに、本当の位置の点とそこからピンへの線を描く', (
+      tester,
+    ) async {
+      const same = latlong.LatLng(35.681, 139.767);
+      await pumpTwoAt(tester, same, same);
+
+      final lines = tester
+          .widget<PolylineLayer>(find.byType(PolylineLayer))
+          .polylines;
+      expect(lines, hasLength(2));
+      for (final line in lines) {
+        expect(line.points.first, same);
+        expect(line.points.last, isNot(same));
+      }
+
+      final dots = tester.widget<CircleLayer>(find.byType(CircleLayer)).circles;
+      expect(dots.map((c) => c.point), [same, same]);
+    });
+
+    testWidgets('線の先はずらしたピンのアイコンの中心に届く', (tester) async {
+      const same = latlong.LatLng(35.681, 139.767);
+      await pumpTwoAt(tester, same, same);
+
+      final camera = MapCamera.of(
+        tester.element(find.byType(PolylineLayer)),
+      );
+      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+      final lineEnds = tester
+          .widget<PolylineLayer>(find.byType(PolylineLayer))
+          .polylines
+          .map((l) => mapOrigin + camera.latLngToScreenOffset(l.points.last))
+          .toList();
+      final icons = find.byType(MarkerIcon);
+      final iconCenters = [
+        for (var i = 0; i < icons.evaluate().length; i++)
+          tester.getCenter(icons.at(i)),
+      ];
+
+      for (final center in iconCenters) {
+        final nearest = lineEnds
+            .map((end) => (end - center).distance)
+            .reduce((a, b) => a < b ? a : b);
+        expect(nearest, lessThan(1));
+      }
+    });
+
+    testWidgets('ずらしていないピンは、アイコンの中心がちょうど実座標に来る', (tester) async {
+      const mine = latlong.LatLng(35.681, 139.767);
+      await pumpTwoAt(tester, mine, const latlong.LatLng(35.691, 139.777));
+
+      final camera = MapCamera.of(tester.element(find.byType(MarkerLayer)));
+      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+      final expected = mapOrigin + camera.latLngToScreenOffset(mine);
+      final selfIcon = find.descendant(
+        of: find.ancestor(
+          of: find.textContaining('自分'),
+          matching: find.byType(Column),
+        ),
+        matching: find.byType(MarkerIcon),
+      );
+      expect((tester.getCenter(selfIcon) - expected).distance, lessThan(1));
+    });
+
+    testWidgets('役割が分からない人のlocation_pinは、下端の先端が実座標に来る', (tester) async {
+      const unknown = latlong.LatLng(35.691, 139.777);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: buildLocationMapForTest(
+              myUid: _myUid,
+              // 相手がusersにまだ居ないので役割が分からない。自分の位置を
+              // 渡さないと、地図は相手の位置を中心に表示する。
+              users: const [RoomUser(id: _myUid, displayName: 'わたし')],
+              locations: [
+                UserLocation(
+                  uid: _otherUid,
+                  latitude: unknown.latitude,
+                  longitude: unknown.longitude,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      // 自分の位置が無い間は「現在地を取得中」のスピナーが回り続けるので、
+      // pumpAndSettleではなくマーカーの移動時間ぶん進める。
+      await tester.pump();
+      await tester.pump(markerMoveDuration);
+
+      final camera = MapCamera.of(tester.element(find.byType(MarkerLayer)));
+      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+      final expected = mapOrigin + camera.latLngToScreenOffset(unknown);
+      final pin = find.ancestor(
+        of: find.byIcon(Icons.location_pin).first,
+        matching: find.byType(MarkerIcon),
+      );
+      expect(
+        (tester.getBottomLeft(pin) + tester.getBottomRight(pin)) / 2 - expected,
+        within(distance: 1, from: Offset.zero),
+      );
+    });
+
+    testWidgets('離れているピンには点も線も描かない', (tester) async {
+      await pumpTwoAt(
+        tester,
+        const latlong.LatLng(35.681, 139.767),
+        const latlong.LatLng(35.691, 139.777),
+      );
+
+      expect(find.byType(PolylineLayer), findsNothing);
+      expect(find.byType(CircleLayer), findsNothing);
+    });
+  });
 }
