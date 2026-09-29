@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kakureru/features/ble/model/ble_detection.dart';
 import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
 
 void main() {
@@ -101,82 +100,6 @@ void main() {
         ),
         isFalse,
       );
-    });
-  });
-
-  group('isOpponentWithinBecomeDemonRange', () {
-    test('近い相手が1人でもいれば真', () {
-      final result = isOpponentWithinBecomeDemonRange(
-        detections: {
-          'demon1': const BleDetection(
-            shortUid: 'demon1',
-            rssiDbm: -59,
-            detectedAtMillis: 1000,
-          ),
-        },
-        opponentShortUids: {'demon1'},
-        nowMillis: 1000,
-      );
-      expect(result, isTrue);
-    });
-
-    test('検知結果が無い相手は無視する', () {
-      final result = isOpponentWithinBecomeDemonRange(
-        detections: const {},
-        opponentShortUids: {'demon1'},
-        nowMillis: 1000,
-      );
-      expect(result, isFalse);
-    });
-
-    test('遠い相手だけなら偽', () {
-      final result = isOpponentWithinBecomeDemonRange(
-        detections: {
-          'demon1': const BleDetection(
-            shortUid: 'demon1',
-            rssiDbm: -90,
-            detectedAtMillis: 1000,
-          ),
-        },
-        opponentShortUids: {'demon1'},
-        nowMillis: 1000,
-      );
-      expect(result, isFalse);
-    });
-
-    test('検知結果が古すぎる相手は無視する', () {
-      final result = isOpponentWithinBecomeDemonRange(
-        detections: {
-          'demon1': const BleDetection(
-            shortUid: 'demon1',
-            rssiDbm: -59,
-            detectedAtMillis: 0,
-          ),
-        },
-        opponentShortUids: {'demon1'},
-        nowMillis: BleProximityThresholds.staleAfterMillis + 1,
-      );
-      expect(result, isFalse);
-    });
-
-    test('複数の対象役割の相手のうち1人でも近ければ真', () {
-      final result = isOpponentWithinBecomeDemonRange(
-        detections: {
-          'demon1': const BleDetection(
-            shortUid: 'demon1',
-            rssiDbm: -90,
-            detectedAtMillis: 1000,
-          ),
-          'demon2': const BleDetection(
-            shortUid: 'demon2',
-            rssiDbm: -59,
-            detectedAtMillis: 1000,
-          ),
-        },
-        opponentShortUids: {'demon1', 'demon2'},
-        nowMillis: 1000,
-      );
-      expect(result, isTrue);
     });
   });
 }

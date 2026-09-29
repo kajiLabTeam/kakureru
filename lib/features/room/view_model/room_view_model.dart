@@ -1,5 +1,7 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import '../model/catch_photo.dart';
 import '../model/room.dart';
+import '../model/room_catch.dart';
 import '../model/room_photo.dart';
 import '../player_name_validation.dart';
 import '../repository/player_preferences_repository.dart';
@@ -73,4 +75,17 @@ final roomStreamProvider = StreamProvider.family.autoDispose<Room, String>((
 final photosStreamProvider = StreamProvider.family
     .autoDispose<List<RoomPhoto>, String>((ref, roomId) {
       return ref.watch(roomRepositoryProvider).watchPhotos(roomId);
+    });
+
+/// 捕獲一覧(`catches`)。前のゲームの分も含むので、画面で使うときは
+/// `catchesOfCurrentGame`(catch_rules.dart)で今のゲームに絞ること。
+final catchesStreamProvider = StreamProvider.family
+    .autoDispose<List<RoomCatch>, String>((ref, roomId) {
+      return ref.watch(roomRepositoryProvider).watchCatches(roomId);
+    });
+
+/// 捕まえた瞬間の写真のメタデータ一覧(`catchPhotos`)。
+final catchPhotosStreamProvider = StreamProvider.family
+    .autoDispose<List<CatchPhoto>, String>((ref, roomId) {
+      return ref.watch(roomRepositoryProvider).watchCatchPhotos(roomId);
     });

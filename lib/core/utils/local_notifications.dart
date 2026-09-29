@@ -213,3 +213,32 @@ Future<void> showPhotoTakenNotification(String message) {
     what: '写真の撮影の通知',
   );
 }
+
+/// 「AがBを捕まえた」通知のID。他の通知とは別に取る。
+const _catchNotificationId = 5;
+
+/// 捕獲が確定した(取り消しの期限を過ぎた)ときに全員の端末へ出す通知
+/// (issue #140)。
+///
+/// 画面内のカードと同じ内容を、別のタブを見ている・画面OFFのときにも
+/// 気づけるよう端末通知でも出す。取り消されるかもしれない期限内には
+/// 出さない(出し分けは呼び出し側の`catchesToAnnounce`)。同じIDで出すので、
+/// 続けて捕まったら最新の内容に置き換わる。失敗してもログに残すだけ。
+Future<void> showCatchNotification(String message) {
+  const androidDetails = AndroidNotificationDetails(
+    'kakureru_catch',
+    '捕獲の通知',
+    channelDescription: '誰かが捕まったら通知します',
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+  return _runOrLogFailure(
+    () => _plugin.show(
+      id: _catchNotificationId,
+      title: 'kakureru',
+      body: message,
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    ),
+    what: '捕獲の通知',
+  );
+}

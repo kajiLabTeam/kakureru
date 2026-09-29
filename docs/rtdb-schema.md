@@ -58,17 +58,24 @@ rooms/
           lng
           role
     catches/
-      {catchId}/
-        demonUserId
-        fugitiveUserId
-        caughtAt
+      {catchId}/            鬼が「捕まえた」を押すと書く(下の「捕獲の流れ」参照)
+        demonUserId         捕まえた鬼のuid
+        fugitiveUserId      捕まった逃走者のuid
+        caughtAt            ServerValue.timestamp。取り消しの期限はここから10秒
+        catchPhotoId        捕まえた瞬間の写真のID(撮らなければ無し)
+    catchPhotos/
+      {photoId}/            捕まえた瞬間の写真。ルームの全員が見られる
+        catchId             どの捕獲の写真か(catches/{catchId})
+        demonUid            撮った鬼のuid
+        fugitiveUid         捕まった逃走者のuid
+        takenAt             ServerValue.timestamp。画像本体はR2の photos/{photoId}(足元写真と同じ置き場)
     photos/
       {photoId}/
         uid                 撮影者のuid
         takenAt             撮影時刻(ServerValue.timestamp)。画像本体はR2([docs/photo-storage.md](photo-storage.md)参照)
     events/
       {pushKey}/          分析用のイベントログ。追記のみで上書きしない(下の「events」参照)
-        type                "game_started" | "released" | "catch" | "became_demon" | "game_ended" | "photo_taken"
+        type                "game_started" | "released" | "catch" | "catch_undone" | "became_demon" | "game_ended" | "photo_taken"
         at                  ServerValue.timestamp
         uid                 出来事の主体のuid
         displayName         記録した時点の uid の表示名。users/{uid} が後から欠けても誰だったか辿れるようにする
@@ -98,7 +105,7 @@ roomCodes/
 現状のルールは、この設計意図のうち既に決まっている部分だけを反映している:
 
 - 全体のデフォルトは `auth != null`（未認証アクセスは拒否）。認証は起動時の匿名サインイン（`lib/main.dart`）が前提
-- `rooms/{roomId}` 自体には一括の `.read`/`.write` を付けない。RTDBのルールは上位ノードで許可すると下位ノードでの制限を上書きしてしまう（カスケードする）ため、`meta`/`setting`/`users`/`locations`/`visible`/`catches`/`photos`/`events` それぞれに個別にルールを付けている
+- `rooms/{roomId}` 自体には一括の `.read`/`.write` を付けない。RTDBのルールは上位ノードで許可すると下位ノードでの制限を上書きしてしまう（カスケードする）ため、`meta`/`setting`/`users`/`locations`/`visible`/`catches`/`catchPhotos`/`photos`/`events` それぞれに個別にルールを付けている
 - `users/{uid}`・`locations/{uid}` は本人（`auth.uid === $uid`）以外は書き込み不可
 - `visible/{uid}` はクライアント書き込みを禁止（Cloud Functions が Admin SDK 経由で書く想定）し、読み取りは本人のみ
 - `roomCodes/{code}` は新規作成は誰でも可能だが、既存コードへの上書き・削除はそのルームのホスト（`meta/hostUserId` と `auth.uid` が一致する人）のみ
@@ -215,9 +222,17 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 根本的に直すには `meta/roundId` の導入か、Cloud Functions側でのロールリセット(Phase 2以降)が必要。Phase 1の「Cloud Functionsを使わずクライアント側だけで実装する」という既存方針(このファイル冒頭「Phase 1の暫定措置」参照)のもとでは、上記の実害を許容している。
 
-### `catches/{catchId}/demonUserId` はnull許容
+### 捕獲の流れ: 鬼が書き、捕まった本人が役割を書き換える(issue #140)
 
-逃走者の自己申告（「捕まった」ボタン）で記録する `catches` には、誰が捕まえたか（`demonUserId`）を確実には特定できない。Phase 1では「捕まえた鬼を選択させるUI」は作らず、`demonUserId: null` を許容する形にした。捕獲した鬼を明示的に記録したくなったら、選択UIを別途追加すること。
+以前は逃走者の自己申告(「鬼になる」)で `catches` を書いていたため `demonUserId` が特定できずnullだった。いまは鬼が「捕まえた」を押して書くので、`demonUserId` には必ず鬼のuidが入る(古いデータのnullは読み取り側で許容している)。
+
+1. 鬼が `RoomRepository.reportCatch` で `catches/{catchId}` を書く。`users/{uid}` は本人しか書けないため、逃走者の役割はここでは変えない
+2. 捕まった本人の端末が `catches` を購読していて、自分宛ての捕獲を見つけたら `acceptCaught` で自分の `role` を `DEMON` にする(`useCaughtByDemon`)
+3. 捕まった本人は `caughtAt` から10秒(`lib/features/room/catch_rules.dart` の `catchUndoWindow`)の間だけ `undoCatch` で取り消せる。**捕獲を先に消し、役割を後で `FUGITIVE` に戻す**(逆だと、戻った瞬間に残っている捕獲を見てまた鬼になる)。写真が付いていれば `catchPhotos/{photoId}` も消す
+4. 期限を過ぎた捕獲だけを、各端末が「AがBを捕まえた」と全員に知らせる。期限はサーバー時刻で判定する
+5. 鬼が写真を撮って送ると、R2へ上げた後に `catchPhotos/{photoId}` を書き、`catches/{catchId}/catchPhotoId` をトランザクションで付ける。捕獲が既に取り消されていたら写真のメタデータを消して送信を失敗扱いにする
+
+`restartRoom` は `catches` / `catchPhotos` を消さないので、読む側は必ず `meta/startedAt` 以降のものだけに絞る(`catchesOfCurrentGame`)。
 
 ### ルーム設定画面: `setting` の書き込みはホスト限定になっていない
 
@@ -235,12 +250,13 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 |---|---|---|---|
 | `game_started` | ホスト | `RoomRepository.startGame` 完了時 | ホスト |
 | `released` | ホストのみ | `GameAlerts` が鬼放出を検知した時 | ホスト |
-| `catch` | 捕まった本人 | 「鬼になる」ダイアログで屋内/屋外を選び、`reportCaught` が成功した時 | 捕まった逃走者(捕まえた鬼は特定できないので `targetUid` は無し) |
+| `catch` | 捕まえた鬼 | 「捕まえた」のシートで相手と屋内/屋外を選び、`reportCatch` が成功した時 | 捕まえた鬼(`targetUid` は捕まった逃走者) |
+| `catch_undone` | 捕まった本人 | 期限内に「取り消す」を押し、`undoCatch` が成功した時 | 取り消した逃走者(`targetUid` は捕まえた鬼) |
 | `became_demon` | 指名された本人 | `acceptDemonNomination` で鬼になった時(開始前の初期鬼) | 鬼になった人 |
 | `game_ended` | ホストのみ | `GameAlerts` がゲーム終了を検知した時 | ホスト |
 | `photo_taken` | 撮影者 | 足元写真のアップロード成功時 | 撮影者 |
 
 - `released` / `game_ended` は全端末で同じ判定が回るため、重複を避けてホスト端末だけが書く。`at` は「ホスト端末が検知した時刻」で、バックグラウンド等で遅れうる。正確な予定時刻は `meta/releasedAt` / `meta/endsAt` を使うこと。ホストのアプリが閉じていると記録されない
-- `catch` の `lat`/`lng`/`accuracy` は、その時点で自分が最後に送った `locations/{uid}` の値。`pressure` は端末の最新の気圧(取れなければ `locations/{uid}/pressure`)
+- `catch` の `lat`/`lng`/`accuracy` は、その時点で鬼が最後に送った `locations/{uid}` の値。`pressure` は端末の最新の気圧(取れなければ `locations/{uid}/pressure`)
 - 各イベントには記録時点の `displayName` を入れる。呼び出し側が渡さなければ `users/{uid}/displayName` を読んで補い、読めなければ省く(イベント自体は記録する)
 - `meta/endedAt` は `finishRoom` がどこからも呼ばれていないため現状書かれない。終了時刻は `game_ended` イベントか `meta/endsAt`(全員捕獲で早期終了した場合は最後の `catch`)から求める

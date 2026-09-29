@@ -8,8 +8,10 @@ import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/room/area_alert.dart';
+import 'package:kakureru/features/room/catch_rules.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
 import 'package:kakureru/features/room/model/room.dart';
+import 'package:kakureru/features/room/model/room_catch.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
@@ -74,6 +76,7 @@ class GameAlerts extends Notifier<GameAlertsState> {
   /// ここで自分の購読を持つ。
   ProviderSubscription<AsyncValue<Room>>? _roomSub;
   ProviderSubscription<AsyncValue<int>>? _offsetSub;
+  ProviderSubscription<AsyncValue<List<RoomCatch>>>? _catchesSub;
 
   /// 猶予時間の計測に使う単調増加の時計。
   ///
@@ -131,6 +134,7 @@ class GameAlerts extends Notifier<GameAlertsState> {
       ..start();
     _roomSub = ref.listen(roomStreamProvider(roomId), (_, _) {});
     _offsetSub = ref.listen(serverTimeOffsetProvider, (_, _) {});
+    _catchesSub = ref.listen(catchesStreamProvider(roomId), (_, _) {});
     _evaluateTimer = Timer.periodic(_evaluateInterval, (_) => _evaluate());
 
     // **状態の初期化と初回の判定はビルドの外でやる。**
@@ -183,6 +187,8 @@ class GameAlerts extends Notifier<GameAlertsState> {
     _roomSub = null;
     _offsetSub?.close();
     _offsetSub = null;
+    _catchesSub?.close();
+    _catchesSub = null;
     _stopVibration();
   }
 
@@ -269,9 +275,14 @@ class GameAlerts extends Notifier<GameAlertsState> {
       // デバッグ用の偽プレイヤーを出している間は、逃走者が居る扱いにする。
       // 実機1台で自分が鬼になって開始すると、RTDB上の逃走者は0人なので
       // ゲーム画面に入った瞬間に終了扱いになる(issue #67)。
+      //
+      // 捕まってまだ取り消せる人(catchUndoWindowの間)も逃走者に数える。
+      // 最後の1人が捕まった瞬間に終了させると、取り消されたときには全員が
+      // もう結果画面に移っていて戻れないため(issue #140)。
       hasFugitives:
           ref.read(showDebugMockPlayersProvider) ||
-          room.users.any((u) => u.role == UserRole.fugitive),
+          room.users.any((u) => u.role == UserRole.fugitive) ||
+          _hasUndoableCatch(room, nowMillis),
     );
     if (!gameOver) return;
 
@@ -292,6 +303,14 @@ class GameAlerts extends Notifier<GameAlertsState> {
     _stopVibration();
     _warning = initialOutsideAreaWarningState;
     state = (isOutsideAreaWarning: false, isGameOver: true);
+  }
+
+  /// 今のゲームに、まだ取り消せる捕獲があるか。
+  bool _hasUndoableCatch(Room room, int nowMillis) {
+    final catches = _catchesSub?.read().value ?? const [];
+    return catchesOfCurrentGame(catches, startedAt: room.startedAt).any(
+      (c) => isCatchUndoable(caughtAt: c.caughtAt, nowMillis: nowMillis),
+    );
   }
 
   /// エリア外の判定。警告に入ったら振動と通知を繰り返し、戻ったら止める。

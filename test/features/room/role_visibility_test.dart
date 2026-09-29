@@ -309,84 +309,17 @@ void main() {
     });
   });
 
-  group('canReportCaught', () {
-    test('逃走者かつ鬼放出後なら表示する', () {
-      expect(
-        canReportCaught(role: UserRole.fugitive, phase: GamePhase.released),
-        isTrue,
-      );
-    });
-
-    test('逃走者でも鬼放出前は表示しない', () {
-      expect(
-        canReportCaught(
-          role: UserRole.fugitive,
-          phase: GamePhase.beforeRelease,
-        ),
-        isFalse,
-      );
-    });
-
-    test('鬼放出後でも自分が鬼なら表示しない', () {
-      expect(
-        canReportCaught(role: UserRole.demon, phase: GamePhase.released),
-        isFalse,
-      );
-    });
-
-    test('鬼かつ鬼放出前も表示しない', () {
-      expect(
-        canReportCaught(role: UserRole.demon, phase: GamePhase.beforeRelease),
-        isFalse,
-      );
-    });
-  });
-
-  group('shouldShowBecomeDemonButton', () {
-    // 「鬼になる」ボタン自体の表示条件はcanReportCaughtと同じで、BLEの
-    // 検知状況(bleBecomeDemonDetected)を一切見ない(issue #43)。ボタンが
-    // 常時表示され、BLE検知の有無はdisabled/enabledの切り替えにしか使わ
-    // れないことを担保するテスト。
-
-    test('逃走者かつ鬼放出後なら表示する(BLE検知の有無に関わらず常時表示)', () {
-      expect(
-        shouldShowBecomeDemonButton(
-          role: UserRole.fugitive,
-          phase: GamePhase.released,
-        ),
-        isTrue,
-      );
-    });
-
-    test('逃走者でも鬼放出前は表示しない', () {
-      expect(
-        shouldShowBecomeDemonButton(
-          role: UserRole.fugitive,
-          phase: GamePhase.beforeRelease,
-        ),
-        isFalse,
-      );
-    });
-
-    test('鬼放出後でも自分が鬼なら表示しない', () {
-      expect(
-        shouldShowBecomeDemonButton(
-          role: UserRole.demon,
-          phase: GamePhase.released,
-        ),
-        isFalse,
-      );
-    });
-
-    test('役割がまだ確定していない(null)間は表示しない', () {
-      expect(
-        shouldShowBecomeDemonButton(role: null, phase: GamePhase.released),
-        isFalse,
-      );
-    });
-  });
-
   group('uidsToNotifyOfDemonChange', () {
+    test('excludedUidsの相手は通知対象から除く(捕獲は取り消し期限後に別で知らせる)', () {
+      final result = uidsToNotifyOfDemonChange(
+        previousDemonUids: {},
+        currentDemonUids: {'a', 'b'},
+        myUid: 'me',
+        excludedUids: {'a'},
+      );
+      expect(result, {'b'});
+    });
+
     test('新たに鬼になった相手を通知対象にする', () {
       final result = uidsToNotifyOfDemonChange(
         previousDemonUids: {},

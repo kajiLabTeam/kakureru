@@ -78,6 +78,7 @@ void main() {
       'game_started',
       'released',
       'catch',
+      'catch_undone',
       'became_demon',
       'game_ended',
       'photo_taken',

@@ -267,38 +267,16 @@ PhotoCaptureController usePhotoCaptureController(
   Future<void> doCapture() async {
     if (stateHook.value.isUploading) return;
 
-    var quality = _initialImageQuality;
-    while (true) {
-      final file = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1080,
-        maxHeight: 1080,
-        imageQuality: quality,
-      );
-      if (file == null) return; // キャンセル。何もしない。
-
-      final bytes = await file.readAsBytes();
-      debugPrint(
-        '[usePhotoCaptureController] quality=$quality bytes=${bytes.length}'
-        '(目標 約200KB)',
-      );
-
-      if (bytes.length <= _maxPhotoBytes) {
-        await uploadWithRetry(bytes);
-        return;
-      }
-
-      quality -= _imageQualityStep;
-      if (quality < _minImageQuality) {
-        if (!context.mounted) return;
-        stateHook.value = stateHook.value.copyWith(
-          lastErrorMessage: '画像サイズが大きすぎます。もう一度撮影してください',
-        );
-        return;
-      }
-      // 画質を下げて撮り直す(image_picker以外の圧縮パッケージは追加しない
-      // 方針のため、撮影時のimageQualityを下げる以外に手段が無い)。
+    final Uint8List? bytes;
+    try {
+      bytes = await pickCameraPhotoWithinLimit();
+    } on CameraPhotoTooLargeException catch (e) {
+      if (!context.mounted) return;
+      stateHook.value = stateHook.value.copyWith(lastErrorMessage: '$e');
+      return;
     }
+    if (bytes == null) return; // キャンセル。何もしない。
+    await uploadWithRetry(bytes);
   }
 
   Future<void> doResend() async {
@@ -312,4 +290,45 @@ PhotoCaptureController usePhotoCaptureController(
     capture: doCapture,
     resend: doResend,
   );
+}
+
+/// 画質を下げきっても上限を超えた([pickCameraPhotoWithinLimit])。
+class CameraPhotoTooLargeException implements Exception {
+  /// 例外を作る。
+  const CameraPhotoTooLargeException();
+
+  @override
+  String toString() => '画像サイズが大きすぎます。もう一度撮影してください';
+}
+
+/// カメラを起動して、アップロードできる大きさ(2MB以下)の画像を撮る。
+///
+/// 足元の写真と捕まえた瞬間の写真(issue #140)で同じ圧縮条件(長辺1080px・
+/// 画質80から)を使うため共通にしている。上限を超えたら画質を20ずつ下げて
+/// 撮り直してもらう(image_picker以外の圧縮パッケージは追加しない方針の
+/// ため、撮影時のimageQualityを下げる以外に手段が無い)。
+///
+/// カメラを閉じた(撮らなかった)らnull。最低画質でも上限を超えたら
+/// [CameraPhotoTooLargeException]を投げる。
+Future<Uint8List?> pickCameraPhotoWithinLimit() async {
+  var quality = _initialImageQuality;
+  while (true) {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1080,
+      maxHeight: 1080,
+      imageQuality: quality,
+    );
+    if (file == null) return null;
+
+    final bytes = await file.readAsBytes();
+    debugPrint(
+      '[pickCameraPhotoWithinLimit] quality=$quality bytes=${bytes.length}'
+      '(目標 約200KB)',
+    );
+    if (bytes.length <= _maxPhotoBytes) return bytes;
+
+    quality -= _imageQualityStep;
+    if (quality < _minImageQuality) throw const CameraPhotoTooLargeException();
+  }
 }

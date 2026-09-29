@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:kakureru/features/ble/model/ble_detection.dart';
-
 /// BLE近接判定に使う閾値・変換パラメータ。
 ///
 /// Wi-Fi版(ProximityThresholds)と同じく、実測値や副作用を伴う処理と分離して
@@ -10,7 +8,7 @@ import 'package:kakureru/features/ble/model/ble_detection.dart';
 class BleProximityThresholds {
   const BleProximityThresholds._();
 
-  /// 「鬼になる」ボタンを表示する距離のしきい値(m)。issue #16の受け入れ条件。
+  /// 鬼の「捕まえた」を押せるようにする距離のしきい値(m)。issue #16・#140。
   static const becomeDemonRangeMeters = 3.0;
 
   /// 1mの距離で観測される基準RSSI(dBm)。BLEチップ・端末機種・持ち方で
@@ -67,7 +65,7 @@ double estimateDistanceMeters(
   return math.pow(10, exponent).toDouble();
 }
 
-/// 「鬼になる」ボタンを表示すべき距離かどうか。
+/// 「捕まえた」ボタンを押せる距離(3m以内)かどうか(issue #140)。
 bool isWithinBecomeDemonRange(double distanceMeters) =>
     distanceMeters <= BleProximityThresholds.becomeDemonRangeMeters;
 
@@ -75,29 +73,4 @@ bool isWithinBecomeDemonRange(double distanceMeters) =>
 bool isDetectionFresh({required int detectedAtMillis, required int nowMillis}) {
   return nowMillis - detectedAtMillis <=
       BleProximityThresholds.staleAfterMillis;
-}
-
-/// 指定した役割の相手のうち、誰か1人でもBLEで至近距離(3m以内)にいれば真。
-///
-/// [detections] は短縮uid→直近の検知結果。[opponentShortUids] は対象役割の
-/// 相手たちの短縮uid一覧([shortenUid]で揃えたもの)。
-bool isOpponentWithinBecomeDemonRange({
-  required Map<String, BleDetection> detections,
-  required Set<String> opponentShortUids,
-  required int nowMillis,
-}) {
-  for (final shortUid in opponentShortUids) {
-    final detection = detections[shortUid];
-    if (detection == null) continue;
-    if (!isDetectionFresh(
-      detectedAtMillis: detection.detectedAtMillis,
-      nowMillis: nowMillis,
-    )) {
-      continue;
-    }
-    if (isWithinBecomeDemonRange(estimateDistanceMeters(detection.rssiDbm))) {
-      return true;
-    }
-  }
-  return false;
 }

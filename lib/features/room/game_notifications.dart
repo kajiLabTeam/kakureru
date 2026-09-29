@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/room/catch_rules.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
-/// 誰かがDEMONになったら(ホストの指名受諾・自己申告どちらでも)SnackBarで
-/// 全員に知らせるフック。
+/// 誰かがDEMONになったら(ホストの指名受諾など)SnackBarで全員に知らせるフック。
 ///
 /// 表示制御(役割による可視性)とは別軸の情報のため、見える/見えないに
 /// 関わらず通知する。自分自身が鬼になった場合は除く(GamePage側が
-/// CaughtTransitionOverlayの全画面演出を出すため。issue #15)。
+/// 「あなたは鬼になった」の全画面を出すため)。「捕まえた」で鬼になった人も
+/// 除く。そちらは取り消しの期限を過ぎてから`useCatchAnnouncements`が
+/// 「AがBを捕まえた」として知らせる(issue #140)。
 void useDemonChangeNotifications(
   WidgetRef ref,
   BuildContext context, {
@@ -29,11 +31,19 @@ void useDemonChangeNotifications(
 
     final previous = previousDemonUids.value;
     if (previous != null) {
+      final caughtUids = {
+        for (final c in catchesOfCurrentGame(
+          ref.read(catchesStreamProvider(roomId)).value ?? const [],
+          startedAt: nextRoom.startedAt,
+        ))
+          c.fugitiveUserId,
+      };
       final demonTheme = roleThemeOf(UserRole.demon);
       final uidsToNotify = uidsToNotifyOfDemonChange(
         previousDemonUids: previous,
         currentDemonUids: currentDemonUids,
         myUid: myUid,
+        excludedUids: caughtUids,
       );
       for (final uid in uidsToNotify) {
         final name = _displayNameOf(nextRoom.users, uid);

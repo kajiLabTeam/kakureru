@@ -7,7 +7,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/utils/server_time.dart';
-import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
@@ -16,6 +15,8 @@ import 'package:kakureru/features/pressure/model/relative_vertical_position.dart
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/area_alert.dart';
 import 'package:kakureru/features/room/async_action.dart';
+import 'package:kakureru/features/room/catch_flow.dart';
+import 'package:kakureru/features/room/catch_rules.dart';
 import 'package:kakureru/features/room/debug_mock_players.dart';
 import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/game_alerts.dart';
@@ -33,10 +34,13 @@ import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
-import 'package:kakureru/features/room/view/caught_transition_overlay.dart';
+import 'package:kakureru/features/room/view/catch_capture_page.dart';
 import 'package:kakureru/features/room/view/game/area_rules_dialog.dart';
-import 'package:kakureru/features/room/view/game/become_demon_button.dart';
-import 'package:kakureru/features/room/view/game/become_demon_confirm_dialog.dart';
+import 'package:kakureru/features/room/view/game/catch_announcement_card.dart';
+import 'package:kakureru/features/room/view/game/catch_button_strip.dart';
+import 'package:kakureru/features/room/view/game/catch_photo_section.dart';
+import 'package:kakureru/features/room/view/game/catch_target_sheet.dart';
+import 'package:kakureru/features/room/view/game/caught_by_demon_overlay.dart';
 import 'package:kakureru/features/room/view/game/clue_card.dart';
 import 'package:kakureru/features/room/view/game/clue_guide_page.dart';
 import 'package:kakureru/features/room/view/game/clue_trend_scope.dart';
@@ -145,11 +149,11 @@ class GamePage extends HookConsumerWidget {
       return timer.cancel;
     }, const []);
 
-    // 「捕まった」ボタンのフィードバック用状態(issue #15)。押してから
-    // RTDBへの書き込みが終わるまではボタンをローディング表示にし、
-    // 成功したら全画面演出(CaughtTransitionOverlay)を出す。
-    final becomeDemon = useAsyncAction(context);
-    final showCaughtTransition = useState(false);
+    // 鬼の「捕まえた」(issue #140)。送信中はボタンをローディング表示にし、
+    // 成功したら撮影画面(CatchCapturePage)を開く。撮影画面を開いている間は
+    // ゲーム終了の自動遷移を止める(captureOpen)。
+    final catchAction = useAsyncAction(context);
+    final captureOpen = useState(false);
 
     // 詳細カードで選択中の相手(UI改修モック2a-03「逃走者を選んで詳細を見る」)。
     // nullの間は既定で最も近い相手を選ぶ(下のeffectiveSelectedUid参照)。
@@ -197,18 +201,33 @@ class GamePage extends HookConsumerWidget {
     // 増えていれば出す。画面に入った時点で既にある写真は見たことにする
     // (入るたびに点が付くと、新着の意味が無くなるため)。
     // 画面内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
+    // 捕まえた瞬間の写真(issue #140)も数に入れる。取り消しの期限を過ぎた
+    // 捕獲の写真だけを数える(一覧に出るものと揃える)。
     final photos = photosAsync.value ?? const [];
+    final catchesAsync = ref.watch(catchesStreamProvider(roomId));
+    final catchPhotosAsync = ref.watch(catchPhotosStreamProvider(roomId));
+    final galleryCatchPhotos = catchPhotosForGallery(
+      catchPhotos: catchPhotosAsync.value ?? const [],
+      catches: catchesAsync.value ?? const [],
+      startedAt: room?.startedAt,
+      nowMillis: now,
+    );
+    final galleryPhotoCount = photos.length + galleryCatchPhotos.length;
+    final photoCountReady =
+        photosAsync.hasValue &&
+        catchesAsync.hasValue &&
+        catchPhotosAsync.hasValue;
     final seenPhotoCount = useRef<int?>(null);
-    if (photosAsync.hasValue) {
-      seenPhotoCount.value ??= photos.length;
+    if (photoCountReady) {
+      seenPhotoCount.value ??= galleryPhotoCount;
     }
-    if (pageIndex.value == 1 && photosAsync.hasValue) {
-      seenPhotoCount.value = photos.length;
+    if (pageIndex.value == 1 && photoCountReady) {
+      seenPhotoCount.value = galleryPhotoCount;
     }
     final hasNewPhotos =
         pageIndex.value != 1 &&
         seenPhotoCount.value != null &&
-        photos.length > seenPhotoCount.value!;
+        galleryPhotoCount > seenPhotoCount.value!;
 
     // デバッグ用の偽プレイヤーを出しているかどうか(issue #67)。多人数での
     // 見え方は端末を人数分集めないと確認できないため、デバッグビルドでだけ
@@ -260,6 +279,16 @@ class GamePage extends HookConsumerWidget {
       return null;
     }, const []);
 
+    // 捕獲まわり(issue #140)。捕まった本人の役割の書き換えと全画面、
+    // 取り消しの期限を過ぎた捕獲の全員への通知、取り消しの鬼への通知。
+    final caught = useCaughtByDemon(ref, roomId: roomId, myUid: myUid);
+    final announcement = useCatchAnnouncements(
+      ref,
+      roomId: roomId,
+      myUid: myUid,
+    );
+    useCatchUndoneNotifications(ref, context, roomId: roomId, myUid: myUid);
+
     // 鬼放出の振動+通知、ゲーム終了の検知、エリア外の判定は GameAlerts
     // (useGameSessionが開始する)が1秒ごとのタイマーで回している。画面が
     // 消えていても進むようにするため、ウィジェットの再描画から切り離した
@@ -268,7 +297,7 @@ class GamePage extends HookConsumerWidget {
       ref,
       context,
       roomId: roomId,
-      isShowingCaughtTransition: showCaughtTransition.value,
+      isNavigationBlocked: caught.shownCatch != null || captureOpen.value,
     );
 
     // 「同じメンバーでもう一回」による巻き戻しの検知。ホストが結果画面
@@ -314,19 +343,26 @@ class GamePage extends HookConsumerWidget {
     final pressureState = ref.watch(pressureViewModelProvider);
     final bleDetections = ref.watch(bleViewModelProvider);
 
-    // 「鬼になる」ボタンの確定処理。onPressed直下に書くとネストが深くなり
-    // すぎるため、独立した関数として切り出している(挙動は従来通り)。
+    // 「捕まえた」の処理(issue #140)。相手と場所を選ぶ→捕獲を書く→
+    // 撮影画面を開く。onPressed直下に書くとネストが深くなりすぎるため
+    // 独立した関数にしている。
     //
     // 失敗はuseAsyncActionのerrorにも入るが、この画面では地図が主役で
     // エラー行を置く場所が無いためSnackBarで出す。
-    Future<void> handleBecomeDemonPressed() async {
-      final place = await showBecomeDemonConfirmDialog(context);
-      if (place == null) return;
-
-      final result = await becomeDemon.run(
-        () => ref.read(roomRepositoryProvider).reportCaught(roomId),
+    Future<void> handleCatchPressed(List<CatchCandidate> candidates) async {
+      final choice = await showCatchTargetSheet(
+        context,
+        candidates: candidates,
       );
-      // 分析用のイベントログ。申告が通ったときだけ、そのときの位置・
+      if (choice == null || !context.mounted) return;
+
+      String? catchId;
+      final result = await catchAction.run(() async {
+        catchId = await ref
+            .read(roomRepositoryProvider)
+            .reportCatch(roomId, fugitiveUid: choice.uid);
+      });
+      // 分析用のイベントログ。捕獲が書けたときだけ、鬼のそのときの位置・
       // GPS精度・気圧を添えて記録する(fire-and-forget)。
       if (result.status == AsyncActionStatus.succeeded && myUid != null) {
         unawaited(
@@ -336,18 +372,38 @@ class GamePage extends HookConsumerWidget {
                 roomId,
                 type: GameEventType.caught,
                 uid: myUid,
+                targetUid: choice.uid,
                 lat: myLocation?.latitude,
                 lng: myLocation?.longitude,
                 accuracy: myLocation?.accuracy,
                 pressure: pressureState.myPressureHPa ?? myLocation?.pressure,
-                indoor: place == CaughtPlace.indoor,
+                indoor: choice.indoor,
               ),
         );
       }
       if (!context.mounted) return;
       switch (result.status) {
         case AsyncActionStatus.succeeded:
-          showCaughtTransition.value = true;
+          final id = catchId;
+          if (id == null) return;
+          final name = candidates
+              .firstWhere(
+                (c) => c.uid == choice.uid,
+                orElse: () => (uid: choice.uid, name: '???'),
+              )
+              .name;
+          captureOpen.value = true;
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => CatchCapturePage(
+                roomId: roomId,
+                catchId: id,
+                fugitiveUid: choice.uid,
+                fugitiveName: name,
+              ),
+            ),
+          );
+          if (context.mounted) captureOpen.value = false;
         case AsyncActionStatus.failed:
           // 何の操作が失敗したのかは残す(SnackBarは画面の文脈から離れた
           // 場所に出るため)。原因の説明だけをuserFacingErrorMessageに任せ、
@@ -355,7 +411,7 @@ class GamePage extends HookConsumerWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '「鬼になる」の送信に失敗しました。'
+                '「捕まえた」の送信に失敗しました。'
                 '${userFacingErrorMessage(result.error!)}',
               ),
             ),
@@ -498,31 +554,23 @@ class GamePage extends HookConsumerWidget {
                     );
                 final beforeRelease = phase == GamePhase.beforeRelease;
 
-                // BLEで対象の役割の相手が至近距離(3m程度)にいるかどうか(issue #16)。
-                // 「捕まった」ボタン(常時表示・自己申告)とは別に、確実な捕捉を
-                // 支援するためのボタンを検知時だけ追加で出す。isVisibleToMeで
-                // 絞るのは、他の近接表示(Wi-Fi・気圧)と同じく「鬼タイム」中は
-                // 逃走者から鬼の至近距離情報も見せない、という既存の非対称な
-                // 可視性ルール(role_visibility.dart)をBLEにも適用するため。
-                final opponentShortUids = myRole == null
-                    ? const <String>{}
-                    : room.users
-                          .where(
-                            (u) =>
-                                u.role == opponentRole &&
-                                u.id != myUid &&
-                                isVisibleToMe(u.id),
-                          )
-                          .map((u) => shortenUid(u.id))
-                          .toSet();
-                // BLEの検知時刻(detectedAtMillis)は端末ローカル時計で記録している
-                // ため、freshness判定もサーバー時刻(now)ではなく端末ローカル時刻で
-                // 比較する必要がある(単位を揃えないとserverTimeOffset分ずれる)。
-                final bleBecomeDemonDetected = isOpponentWithinBecomeDemonRange(
-                  detections: bleDetections,
-                  opponentShortUids: opponentShortUids,
-                  nowMillis: DateTime.now().millisecondsSinceEpoch,
-                );
+                // BLEで3m以内にいる逃走者(issue #140)。「捕まえた」の帯は
+                // これが1人以上のときだけ押せる。BLEの検知時刻
+                // (detectedAtMillis)は端末ローカル時計で記録しているため、
+                // サーバー時刻(now)ではなく端末ローカル時刻で比べる。
+                final showCatchStrip =
+                    myRole == UserRole.demon && phase == GamePhase.released;
+                final catchCandidates = showCatchStrip
+                    ? [
+                        for (final uid in fugitivesWithinCatchRange(
+                          detections: bleDetections,
+                          users: room.users,
+                          myUid: myUid,
+                          nowMillis: DateTime.now().millisecondsSinceEpoch,
+                        ))
+                          (uid: uid, name: catchPersonName(room.users, uid)),
+                      ]
+                    : const <CatchCandidate>[];
 
                 // 相手選択チップの一覧(UI改修モック2a-03「逃走者を選んで詳細を
                 // 見る」)。Wi-Fiスキャン結果がまだ無い相手(visibleWifiEntries
@@ -598,27 +646,6 @@ class GamePage extends HookConsumerWidget {
                           style: const TextStyle(color: Color(0xFFE5484D)),
                         ),
                       ),
-                    // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた
-                    // ときだけ押せる「鬼になる」に一本化した。ローディング表示・
-                    // エラー処理・確定演出(CaughtTransitionOverlay)は、旧
-                    // 「捕まった」ボタンのものをそのまま踏襲している。
-                    //
-                    // ボタン自体は常に表示し、BLEで検知していない間はdisabled
-                    // にする(issue #43)。以前(issue #16/#29)はBLE検知時だけ
-                    // Widgetごと出し入れする方式だったが、検知距離が閾値付近を
-                    // 行き来するたびにボタンの出現/消滅でレイアウト全体が
-                    // 上下にガタつく問題があった。「常時表示にすると誤タップが
-                    // 増えるのでは」という2a-05以来の懸念は、disabledのままなら
-                    // 押しても何も起きない=誤タップにならないため両立する
-                    // (誤タップ防止という元の目的はdisabled化で引き継ぐ)。
-                    // アプリ全体のテーマ変更の影響も受けないよう、Flutter標準の
-                    // ThemeDataで局所的に上書きする構造は維持する。
-                    if (shouldShowBecomeDemonButton(role: myRole, phase: phase))
-                      BecomeDemonButton(
-                        isDetected: bleBecomeDemonDetected,
-                        isSubmitting: becomeDemon.isRunning,
-                        onPressed: handleBecomeDemonPressed,
-                      ),
                     // エリア外アラート(赤帯・赤かぶせ・矢印・戻り方カード)は
                     // 地図の上に重ねる。Columnに足すと、その分だけ地図と
                     // 下のカードが押し出されて画面外へ消えるため
@@ -691,22 +718,6 @@ class GamePage extends HookConsumerWidget {
                                           ),
                                     ),
                                   ),
-                                  // 放出前の逃走者には「鬼になる」がまだ押せない
-                                  // 理由を添える(モック03)。
-                                  if (myRole == UserRole.fugitive &&
-                                      beforeRelease)
-                                    const Padding(
-                                      padding: EdgeInsets.only(top: 10),
-                                      child: Text(
-                                        '「鬼になる」は、鬼が3m以内に来ると'
-                                        '押せるようになります',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: gameMuted,
-                                        ),
-                                      ),
-                                    ),
                                 ],
                               ),
                             )
@@ -764,20 +775,69 @@ class GamePage extends HookConsumerWidget {
                         );
                       },
                     ),
+                    // 鬼だけに出す「捕まえた」の帯(issue #140)。地図と写真の
+                    // どちらのタブでも押せるよう、タブの直下に置く。常に出し、
+                    // 3m以内に逃走者がいない間はdisabledにする(出し入れすると
+                    // レイアウトがガタつくため)。
+                    if (showCatchStrip)
+                      CatchButtonStrip(
+                        nearestName: catchCandidates.firstOrNull?.name,
+                        inRangeCount: catchCandidates.length,
+                        isSubmitting: catchAction.isRunning,
+                        onPressed: () =>
+                            unawaited(handleCatchPressed(catchCandidates)),
+                      ),
                     Expanded(
-                      child: PageView(
-                        controller: pageController,
-                        onPageChanged: (index) => pageIndex.value = index,
+                      child: Stack(
                         children: [
-                          mapPageContent,
-                          PhotoGalleryPage(
-                            roomId: roomId,
-                            room: room,
-                            myUid: myUid,
-                            photos: photos,
-                            nowMillis: now,
-                            photoCapture: photoCapture,
+                          PageView(
+                            controller: pageController,
+                            onPageChanged: (index) => pageIndex.value = index,
+                            children: [
+                              mapPageContent,
+                              PhotoGalleryPage(
+                                roomId: roomId,
+                                room: room,
+                                myUid: myUid,
+                                photos: photos,
+                                catchPhotos: galleryCatchPhotos,
+                                nowMillis: now,
+                                photoCapture: photoCapture,
+                              ),
+                            ],
                           ),
+                          // 取り消しの期限を過ぎた捕獲の全員への知らせ
+                          // (issue #140)。地図の上に重ね、タップで写真タブを開く。
+                          if (announcement.announced case final announced?)
+                            Positioned(
+                              left: 12,
+                              right: 12,
+                              top: 8,
+                              child: CatchAnnouncementCard(
+                                roomId: roomId,
+                                message: catchAnnouncementText(
+                                  room.users,
+                                  announced,
+                                  myUid,
+                                ),
+                                remainingFugitives: remainingFugitiveCount(
+                                  room.users,
+                                ),
+                                photoId: (catchPhotosAsync.value ?? const [])
+                                    .where((p) => p.catchId == announced.id)
+                                    .firstOrNull
+                                    ?.id,
+                                onTap: () {
+                                  announcement.dismiss();
+                                  pageIndex.value = 1;
+                                  pageController.animateToPage(
+                                    1,
+                                    duration: const Duration(milliseconds: 200),
+                                    curve: Curves.easeInOut,
+                                  );
+                                },
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -788,11 +848,17 @@ class GamePage extends HookConsumerWidget {
               error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
             ),
           ),
-          // 「捕まった」確定直後の全画面演出(issue #15)。マップ等の下に
-          // 溜まっている再描画とは独立に、Stackの最前面に重ねるだけにする。
-          if (showCaughtTransition.value)
-            CaughtTransitionOverlay(
-              onContinue: () => showCaughtTransition.value = false,
+          // 鬼に捕まった本人の「あなたは鬼になった」(issue #140)。
+          // 取り消されると捕獲が消えてshownCatchがnullになり、一緒に消える。
+          if (caught.shownCatch case final shown? when room != null)
+            Positioned.fill(
+              child: CaughtByDemonOverlay(
+                roomId: roomId,
+                roomCatch: shown,
+                demonName: catchPersonName(room.users, shown.demonUserId),
+                canUndo: roleOf(room.users, myUid) == UserRole.demon,
+                onContinue: caught.dismiss,
+              ),
             ),
         ],
       ),

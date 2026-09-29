@@ -5,7 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/core/utils/server_time.dart';
+import 'package:kakureru/features/room/catch_rules.dart';
+import 'package:kakureru/features/room/model/catch_photo.dart';
 import 'package:kakureru/features/room/model/room.dart';
+import 'package:kakureru/features/room/model/room_catch.dart';
 import 'package:kakureru/features/room/model/room_photo.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -273,20 +276,106 @@ class RoomRepository {
     await _db.ref('rooms/$roomId/meta/demonRevokeUid').set(null);
   }
 
-  /// 逃走者が「捕まった」ことを自己申告する。
-  Future<void> reportCaught(String roomId) async {
-    final uid = _uid;
-    await _db.ref('rooms/$roomId/users/$uid/role').set('DEMON');
-    await _db
-        .ref('rooms/$roomId/users/$uid/becameDemonAt')
-        .set(ServerValue.timestamp);
-
+  /// 鬼が「捕まえた」を確定する(issue #140)。書いた catchId を返す。
+  ///
+  /// 捕まった逃走者の役割はここでは書き換えない(書けない)。`users/{uid}`は
+  /// 本人しか書けないため、捕まった本人の端末が`catches`を見て
+  /// [acceptCaught]で自分の役割を書き換える。
+  Future<String> reportCatch(
+    String roomId, {
+    required String fugitiveUid,
+  }) async {
     final catchId = _db.ref('rooms/$roomId/catches').push().key!;
     await _db.ref('rooms/$roomId/catches/$catchId').set({
-      'demonUserId': null,
-      'fugitiveUserId': uid,
+      'demonUserId': _uid,
+      'fugitiveUserId': fugitiveUid,
       'caughtAt': ServerValue.timestamp,
     });
+    return catchId;
+  }
+
+  /// 捕まった本人が、自分の役割をDEMONに書き換える。
+  ///
+  /// 取り消しの期限([catchUndoWindow])を待たずにすぐ鬼にする。期限内に
+  /// [undoCatch]されたら逃走者に戻す。
+  Future<void> acceptCaught(String roomId) async {
+    await _db.ref('rooms/$roomId/users/$_uid').update({
+      'role': 'DEMON',
+      'becameDemonAt': ServerValue.timestamp,
+    });
+  }
+
+  /// 捕まった本人が、期限内に捕獲を取り消す。
+  ///
+  /// 期限の判定はサーバー時刻で行い、過ぎていれば[CatchUndoExpiredException]、
+  /// サーバー時刻が取れなければ[CatchUndoUnavailableException]を投げて
+  /// 何も書かない。画面側でも期限切れのボタンは押せなくしているが、
+  /// ボタンを押してから書き込むまでの間に期限を越えることがあるため、
+  /// ここでもう一度確かめる。
+  ///
+  /// **捕獲を先に消し、役割を後で戻す**。逆の順にすると、役割がFUGITIVEに
+  /// 戻った瞬間にまだ残っている捕獲を本人の端末が見つけて、また鬼に
+  /// なってしまう([catchToAcceptAsCaught])。
+  Future<void> undoCatch(String roomId, RoomCatch roomCatch) async {
+    final now = await _serverNowMillis();
+    if (now == null) throw const CatchUndoUnavailableException();
+    if (!isCatchUndoable(caughtAt: roomCatch.caughtAt, nowMillis: now)) {
+      throw const CatchUndoExpiredException();
+    }
+    final catchRef = _db.ref('rooms/$roomId/catches/${roomCatch.id}');
+    // 鬼が写真を送った直後かもしれないので、手元の値ではなく最新を読む。
+    final photoIdSnapshot = await _db
+        .ref('rooms/$roomId/catches/${roomCatch.id}/catchPhotoId')
+        .get();
+    await catchRef.set(null);
+    final photoId = photoIdSnapshot.value as String?;
+    if (photoId != null) {
+      await _db.ref('rooms/$roomId/catchPhotos/$photoId').set(null);
+    }
+    await _db.ref('rooms/$roomId/users/$_uid').update({
+      'role': 'FUGITIVE',
+      'becameDemonAt': null,
+    });
+    unawaited(
+      _eventLog.log(
+        roomId,
+        type: GameEventType.catchUndone,
+        uid: _uid,
+        targetUid: roomCatch.demonUserId,
+      ),
+    );
+  }
+
+  /// 捕まえた瞬間の写真のメタデータを書き、捕獲に写真IDを結びつける。
+  ///
+  /// 画像本体は先に`PhotoRepository.upload`でR2へ上げておくこと。
+  /// 捕獲が既に取り消されていたら写真のメタデータも消して
+  /// [CatchAlreadyUndoneException]を投げる。`catches/{catchId}/catchPhotoId`
+  /// だけを書くと、取り消し後に`fugitiveUserId`も`caughtAt`も無い壊れた
+  /// 捕獲ができてしまうため、存在を確かめながら書けるトランザクションを使う。
+  Future<void> attachCatchPhoto(
+    String roomId, {
+    required String catchId,
+    required String photoId,
+    required String fugitiveUid,
+  }) async {
+    final photoRef = _db.ref('rooms/$roomId/catchPhotos/$photoId');
+    await photoRef.set({
+      'catchId': catchId,
+      'demonUid': _uid,
+      'fugitiveUid': fugitiveUid,
+      'takenAt': ServerValue.timestamp,
+    });
+    final result = await _db
+        .ref('rooms/$roomId/catches/$catchId')
+        .runTransaction((current) {
+          if (current is! Map) return Transaction.abort();
+          return Transaction.success({...current, 'catchPhotoId': photoId});
+        });
+    if (!result.committed) {
+      await photoRef.set(null);
+      throw const CatchAlreadyUndoneException();
+    }
   }
 
   /// コードからルームに参加する。
@@ -496,6 +585,45 @@ class RoomRepository {
     return controller.stream;
   }
 
+  /// 捕獲一覧をリアルタイムで監視する。
+  Stream<List<RoomCatch>> watchCatches(String roomId) => _watchList(
+    'rooms/$roomId/catches',
+    RoomCatch.fromMap,
+  );
+
+  /// 捕まえた瞬間の写真のメタデータ一覧をリアルタイムで監視する。
+  Stream<List<CatchPhoto>> watchCatchPhotos(String roomId) => _watchList(
+    'rooms/$roomId/catchPhotos',
+    CatchPhoto.fromMap,
+  );
+
+  /// `path`直下の子を[parse]で読み、一覧として流す([watchPhotos]と同じ形)。
+  ///
+  /// 読めない子(取り消しと写真の添付が行き違って一部だけ残ったもの等)は
+  /// 飛ばす。1件壊れているだけで一覧全体が出なくなるのを避けるため。
+  Stream<List<T>> _watchList<T>(
+    String path,
+    T Function(String id, Map<dynamic, dynamic> raw) parse,
+  ) {
+    final controller = StreamController<List<T>>.broadcast();
+    final sub = _db.ref(path).onValue.listen((event) {
+      final value = event.snapshot.value as Map<dynamic, dynamic>?;
+      final items = <T>[];
+      for (final entry in (value ?? const {}).entries) {
+        try {
+          items.add(
+            parse(entry.key.toString(), entry.value as Map<dynamic, dynamic>),
+          );
+        } on Object catch (e) {
+          debugPrint('[RoomRepository] $path/${entry.key}を読めません: $e');
+        }
+      }
+      controller.add(items);
+    }, onError: controller.addError);
+    controller.onCancel = sub.cancel;
+    return controller.stream;
+  }
+
   /// ルームから退出する。待機画面の破棄・結果画面の「ホームに戻る」/破棄・
   /// 購読エラー画面の「ホームに戻る」から呼ばれる。
   ///
@@ -537,4 +665,31 @@ class RoomRepository {
     releasedAt: releasedAt,
     endsAt: releasedAt + setting.gameDurationSec * 1000,
   );
+}
+
+/// 取り消しの期限([catchUndoWindow])を過ぎていて、取り消せなかった。
+class CatchUndoExpiredException implements Exception {
+  /// 例外を作る。
+  const CatchUndoExpiredException();
+
+  @override
+  String toString() => '取り消せる時間が過ぎました';
+}
+
+/// サーバー時刻が取れず、期限内かどうかを確かめられなかった。
+class CatchUndoUnavailableException implements Exception {
+  /// 例外を作る。
+  const CatchUndoUnavailableException();
+
+  @override
+  String toString() => '通信できないため取り消せませんでした';
+}
+
+/// 写真を送ろうとした捕獲が、既に取り消されていた。
+class CatchAlreadyUndoneException implements Exception {
+  /// 例外を作る。
+  const CatchAlreadyUndoneException();
+
+  @override
+  String toString() => '捕獲が取り消されたため、写真は送りませんでした';
 }

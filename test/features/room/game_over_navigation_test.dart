@@ -38,7 +38,7 @@ class _Harness extends HookConsumerWidget {
       ref,
       context,
       roomId: _roomId,
-      isShowingCaughtTransition: false,
+      isNavigationBlocked: false,
     );
     return Scaffold(
       body: Center(
