@@ -10,6 +10,7 @@ import 'package:kakureru/features/room/model/room_photo.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/photo_capture_config.dart';
 import 'package:kakureru/features/room/photo_gallery_section.dart';
+import 'package:kakureru/features/room/photo_taken_notifications.dart';
 import 'package:kakureru/features/room/user_color.dart';
 import 'package:kakureru/features/room/view/game/catch_photo_section.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
@@ -55,7 +56,7 @@ class PhotoGalleryPage extends StatelessWidget {
     final viewerIsDemon = myRole == UserRole.demon;
     final showBanner =
         isPhotoFeatureConfigured &&
-        myRole == UserRole.fugitive &&
+        takesFootPhotos(myRole) &&
         (photoCapture.state.isDue || photoCapture.state.pendingBytes != null);
 
     // 画面の上から順に、撮影バナー・捕まえた瞬間・足元の写真の見出しまでは

@@ -203,7 +203,7 @@ void main() {
     expect(showCount(), 2);
   });
 
-  // 鬼は撮影しないので「撮ってください」の通知は出さない(issue #120)。
+  // 撮る側でなければ「撮ってください」の通知は出さない(takesFootPhotos)。
   testWidgets('通知しない指定なら、isDueだけ立てて通知は出さない', (tester) async {
     await _pump(
       tester,
@@ -220,7 +220,7 @@ void main() {
   });
 
   testWidgets('タイマーの途中で通知しない指定に変わったら、発火時点の指定に従う', (tester) async {
-    // 逃走者として始まり、次のスロットが来る前に鬼になった状況。
+    // 撮る側として始まり、次のスロットが来る前に撮る側でなくなった状況。
     final releasedAt = _at(const Duration(seconds: -9));
     final lastPhotoAt = _at(const Duration(seconds: -1));
     await _pump(

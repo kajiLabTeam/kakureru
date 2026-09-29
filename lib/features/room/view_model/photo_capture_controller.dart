@@ -61,8 +61,8 @@ class PhotoCaptureController {
 /// releasedAt/lastPhotoAtはサーバー時刻なので、[serverTimeOffsetMillis]
 /// (`.info/serverTimeOffset`)で端末時計を補正して比べる。
 ///
-/// [notifyWhenDue]がfalseなら、間隔が来ても端末通知は出さない(鬼は撮影
-/// しないため。issue #120)。途中で鬼になることがあるので、タイマーが
+/// [notifyWhenDue]がfalseなら、間隔が来ても端末通知は出さない(撮る側で
+/// ないとき。`takesFootPhotos`)。途中で役割が変わることがあるので、タイマーが
 /// 発火した時点の値を使う。通知は1スロットにつき1回まで。
 ///
 /// このタイマー/アップロード状態はGamePageが消えたら一緒に消えてよい
@@ -136,7 +136,7 @@ PhotoCaptureController usePhotoCaptureController(
         intervalSec: interval,
       );
       // バナーは他のタブを見ている・バックグラウンド中だと気づかれない
-      // ため、通知でも知らせる(鬼には出さない)。
+      // ため、通知でも知らせる。
       if (notifiedSlotRef.value != slot) {
         notifiedSlotRef.value = slot;
         if (notifyWhenDueRef.value) {

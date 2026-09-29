@@ -166,14 +166,15 @@ void main() {
     });
   });
 
-  group('shouldNotifyPhotoCaptureDue', () {
-    test('鬼には撮影タイミングの通知を出さない', () {
-      expect(shouldNotifyPhotoCaptureDue(UserRole.demon), isFalse);
+  group('takesFootPhotos', () {
+    // issue #140「鬼も写真送れるように」。以前は鬼を外していた。
+    test('鬼も逃走者も足元の写真を撮る', () {
+      expect(takesFootPhotos(UserRole.demon), isTrue);
+      expect(takesFootPhotos(UserRole.fugitive), isTrue);
     });
 
-    test('逃走者と、役割がまだ分からない人には出す', () {
-      expect(shouldNotifyPhotoCaptureDue(UserRole.fugitive), isTrue);
-      expect(shouldNotifyPhotoCaptureDue(null), isTrue);
+    test('参加者一覧に自分がいない(役割が分からない)間は撮らない', () {
+      expect(takesFootPhotos(null), isFalse);
     });
   });
 

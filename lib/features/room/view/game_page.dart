@@ -27,6 +27,7 @@ import 'package:kakureru/features/room/game_session.dart';
 import 'package:kakureru/features/room/model/clue_floor_math.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/new_photo_badge.dart';
 import 'package:kakureru/features/room/opponent_roster_status.dart';
 import 'package:kakureru/features/room/photo_capture_config.dart';
 import 'package:kakureru/features/room/photo_taken_notifications.dart';
@@ -213,10 +214,12 @@ class GamePage extends HookConsumerWidget {
       nowMillis: now,
     );
     final galleryPhotoCount = photos.length + galleryCatchPhotos.length;
+    // 捕獲の側は読めなくても(エラーでも)数え始める。待ち続けると、
+    // 足元の写真の赤い点まで出なくなるため(isSettledForPhotoBadge参照)。
     final photoCountReady =
         photosAsync.hasValue &&
-        catchesAsync.hasValue &&
-        catchPhotosAsync.hasValue;
+        isSettledForPhotoBadge(catchesAsync) &&
+        isSettledForPhotoBadge(catchPhotosAsync);
     final seenPhotoCount = useRef<int?>(null);
     if (photoCountReady) {
       seenPhotoCount.value ??= galleryPhotoCount;
@@ -255,10 +258,8 @@ class GamePage extends HookConsumerWidget {
       lastPhotoAt: myUid == null
           ? null
           : findUser(room?.users ?? const [], myUid)?.lastPhotoAt,
-      // 鬼は撮影しないので「撮ってください」の通知は出さない(issue #120)。
-      notifyWhenDue: shouldNotifyPhotoCaptureDue(
-        roleOf(room?.users ?? const [], myUid),
-      ),
+      // 鬼も逃走者も撮る(issue #140)。
+      notifyWhenDue: takesFootPhotos(roleOf(room?.users ?? const [], myUid)),
     );
 
     // GPSの実測(getPositionStream)は初回の測位に時間がかかる(コールドスタート)。
@@ -622,12 +623,11 @@ class GamePage extends HookConsumerWidget {
                       PreReleaseBanner(countdownSec: countdownSec),
                     // 撮影プロンプト。間隔が来た、またはアップロード失敗で
                     // 再送待ちの画像がある間だけ出す(PHOTO_API_BASE_URL
-                    // 未設定の環境では機能ごと隠す)。鬼は撮影対象ではないため
-                    // 逃走者のみに出す(photo_gallery_page.dartのshowBannerと
-                    // 同じ判定。以前ここに役割チェックが無く、鬼の画面にも
-                    // バナーが出て撮影できてしまっていた)。
+                    // 未設定の環境では機能ごと隠す)。鬼も逃走者も撮る
+                    // (issue #140。photo_gallery_page.dartのshowBannerと
+                    // 同じ判定)。
                     if (isPhotoFeatureConfigured &&
-                        myRole == UserRole.fugitive &&
+                        takesFootPhotos(myRole) &&
                         (photoCapture.state.isDue ||
                             photoCapture.state.pendingBytes != null))
                       PhotoCaptureBanner(

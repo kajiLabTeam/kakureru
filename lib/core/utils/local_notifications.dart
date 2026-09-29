@@ -161,10 +161,9 @@ const _photoCaptureDueNotificationId = 3;
 /// 撮影間隔が来たタイミングで出す通知(issue #107フォローアップ)。
 ///
 /// バナーは画面内表示のため、他のタブ(地図/写真)を見ている・アプリを
-/// バックグラウンドにしている等で気づかれないことがある。鬼には出さない
-/// (鬼は撮影しないため。代わりに逃走者が撮ったことを
-/// [showPhotoTakenNotification]で知らせる。issue #120)。出し分けは呼び出し側
-/// (`shouldNotifyPhotoCaptureDue`)で行う。チャンネルを`kakureru_release`/`kakureru_area`と分けるのは、
+/// バックグラウンドにしている等で気づかれないことがある。鬼も逃走者も撮る
+/// ので両方に出す(issue #140)。出し分けは呼び出し側(`takesFootPhotos`)で
+/// 行う。チャンネルを`kakureru_release`/`kakureru_area`と分けるのは、
 /// こちらは1ゲーム中に何度も繰り返し出るため、性格が違う通知と一緒に
 /// 端末側の設定をいじられたくないため。失敗してもログに残すだけ。
 Future<void> showPhotoCaptureDueNotification() {
