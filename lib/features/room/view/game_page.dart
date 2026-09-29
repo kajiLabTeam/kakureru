@@ -558,9 +558,13 @@ class GamePage extends HookConsumerWidget {
                 // これが1人以上のときだけ押せる。BLEの検知時刻
                 // (detectedAtMillis)は端末ローカル時計で記録しているため、
                 // サーバー時刻(now)ではなく端末ローカル時刻で比べる。
-                final showCatchStrip =
-                    myRole == UserRole.demon && phase == GamePhase.released;
-                final catchCandidates = showCatchStrip
+                // 帯自体は鬼なら放出前から出しておき、放出前は押せなくする。
+                final showCatchStrip = shouldShowCatchButton(role: myRole);
+                final catchWaitingForRelease = !canPressCatchButton(
+                  role: myRole,
+                  phase: phase,
+                );
+                final catchCandidates = !catchWaitingForRelease
                     ? [
                         for (final uid in fugitivesWithinCatchRange(
                           detections: bleDetections,
@@ -784,6 +788,7 @@ class GamePage extends HookConsumerWidget {
                         nearestName: catchCandidates.firstOrNull?.name,
                         inRangeCount: catchCandidates.length,
                         isSubmitting: catchAction.isRunning,
+                        waitingForRelease: catchWaitingForRelease,
                         onPressed: () =>
                             unawaited(handleCatchPressed(catchCandidates)),
                       ),

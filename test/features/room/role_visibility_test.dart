@@ -450,4 +450,30 @@ void main() {
       expect(reasonWithDelay(0), reasonWithDelay(120));
     });
   });
+
+  group('shouldShowCatchButton / canPressCatchButton', () {
+    test('鬼なら放出前から帯を出すが、押せるのは放出後だけ', () {
+      expect(shouldShowCatchButton(role: UserRole.demon), isTrue);
+      expect(
+        canPressCatchButton(
+          role: UserRole.demon,
+          phase: GamePhase.beforeRelease,
+        ),
+        isFalse,
+      );
+      expect(
+        canPressCatchButton(role: UserRole.demon, phase: GamePhase.released),
+        isTrue,
+      );
+    });
+
+    test('逃走者・役割未確定には帯を出さず、押せもしない', () {
+      for (final role in [UserRole.fugitive, null]) {
+        expect(shouldShowCatchButton(role: role), isFalse);
+        for (final phase in GamePhase.values) {
+          expect(canPressCatchButton(role: role, phase: phase), isFalse);
+        }
+      }
+    });
+  });
 }

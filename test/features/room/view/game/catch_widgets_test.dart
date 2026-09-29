@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/features/room/view/game/catch_button_strip.dart';
 import 'package:kakureru/features/room/view/game/catch_target_sheet.dart';
 
@@ -30,6 +31,26 @@ void main() {
       expect(pressed, 0);
     });
 
+    testWidgets('鬼の放出前は、3m以内に逃走者がいても帯を出したまま押せない', (tester) async {
+      var pressed = 0;
+      await tester.pumpWidget(
+        _wrap(
+          CatchButtonStrip(
+            nearestName: 'はなこ',
+            inRangeCount: 1,
+            isSubmitting: false,
+            waitingForRelease: true,
+            onPressed: () => pressed++,
+          ),
+        ),
+      );
+
+      expect(find.text('鬼が放たれたら捕まえられます'), findsOneWidget);
+      expect(_button(tester, '捕まえた').onPressed, isNull);
+      await tester.tap(find.text('捕まえた'));
+      expect(pressed, 0);
+    });
+
     testWidgets('3m以内に逃走者がいれば押せる', (tester) async {
       var pressed = 0;
       await tester.pumpWidget(
@@ -51,6 +72,53 @@ void main() {
         catchButtonStripHeight,
       );
     });
+  });
+
+  testWidgets('文字を大きくした狭い画面でも帯がはみ出さない', (tester) async {
+    tester.view.physicalSize = const Size(960, 2400);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: Scaffold(
+            body: CatchButtonStrip(
+              nearestName: null,
+              inRangeCount: 0,
+              isSubmitting: false,
+              waitingForRelease: true,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
+
+  // アプリのテーマはボタンの最小サイズを横幅いっぱい(Size.fromHeight)に
+  // している。帯のボタンはRowの中にあるため、それを引き継ぐと幅が無限に
+  // なってレイアウトが例外で止まり、鬼の端末がゲーム開始直後に固まった。
+  testWidgets('アプリのテーマの下でも帯を描画できる', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: CatchButtonStrip(
+            nearestName: null,
+            inRangeCount: 0,
+            isSubmitting: false,
+            waitingForRelease: true,
+            onPressed: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('捕まえた'), findsOneWidget);
   });
 
   group('CatchTargetSheet', () {

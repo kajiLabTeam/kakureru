@@ -76,6 +76,22 @@ int? calculateCountdownSeconds({
   return ((target - nowMillis) / 1000).ceil();
 }
 
+/// 「捕まえた」の帯(CatchButtonStrip)自体を表示すべきかどうか(issue #140)。
+///
+/// 旧「鬼になる」ボタン(issue #43)と同じく、ゲーム中は最初から出しておき、
+/// 押せるかどうかだけを[canPressCatchButton]とBLEの検知で切り替える。
+/// 鬼の放出前も出す(放出されてから帯が現れるとレイアウトがずれ、
+/// どこに出るのかも分からないため)。
+bool shouldShowCatchButton({required UserRole? role}) {
+  return role == UserRole.demon;
+}
+
+/// 「捕まえた」を押せるフェーズか。放出前の鬼はまだ捕まえられない。
+/// 3m以内に逃走者がいるかどうか(BLE)は別に判定する。
+bool canPressCatchButton({required UserRole? role, required GamePhase phase}) {
+  return role == UserRole.demon && phase == GamePhase.released;
+}
+
 /// 新たに鬼になった参加者のうち、SnackBarで通知すべきuidの集合を返す。
 ///
 /// 自分自身(myUid)は除く。自分が捕まって鬼になった場合はGamePage側で

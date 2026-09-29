@@ -24,6 +24,7 @@ class CatchButtonStrip extends StatelessWidget {
     required this.inRangeCount,
     required this.isSubmitting,
     required this.onPressed,
+    this.waitingForRelease = false,
   });
 
   /// 3m以内にいる逃走者のうち一番近い人の名前。いなければnull。
@@ -38,10 +39,14 @@ class CatchButtonStrip extends StatelessWidget {
   /// 押されたときの処理(相手の選択シート〜送信)。
   final VoidCallback onPressed;
 
+  /// 鬼の放出前か。放出前は帯を出したまま押せなくする。
+  final bool waitingForRelease;
+
   @override
   Widget build(BuildContext context) {
-    final enabled = inRangeCount > 0 && !isSubmitting;
+    final enabled = !waitingForRelease && inRangeCount > 0 && !isSubmitting;
     final headline = switch (nearestName) {
+      _ when waitingForRelease => '鬼が放たれたら捕まえられます',
       null => '3m以内に逃走者はいません',
       final name when inRangeCount > 1 =>
         '$name ほか${inRangeCount - 1}人が3m以内にいます',
@@ -49,8 +54,10 @@ class CatchButtonStrip extends StatelessWidget {
     };
 
     return Container(
-      height: catchButtonStripHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      // 文字を大きくしている端末ではみ出さないよう、高さは最低値で指定する
+      // (文言はどれも1行なので、通常の文字サイズなら状態で高さは変わらない)。
+      constraints: const BoxConstraints(minHeight: catchButtonStripHeight),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: const BoxDecoration(
         color: _stripBackground,
         border: Border(bottom: BorderSide(color: _stripBorder)),
@@ -61,7 +68,7 @@ class CatchButtonStrip extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -76,7 +83,9 @@ class CatchButtonStrip extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 const Text(
-                  '近づいたときだけ押せます',
+                  '3m以内に近づいたときだけ押せます',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 11, color: _stripSubInk),
                 ),
               ],
@@ -96,6 +105,10 @@ class CatchButtonStrip extends StatelessWidget {
                 disabledForegroundColor: Colors.white,
                 shape: const StadiumBorder(),
                 padding: const EdgeInsets.symmetric(horizontal: 20),
+                // アプリのテーマ(app_theme.dart)はボタンを横幅いっぱいに
+                // する(minimumSize: Size.fromHeight)。Rowの中では幅が無限に
+                // なりレイアウトが例外で止まるため、ここでは幅の下限を外す。
+                minimumSize: const Size(0, 48),
               ),
               child: isSubmitting
                   ? const SizedBox(
