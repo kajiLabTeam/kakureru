@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 
 /// 「捕まえた」の帯の高さ(モックの66px)。押せる/押せないで変わらない。
 const double catchButtonStripHeight = 66;
@@ -9,6 +10,10 @@ const catchSurfaceColor = Color(0xFFC0343A);
 const _stripBackground = Color(0xFFFCEDEC);
 const _stripBorder = Color(0xFFF0C9C7);
 const _stripSubInk = Color(0xFF8A5350);
+
+/// 押せないときのボタンの地色。薄い赤だと押せるのか分かりにくいため、
+/// 押せないことがひと目で分かるグレーにする(文字は[gameMuted])。
+const catchButtonDisabledColor = gameEmptyDot;
 
 /// 鬼の画面のタブ直下に出す「捕まえた」の帯(issue #140)。
 ///
@@ -99,10 +104,8 @@ class CatchButtonStrip extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: catchSurfaceColor,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: catchSurfaceColor.withValues(
-                  alpha: 0.35,
-                ),
-                disabledForegroundColor: Colors.white,
+                disabledBackgroundColor: catchButtonDisabledColor,
+                disabledForegroundColor: gameMuted,
                 shape: const StadiumBorder(),
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 // アプリのテーマ(app_theme.dart)はボタンを横幅いっぱいに
@@ -116,7 +119,8 @@ class CatchButtonStrip extends StatelessWidget {
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        // 送信中は押せない(グレーの地)ので、文字と同じ色にする。
+                        color: gameMuted,
                       ),
                     )
                   : const Text(

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/features/room/view/game/catch_button_strip.dart';
 import 'package:kakureru/features/room/view/game/catch_target_sheet.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
@@ -96,6 +97,29 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('押せないときのボタンは薄い赤ではなくグレーにする', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        CatchButtonStrip(
+          nearestName: null,
+          inRangeCount: 0,
+          isSubmitting: false,
+          onPressed: () {},
+        ),
+      ),
+    );
+
+    final style = _button(tester, '捕まえた').style!;
+    const disabled = {WidgetState.disabled};
+    expect(
+      style.backgroundColor!.resolve(disabled),
+      catchButtonDisabledColor,
+    );
+    expect(style.foregroundColor!.resolve(disabled), gameMuted);
+    // 押せるときは従来どおり赤。
+    expect(style.backgroundColor!.resolve({}), catchSurfaceColor);
   });
 
   // アプリのテーマはボタンの最小サイズを横幅いっぱい(Size.fromHeight)に
