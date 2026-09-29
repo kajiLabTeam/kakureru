@@ -14,6 +14,7 @@ import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/repository/room_repository.dart';
 import 'package:kakureru/features/room/view/game/debug_mock_players_toggle.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/room_waiting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
@@ -763,6 +764,39 @@ void main() {
             .onPressed,
         isNotNull,
       );
+    });
+  });
+
+  group('見た目', () {
+    testWidgets('ゲーム画面と同じ生成りの地で、ボタン・チップもゲーム画面の色になる', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+      );
+
+      final theme = Theme.of(tester.element(find.byType(Scaffold)));
+      expect(theme.scaffoldBackgroundColor, gameBackground);
+      expect(
+        Theme.of(
+          tester.element(find.widgetWithText(ActionChip, '鬼にする')),
+        ).chipTheme.backgroundColor,
+        Colors.white,
+      );
+
+      // 「ゲーム開始」は押せるなら黒、押せないならゲーム画面の無効色。
+      // 以前のような既定テーマの紫・灰にはならない。
+      final startButton = find.widgetWithText(FilledButton, 'ゲーム開始');
+      final fill = tester
+          .widget<Material>(
+            find
+                .descendant(of: startButton, matching: find.byType(Material))
+                .first,
+          )
+          .color;
+      final enabled =
+          tester.widget<FilledButton>(startButton).onPressed != null;
+      expect(fill, enabled ? gameInk : gameSelected);
     });
   });
 }

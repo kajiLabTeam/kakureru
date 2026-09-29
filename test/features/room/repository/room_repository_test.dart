@@ -66,6 +66,16 @@ class _FakeDatabase implements FirebaseDatabase {
     node[segments.last] = value;
   }
 
+  void remove(String path) {
+    final segments = _segments(path);
+    Object? node = root;
+    for (final segment in segments.take(segments.length - 1)) {
+      if (node is! Map) return;
+      node = node[segment];
+    }
+    if (node is Map) node.remove(segments.last);
+  }
+
   static List<String> _segments(String path) =>
       path.split('/').where((s) => s.isNotEmpty).toList();
 
@@ -87,6 +97,20 @@ class _FakeReference implements DatabaseReference {
 
   @override
   Future<void> set(Object? value) async => _db.write(_path, value);
+
+  /// RTDBの`update`と同じく、渡した子だけを書き換え、他の子は残す。
+  /// 値が`null`の子は消す。
+  @override
+  Future<void> update(Map<String, Object?> value) async {
+    for (final entry in value.entries) {
+      final childPath = '$_path/${entry.key}';
+      if (entry.value == null) {
+        _db.remove(childPath);
+      } else {
+        _db.write(childPath, entry.value);
+      }
+    }
+  }
 
   /// `push()`は新しい子への参照を返すだけなので、キーが毎回変わることだけ
   /// 再現できればよい。
@@ -524,6 +548,117 @@ void main() {
         ),
         'room-1',
       );
+    });
+  });
+
+  group('RoomRepository.leaveRoom', () {
+    test('退出してもusers/{uid}とlocations/{uid}は消さず、退出の印だけ付ける', () async {
+      // プレイテスト(roomCode 5189)で、結果画面から帰った参加者のusers・
+      // locationsが消え、eventsのuidから誰だったか辿れなくなった。
+      final rtdb = _rtdbWith(
+        status: 'PLAYING',
+        users: {
+          ..._usersWith(),
+          'me': <String, Object?>{
+            'displayName': 'たろう',
+            'role': 'DEMON',
+            'joinedAt': 1,
+            'pressureSensorAvailable': true,
+            'pressureOffset': 0.4,
+          },
+        },
+      );
+      (rtdb['rooms']! as Map<String, Object?>)['room-1'] = {
+        ...((rtdb['rooms']! as Map<String, Object?>)['room-1']!
+            as Map<String, Object?>),
+        'locations': <String, Object?>{
+          'me': <String, Object?>{'latitude': 35.1, 'longitude': 136.9},
+        },
+      };
+      final db = _FakeDatabase(rtdb);
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await repo.leaveRoom('room-1');
+
+      final me = _usersOf(db)!['me']! as Map<String, Object?>;
+      expect(me['displayName'], 'たろう');
+      expect(me['role'], 'DEMON');
+      expect(me['joinedAt'], 1);
+      expect(me['pressureSensorAvailable'], true);
+      expect(me['pressureOffset'], 0.4);
+      expect(me['online'], false);
+      expect(me, contains('leftAt'));
+      expect(db.read('rooms/room-1/locations/me'), isNotNull);
+    });
+  });
+
+  group('RoomRepository.joinRoom 既存のusers/{uid}', () {
+    test('先に書かれた他のフィールドを消さずに書き込む', () async {
+      // 気圧センサーの有無(pressureSensorAvailable)やキャリブレーション値は
+      // 別の書き込みで入る。setでノードごと置き換えるとそれが消える。
+      final db = _FakeDatabase(
+        _rtdbWith(
+          users: {
+            ..._usersWith(),
+            'me': <String, Object?>{
+              'pressureSensorAvailable': true,
+              'pressureOffset': 0.4,
+              'online': false,
+              'leftAt': 5,
+            },
+          },
+        ),
+      );
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await repo.joinRoom(code: '1234', displayName: 'たろう');
+
+      final me = _usersOf(db)!['me']! as Map<String, Object?>;
+      expect(me['displayName'], 'たろう');
+      expect(me['role'], 'FUGITIVE');
+      expect(me['pressureSensorAvailable'], true);
+      expect(me['pressureOffset'], 0.4);
+      // 入り直したので退出の印は戻す。
+      expect(me['online'], true);
+      expect(me, isNot(contains('leftAt')));
+    });
+
+    test('退出済みの逃走者は、逃走者が残っている判定に数えない', () async {
+      final db = _FakeDatabase(
+        _rtdbWith(
+          status: 'PLAYING',
+          endsAt: _nowMillis + 60000,
+          users: {
+            'host': <String, Object?>{'displayName': 'ホスト', 'role': 'DEMON'},
+            'gone': <String, Object?>{
+              'displayName': 'かえった',
+              'role': 'FUGITIVE',
+              'online': false,
+            },
+          },
+        ),
+      );
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await expectLater(
+        _atFixedNow(() => repo.joinRoom(code: '1234', displayName: 'たろう')),
+        throwsA(RoomJoinError.finished),
+      );
+    });
+  });
+
+  group('Room.fromMap', () {
+    test('退出済み(online: false)の人は参加者に含めない', () {
+      final room = Room.fromMap('room-1', {
+        'meta': <String, Object?>{'status': 'PLAYING'},
+        'users': <String, Object?>{
+          'a': <String, Object?>{'displayName': 'A'},
+          'b': <String, Object?>{'displayName': 'B', 'online': true},
+          'c': <String, Object?>{'displayName': 'C', 'online': false},
+        },
+      });
+
+      expect(room.users.map((u) => u.id), unorderedEquals(['a', 'b']));
     });
   });
 

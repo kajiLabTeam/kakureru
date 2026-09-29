@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/room/area_rules.dart';
 import 'package:kakureru/features/room/view/game/area_rules_button.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 
 /// 「使用していい範囲」ボタンとモーダル(issue #108)のテスト。
 ///
@@ -55,5 +56,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('使用していい範囲'), findsNothing);
+  });
+
+  testWidgets('見た目は待機・ゲーム画面と同じ白地+細枠と黒い「閉じる」ボタン', (tester) async {
+    await tester.pumpWidget(pumpTarget());
+    await tester.tap(find.byType(IconButton));
+    await tester.pumpAndSettle();
+
+    final dialogTheme = Theme.of(
+      tester.element(find.text('使用していい範囲')),
+    ).dialogTheme;
+    expect(dialogTheme.backgroundColor, Colors.white);
+    expect(
+      (dialogTheme.shape! as RoundedRectangleBorder).side.color,
+      gameBorder,
+    );
+
+    final closeButton = find.widgetWithText(FilledButton, '閉じる');
+    expect(closeButton, findsOneWidget);
+    final fill = tester
+        .widget<Material>(
+          find
+              .descendant(of: closeButton, matching: find.byType(Material))
+              .first,
+        )
+        .color;
+    expect(fill, gameInk);
   });
 }

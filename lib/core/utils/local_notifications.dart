@@ -66,7 +66,7 @@ Future<void> showDemonReleasedNotification() {
   return _runOrLogFailure(
     () => _plugin.show(
       id: 0,
-      title: 'かくれんぼ',
+      title: 'kakureru',
       body: '鬼が放出されました！',
       notificationDetails: const NotificationDetails(android: androidDetails),
     ),
@@ -91,7 +91,7 @@ Future<void> showGameOverNotification() {
   return _runOrLogFailure(
     () => _plugin.show(
       id: _gameOverNotificationId,
-      title: 'かくれんぼ',
+      title: 'kakureru',
       body: 'ゲームが終了しました',
       notificationDetails: const NotificationDetails(android: androidDetails),
     ),
@@ -178,7 +178,7 @@ Future<void> showPhotoCaptureDueNotification() {
   return _runOrLogFailure(
     () => _plugin.show(
       id: _photoCaptureDueNotificationId,
-      title: 'かくれんぼ',
+      title: 'kakureru',
       body: '足元の写真を撮ってください',
       notificationDetails: const NotificationDetails(android: androidDetails),
     ),
@@ -206,7 +206,7 @@ Future<void> showPhotoTakenNotification(String message) {
   return _runOrLogFailure(
     () => _plugin.show(
       id: _photoTakenNotificationId,
-      title: 'かくれんぼ',
+      title: 'kakureru',
       body: message,
       notificationDetails: const NotificationDetails(android: androidDetails),
     ),

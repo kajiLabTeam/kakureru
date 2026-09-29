@@ -78,7 +78,7 @@ const gameAreaMinDiagonalMeters = 10.0;
 /// [buildGameMapOptions] は初期カメラをエリアの中心(`LatLngBounds.
 /// simpleCenter`)に置くが、対角線が極端に長い(=経度方向に大きく広がった)
 /// エリアではこの中心付近でも計算誤差が無視できなくなりうる。「歩いて
-/// 遊ぶかくれんぼ」の範囲としても20kmは十分に広く、そうした極端なケースを
+/// 遊ぶkakureru」の範囲としても20kmは十分に広く、そうした極端なケースを
 /// 実運用から締め出すための上限として設定している。
 const gameAreaMaxDiagonalMeters = 20000.0;
 

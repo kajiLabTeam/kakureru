@@ -1,6 +1,6 @@
 # 足元写真ストレージ（Cloudflare R2）
 
-かくれんぼ中に「足元の写真」を撮って共有する機能のバックエンド。写真の実体は Cloudflare R2 に置き、
+kakureru中に「足元の写真」を撮って共有する機能のバックエンド。写真の実体は Cloudflare R2 に置き、
 Workers（`kakureru-photo-api/`）が認証付きのアップロード/ダウンロードAPIを提供する。メタデータ
 （誰が・いつ撮ったか）は Firebase Realtime Database 側で管理する。
 

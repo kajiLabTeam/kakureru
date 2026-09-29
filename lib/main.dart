@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/theme/app_theme.dart';
+import 'package:kakureru/core/utils/database_persistence.dart';
 import 'package:kakureru/core/utils/local_notifications.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/room/view/room_home_page.dart';
@@ -20,6 +22,9 @@ void main() async {
   FlutterForegroundTask.initCommunicationPort();
   await initLocalNotifications();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // RTDBのオフライン永続化。参照を1つでも作った後では効かないため、
+  // initializeAppの直後・他のFirebase操作より前に呼ぶ(ここ1か所だけ)。
+  enableDatabasePersistence(FirebaseDatabase.instance);
   await FirebaseAuth.instance.signInAnonymously();
   runApp(const ProviderScope(child: MyApp()));
 }

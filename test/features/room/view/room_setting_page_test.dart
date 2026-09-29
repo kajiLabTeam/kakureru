@@ -10,6 +10,8 @@ import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/repository/room_repository.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
+import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
@@ -109,7 +111,7 @@ void main() {
     // 弾かれた仮矩形は消さず、赤枠にしてエラーと視覚的に結びつける。
     final layer = tester.widget<PolygonLayer>(find.byType(PolygonLayer));
     expect(layer.polygons, hasLength(1));
-    expect(layer.polygons.single.borderColor, Colors.red);
+    expect(layer.polygons.single.borderColor, gameNewBadge);
 
     // 弾かれた矩形はエリアとして採用しない(未設定のまま)。
     expect(find.textContaining('未設定です'), findsOneWidget);
@@ -128,7 +130,7 @@ void main() {
     // 確定したエリア(青枠)だけが残り、仮矩形(赤/橙)は消えている。
     final layer = tester.widget<PolygonLayer>(find.byType(PolygonLayer));
     expect(layer.polygons, hasLength(1));
-    expect(layer.polygons.single.borderColor, Colors.blue);
+    expect(layer.polygons.single.borderColor, selfColor);
   });
 
   testWidgets('弾かれた後に新しいドラッグを始めると、赤枠とエラーは消える', (tester) async {

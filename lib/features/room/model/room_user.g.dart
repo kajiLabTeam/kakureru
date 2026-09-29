@@ -22,6 +22,8 @@ _RoomUser _$RoomUserFromJson(Map<String, dynamic> json) => _RoomUser(
   becameDemonAt: (json['becameDemonAt'] as num?)?.toInt(),
   lastPhotoAt: (json['lastPhotoAt'] as num?)?.toInt(),
   joinedAt: (json['joinedAt'] as num?)?.toInt() ?? 0,
+  online: json['online'] as bool?,
+  leftAt: (json['leftAt'] as num?)?.toInt(),
 );
 
 Map<String, dynamic> _$RoomUserToJson(_RoomUser instance) => <String, dynamic>{
@@ -34,6 +36,8 @@ Map<String, dynamic> _$RoomUserToJson(_RoomUser instance) => <String, dynamic>{
   'becameDemonAt': instance.becameDemonAt,
   'lastPhotoAt': instance.lastPhotoAt,
   'joinedAt': instance.joinedAt,
+  'online': instance.online,
+  'leftAt': instance.leftAt,
 };
 
 const _$UserRoleEnumMap = {

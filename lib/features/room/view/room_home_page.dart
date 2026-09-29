@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/features/room/player_name_validation.dart';
 import 'package:kakureru/features/room/room_code_validation.dart';
 import 'package:kakureru/features/room/room_create_error.dart';
 import 'package:kakureru/features/room/room_join_error.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
+import 'package:kakureru/features/room/view/game/game_tone_theme.dart';
 import 'package:kakureru/features/room/view/room_waiting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
@@ -87,127 +88,129 @@ class RoomHomePage extends HookConsumerWidget {
       }
     });
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('かくれんぼ')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            TextField(
-              controller: nameController,
-              maxLength: playerNameMaxLength,
-              onChanged: (_) => hasTouchedName.value = true,
-              decoration: InputDecoration(
-                labelText: '名前',
-                errorText: _nameErrorMessage(showNameError),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                border: Border.all(color: appFaintBorder, width: 2),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'ホストとして',
-                    style: TextStyle(fontSize: 12, color: appMuted),
+    // ゲーム画面と同じトーン(生成りの地・白いカード・丸い黒ボタン)で包む。
+    return Theme(
+      data: buildGameToneTheme(Theme.of(context)),
+      child: Scaffold(
+        appBar: AppBar(title: const Text('kakureru')),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              GameToneCard(
+                title: 'なまえ',
+                child: TextField(
+                  controller: nameController,
+                  maxLength: playerNameMaxLength,
+                  onChanged: (_) => hasTouchedName.value = true,
+                  decoration: InputDecoration(
+                    hintText: '名前を入力',
+                    errorText: _nameErrorMessage(showNameError),
                   ),
-                  const SizedBox(height: 8),
-                  FilledButton(
-                    onPressed: state.isLoading || nameError != null
-                        ? null
-                        : () {
-                            isCreating.value = true;
-                            ref
-                                .read(roomViewModelProvider.notifier)
-                                .createRoom(nameController.text);
-                          },
-                    child: isCreating.value
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('ルームを作る'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                border: Border.all(color: appFaintBorder, width: 2),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'ルームコードで参加',
-                    style: TextStyle(fontSize: 12, color: appMuted),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: codeController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(roomCodeLength),
-                    ],
-                    onChanged: (_) => hasTouchedCode.value = true,
-                    decoration: InputDecoration(
-                      labelText: 'ルームコード($roomCodeLength桁)',
-                      errorText: _codeErrorMessage(showCodeError),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed:
-                        state.isLoading ||
-                            nameError != null ||
-                            codeError != null
-                        ? null
-                        : () {
-                            isJoining.value = true;
-                            ref
-                                .read(roomViewModelProvider.notifier)
-                                .joinRoom(
-                                  codeController.text,
-                                  nameController.text,
-                                );
-                          },
-                    child: isJoining.value
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('ルームに参加'),
-                  ),
-                ],
-              ),
-            ),
-            if (state.hasError)
-              Padding(
-                padding: const EdgeInsets.only(top: 24),
-                child: Text(
-                  _actionErrorMessage(state.error),
-                  style: const TextStyle(color: Color(0xFFE5484D)),
                 ),
               ),
-          ],
+              const SizedBox(height: 12),
+              GameToneCard(
+                title: 'ホストとして',
+                child: FilledButton(
+                  onPressed: state.isLoading || nameError != null
+                      ? null
+                      : () {
+                          isCreating.value = true;
+                          ref
+                              .read(roomViewModelProvider.notifier)
+                              .createRoom(nameController.text);
+                        },
+                  child: isCreating.value
+                      ? const _ButtonSpinner()
+                      : const Text('ルームを作る'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              GameToneCard(
+                title: 'ルームコードで参加',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      controller: codeController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(roomCodeLength),
+                      ],
+                      onChanged: (_) => hasTouchedCode.value = true,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 8,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'ルームコード($roomCodeLength桁)',
+                        hintStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.normal,
+                          letterSpacing: 0,
+                          color: gameFaint,
+                        ),
+                        errorText: _codeErrorMessage(showCodeError),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // 以前は灰色の枠線ボタンで、押せる状態でも押せないように
+                    // 見えていた。「ルームを作る」と同じ塗りボタンにし、
+                    // 押せない間だけテーマの無効色(灰)になるようにする。
+                    FilledButton(
+                      onPressed:
+                          state.isLoading ||
+                              nameError != null ||
+                              codeError != null
+                          ? null
+                          : () {
+                              isJoining.value = true;
+                              ref
+                                  .read(roomViewModelProvider.notifier)
+                                  .joinRoom(
+                                    codeController.text,
+                                    nameController.text,
+                                  );
+                            },
+                      child: isJoining.value
+                          ? const _ButtonSpinner()
+                          : const Text('ルームに参加'),
+                    ),
+                  ],
+                ),
+              ),
+              if (state.hasError)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Text(
+                    _actionErrorMessage(state.error),
+                    style: const TextStyle(
+                      color: gameNewBadge,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// 送信中に塗りボタンの中へ出す白いスピナー。
+class _ButtonSpinner extends StatelessWidget {
+  const _ButtonSpinner();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 20,
+      height: 20,
+      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
     );
   }
 }

@@ -65,6 +65,9 @@ abstract class Room with _$Room {
       pendingDemonUid: meta['pendingDemonUid'] as String?,
       demonRevokeUid: meta['demonRevokeUid'] as String?,
       setting: RoomSetting.fromMap(settingRaw),
+      // 退出した人のデータもRTDBには残す(RoomRepository.leaveRoom参照)が、
+      // 画面・判定上の参加者からは外す。以前は退出でノードごと消えていた
+      // ので、人数・離脱通知・地図の表示対象はこれで従来どおりになる。
       users: usersRaw.entries
           .map(
             (e) => RoomUser.fromMap(
@@ -72,6 +75,7 @@ abstract class Room with _$Room {
               e.value as Map<dynamic, dynamic>,
             ),
           )
+          .where((user) => !user.hasLeft)
           .toList(),
     );
   }

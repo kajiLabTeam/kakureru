@@ -45,7 +45,7 @@ void main() {
       const ProviderScope(child: MaterialApp(home: RoomHomePage())),
     );
 
-    expect(find.text('かくれんぼ'), findsOneWidget);
+    expect(find.text('kakureru'), findsOneWidget);
     expect(find.text('ルームを作る'), findsOneWidget);
     expect(find.text('ルームに参加'), findsOneWidget);
   });
@@ -61,8 +61,8 @@ void main() {
     final createButton = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'ルームを作る'),
     );
-    final joinButton = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'ルームに参加'),
+    final joinButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'ルームに参加'),
     );
     expect(createButton.onPressed, isNull);
     expect(joinButton.onPressed, isNull);
@@ -80,8 +80,8 @@ void main() {
     final createButton = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'ルームを作る'),
     );
-    final joinButton = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'ルームに参加'),
+    final joinButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'ルームに参加'),
     );
     expect(createButton.onPressed, isNotNull);
     // 参加にはルームコード(4桁)も要るので、名前だけではまだ押せない。
@@ -143,11 +143,13 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('ルームを作る'), findsNothing);
 
+    // 作成ボタンは中身がスピナーに変わっているので、文言でなく
+    // 「参加ではない方」の塗りボタンとして取る。
     final createButtonWhileLoading = tester.widget<FilledButton>(
-      find.byType(FilledButton),
+      find.byType(FilledButton).first,
     );
-    final joinButtonWhileLoading = tester.widget<OutlinedButton>(
-      find.byType(OutlinedButton),
+    final joinButtonWhileLoading = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'ルームに参加'),
     );
     expect(createButtonWhileLoading.onPressed, isNull);
     expect(joinButtonWhileLoading.onPressed, isNull);
@@ -180,7 +182,7 @@ void main() {
     await tester.enterText(find.byType(TextField).last, '1234');
     await tester.pump();
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'ルームに参加'));
+    await tester.tap(find.widgetWithText(FilledButton, 'ルームに参加'));
     await tester.pump();
 
     expect(model.joinCallCount, 1);

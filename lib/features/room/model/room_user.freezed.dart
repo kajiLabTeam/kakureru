@@ -15,7 +15,10 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$RoomUser {
 
- String get id; String get displayName; bool get isHost;@JsonKey(unknownEnumValue: UserRole.fugitive) UserRole get role; double? get pressureOffset; bool? get pressureSensorAvailable; int? get becameDemonAt; int? get lastPhotoAt; int get joinedAt;
+ String get id; String get displayName; bool get isHost;@JsonKey(unknownEnumValue: UserRole.fugitive) UserRole get role; double? get pressureOffset; bool? get pressureSensorAvailable; int? get becameDemonAt; int? get lastPhotoAt; int get joinedAt;/// 退出したら`false`になる。未設定(この項目ができる前のデータ)は
+/// 参加中とみなす。
+ bool? get online;/// 退出した時刻(サーバー時刻のミリ秒)。
+ int? get leftAt;
 /// Create a copy of RoomUser
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +31,16 @@ $RoomUserCopyWith<RoomUser> get copyWith => _$RoomUserCopyWithImpl<RoomUser>(thi
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomUser&&(identical(other.id, id) || other.id == id)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.isHost, isHost) || other.isHost == isHost)&&(identical(other.role, role) || other.role == role)&&(identical(other.pressureOffset, pressureOffset) || other.pressureOffset == pressureOffset)&&(identical(other.pressureSensorAvailable, pressureSensorAvailable) || other.pressureSensorAvailable == pressureSensorAvailable)&&(identical(other.becameDemonAt, becameDemonAt) || other.becameDemonAt == becameDemonAt)&&(identical(other.lastPhotoAt, lastPhotoAt) || other.lastPhotoAt == lastPhotoAt)&&(identical(other.joinedAt, joinedAt) || other.joinedAt == joinedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomUser&&(identical(other.id, id) || other.id == id)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.isHost, isHost) || other.isHost == isHost)&&(identical(other.role, role) || other.role == role)&&(identical(other.pressureOffset, pressureOffset) || other.pressureOffset == pressureOffset)&&(identical(other.pressureSensorAvailable, pressureSensorAvailable) || other.pressureSensorAvailable == pressureSensorAvailable)&&(identical(other.becameDemonAt, becameDemonAt) || other.becameDemonAt == becameDemonAt)&&(identical(other.lastPhotoAt, lastPhotoAt) || other.lastPhotoAt == lastPhotoAt)&&(identical(other.joinedAt, joinedAt) || other.joinedAt == joinedAt)&&(identical(other.online, online) || other.online == online)&&(identical(other.leftAt, leftAt) || other.leftAt == leftAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,displayName,isHost,role,pressureOffset,pressureSensorAvailable,becameDemonAt,lastPhotoAt,joinedAt);
+int get hashCode => Object.hash(runtimeType,id,displayName,isHost,role,pressureOffset,pressureSensorAvailable,becameDemonAt,lastPhotoAt,joinedAt,online,leftAt);
 
 @override
 String toString() {
-  return 'RoomUser(id: $id, displayName: $displayName, isHost: $isHost, role: $role, pressureOffset: $pressureOffset, pressureSensorAvailable: $pressureSensorAvailable, becameDemonAt: $becameDemonAt, lastPhotoAt: $lastPhotoAt, joinedAt: $joinedAt)';
+  return 'RoomUser(id: $id, displayName: $displayName, isHost: $isHost, role: $role, pressureOffset: $pressureOffset, pressureSensorAvailable: $pressureSensorAvailable, becameDemonAt: $becameDemonAt, lastPhotoAt: $lastPhotoAt, joinedAt: $joinedAt, online: $online, leftAt: $leftAt)';
 }
 
 
@@ -48,7 +51,7 @@ abstract mixin class $RoomUserCopyWith<$Res>  {
   factory $RoomUserCopyWith(RoomUser value, $Res Function(RoomUser) _then) = _$RoomUserCopyWithImpl;
 @useResult
 $Res call({
- String id, String displayName, bool isHost,@JsonKey(unknownEnumValue: UserRole.fugitive) UserRole role, double? pressureOffset, bool? pressureSensorAvailable, int? becameDemonAt, int? lastPhotoAt, int joinedAt
+ String id, String displayName, bool isHost,@JsonKey(unknownEnumValue: UserRole.fugitive) UserRole role, double? pressureOffset, bool? pressureSensorAvailable, int? becameDemonAt, int? lastPhotoAt, int joinedAt, bool? online, int? leftAt
 });
 
 
@@ -65,7 +68,7 @@ class _$RoomUserCopyWithImpl<$Res>
 
 /// Create a copy of RoomUser
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? displayName = null,Object? isHost = null,Object? role = null,Object? pressureOffset = freezed,Object? pressureSensorAvailable = freezed,Object? becameDemonAt = freezed,Object? lastPhotoAt = freezed,Object? joinedAt = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? displayName = null,Object? isHost = null,Object? role = null,Object? pressureOffset = freezed,Object? pressureSensorAvailable = freezed,Object? becameDemonAt = freezed,Object? lastPhotoAt = freezed,Object? joinedAt = null,Object? online = freezed,Object? leftAt = freezed,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,displayName: null == displayName ? _self.displayName : displayName // ignore: cast_nullable_to_non_nullable
@@ -76,7 +79,9 @@ as double?,pressureSensorAvailable: freezed == pressureSensorAvailable ? _self.p
 as bool?,becameDemonAt: freezed == becameDemonAt ? _self.becameDemonAt : becameDemonAt // ignore: cast_nullable_to_non_nullable
 as int?,lastPhotoAt: freezed == lastPhotoAt ? _self.lastPhotoAt : lastPhotoAt // ignore: cast_nullable_to_non_nullable
 as int?,joinedAt: null == joinedAt ? _self.joinedAt : joinedAt // ignore: cast_nullable_to_non_nullable
-as int,
+as int,online: freezed == online ? _self.online : online // ignore: cast_nullable_to_non_nullable
+as bool?,leftAt: freezed == leftAt ? _self.leftAt : leftAt // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
@@ -161,10 +166,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String displayName,  bool isHost, @JsonKey(unknownEnumValue: UserRole.fugitive)  UserRole role,  double? pressureOffset,  bool? pressureSensorAvailable,  int? becameDemonAt,  int? lastPhotoAt,  int joinedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String displayName,  bool isHost, @JsonKey(unknownEnumValue: UserRole.fugitive)  UserRole role,  double? pressureOffset,  bool? pressureSensorAvailable,  int? becameDemonAt,  int? lastPhotoAt,  int joinedAt,  bool? online,  int? leftAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _RoomUser() when $default != null:
-return $default(_that.id,_that.displayName,_that.isHost,_that.role,_that.pressureOffset,_that.pressureSensorAvailable,_that.becameDemonAt,_that.lastPhotoAt,_that.joinedAt);case _:
+return $default(_that.id,_that.displayName,_that.isHost,_that.role,_that.pressureOffset,_that.pressureSensorAvailable,_that.becameDemonAt,_that.lastPhotoAt,_that.joinedAt,_that.online,_that.leftAt);case _:
   return orElse();
 
 }
@@ -182,10 +187,10 @@ return $default(_that.id,_that.displayName,_that.isHost,_that.role,_that.pressur
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String displayName,  bool isHost, @JsonKey(unknownEnumValue: UserRole.fugitive)  UserRole role,  double? pressureOffset,  bool? pressureSensorAvailable,  int? becameDemonAt,  int? lastPhotoAt,  int joinedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String displayName,  bool isHost, @JsonKey(unknownEnumValue: UserRole.fugitive)  UserRole role,  double? pressureOffset,  bool? pressureSensorAvailable,  int? becameDemonAt,  int? lastPhotoAt,  int joinedAt,  bool? online,  int? leftAt)  $default,) {final _that = this;
 switch (_that) {
 case _RoomUser():
-return $default(_that.id,_that.displayName,_that.isHost,_that.role,_that.pressureOffset,_that.pressureSensorAvailable,_that.becameDemonAt,_that.lastPhotoAt,_that.joinedAt);case _:
+return $default(_that.id,_that.displayName,_that.isHost,_that.role,_that.pressureOffset,_that.pressureSensorAvailable,_that.becameDemonAt,_that.lastPhotoAt,_that.joinedAt,_that.online,_that.leftAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -202,10 +207,10 @@ return $default(_that.id,_that.displayName,_that.isHost,_that.role,_that.pressur
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String displayName,  bool isHost, @JsonKey(unknownEnumValue: UserRole.fugitive)  UserRole role,  double? pressureOffset,  bool? pressureSensorAvailable,  int? becameDemonAt,  int? lastPhotoAt,  int joinedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String displayName,  bool isHost, @JsonKey(unknownEnumValue: UserRole.fugitive)  UserRole role,  double? pressureOffset,  bool? pressureSensorAvailable,  int? becameDemonAt,  int? lastPhotoAt,  int joinedAt,  bool? online,  int? leftAt)?  $default,) {final _that = this;
 switch (_that) {
 case _RoomUser() when $default != null:
-return $default(_that.id,_that.displayName,_that.isHost,_that.role,_that.pressureOffset,_that.pressureSensorAvailable,_that.becameDemonAt,_that.lastPhotoAt,_that.joinedAt);case _:
+return $default(_that.id,_that.displayName,_that.isHost,_that.role,_that.pressureOffset,_that.pressureSensorAvailable,_that.becameDemonAt,_that.lastPhotoAt,_that.joinedAt,_that.online,_that.leftAt);case _:
   return null;
 
 }
@@ -217,7 +222,7 @@ return $default(_that.id,_that.displayName,_that.isHost,_that.role,_that.pressur
 @JsonSerializable()
 
 class _RoomUser extends RoomUser {
-  const _RoomUser({required this.id, this.displayName = '', this.isHost = false, @JsonKey(unknownEnumValue: UserRole.fugitive) this.role = UserRole.fugitive, this.pressureOffset, this.pressureSensorAvailable, this.becameDemonAt, this.lastPhotoAt, this.joinedAt = 0}): super._();
+  const _RoomUser({required this.id, this.displayName = '', this.isHost = false, @JsonKey(unknownEnumValue: UserRole.fugitive) this.role = UserRole.fugitive, this.pressureOffset, this.pressureSensorAvailable, this.becameDemonAt, this.lastPhotoAt, this.joinedAt = 0, this.online, this.leftAt}): super._();
   factory _RoomUser.fromJson(Map<String, dynamic> json) => _$RoomUserFromJson(json);
 
 @override final  String id;
@@ -229,6 +234,11 @@ class _RoomUser extends RoomUser {
 @override final  int? becameDemonAt;
 @override final  int? lastPhotoAt;
 @override@JsonKey() final  int joinedAt;
+/// 退出したら`false`になる。未設定(この項目ができる前のデータ)は
+/// 参加中とみなす。
+@override final  bool? online;
+/// 退出した時刻(サーバー時刻のミリ秒)。
+@override final  int? leftAt;
 
 /// Create a copy of RoomUser
 /// with the given fields replaced by the non-null parameter values.
@@ -243,16 +253,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomUser&&(identical(other.id, id) || other.id == id)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.isHost, isHost) || other.isHost == isHost)&&(identical(other.role, role) || other.role == role)&&(identical(other.pressureOffset, pressureOffset) || other.pressureOffset == pressureOffset)&&(identical(other.pressureSensorAvailable, pressureSensorAvailable) || other.pressureSensorAvailable == pressureSensorAvailable)&&(identical(other.becameDemonAt, becameDemonAt) || other.becameDemonAt == becameDemonAt)&&(identical(other.lastPhotoAt, lastPhotoAt) || other.lastPhotoAt == lastPhotoAt)&&(identical(other.joinedAt, joinedAt) || other.joinedAt == joinedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomUser&&(identical(other.id, id) || other.id == id)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.isHost, isHost) || other.isHost == isHost)&&(identical(other.role, role) || other.role == role)&&(identical(other.pressureOffset, pressureOffset) || other.pressureOffset == pressureOffset)&&(identical(other.pressureSensorAvailable, pressureSensorAvailable) || other.pressureSensorAvailable == pressureSensorAvailable)&&(identical(other.becameDemonAt, becameDemonAt) || other.becameDemonAt == becameDemonAt)&&(identical(other.lastPhotoAt, lastPhotoAt) || other.lastPhotoAt == lastPhotoAt)&&(identical(other.joinedAt, joinedAt) || other.joinedAt == joinedAt)&&(identical(other.online, online) || other.online == online)&&(identical(other.leftAt, leftAt) || other.leftAt == leftAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,displayName,isHost,role,pressureOffset,pressureSensorAvailable,becameDemonAt,lastPhotoAt,joinedAt);
+int get hashCode => Object.hash(runtimeType,id,displayName,isHost,role,pressureOffset,pressureSensorAvailable,becameDemonAt,lastPhotoAt,joinedAt,online,leftAt);
 
 @override
 String toString() {
-  return 'RoomUser(id: $id, displayName: $displayName, isHost: $isHost, role: $role, pressureOffset: $pressureOffset, pressureSensorAvailable: $pressureSensorAvailable, becameDemonAt: $becameDemonAt, lastPhotoAt: $lastPhotoAt, joinedAt: $joinedAt)';
+  return 'RoomUser(id: $id, displayName: $displayName, isHost: $isHost, role: $role, pressureOffset: $pressureOffset, pressureSensorAvailable: $pressureSensorAvailable, becameDemonAt: $becameDemonAt, lastPhotoAt: $lastPhotoAt, joinedAt: $joinedAt, online: $online, leftAt: $leftAt)';
 }
 
 
@@ -263,7 +273,7 @@ abstract mixin class _$RoomUserCopyWith<$Res> implements $RoomUserCopyWith<$Res>
   factory _$RoomUserCopyWith(_RoomUser value, $Res Function(_RoomUser) _then) = __$RoomUserCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String displayName, bool isHost,@JsonKey(unknownEnumValue: UserRole.fugitive) UserRole role, double? pressureOffset, bool? pressureSensorAvailable, int? becameDemonAt, int? lastPhotoAt, int joinedAt
+ String id, String displayName, bool isHost,@JsonKey(unknownEnumValue: UserRole.fugitive) UserRole role, double? pressureOffset, bool? pressureSensorAvailable, int? becameDemonAt, int? lastPhotoAt, int joinedAt, bool? online, int? leftAt
 });
 
 
@@ -280,7 +290,7 @@ class __$RoomUserCopyWithImpl<$Res>
 
 /// Create a copy of RoomUser
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? displayName = null,Object? isHost = null,Object? role = null,Object? pressureOffset = freezed,Object? pressureSensorAvailable = freezed,Object? becameDemonAt = freezed,Object? lastPhotoAt = freezed,Object? joinedAt = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? displayName = null,Object? isHost = null,Object? role = null,Object? pressureOffset = freezed,Object? pressureSensorAvailable = freezed,Object? becameDemonAt = freezed,Object? lastPhotoAt = freezed,Object? joinedAt = null,Object? online = freezed,Object? leftAt = freezed,}) {
   return _then(_RoomUser(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,displayName: null == displayName ? _self.displayName : displayName // ignore: cast_nullable_to_non_nullable
@@ -291,7 +301,9 @@ as double?,pressureSensorAvailable: freezed == pressureSensorAvailable ? _self.p
 as bool?,becameDemonAt: freezed == becameDemonAt ? _self.becameDemonAt : becameDemonAt // ignore: cast_nullable_to_non_nullable
 as int?,lastPhotoAt: freezed == lastPhotoAt ? _self.lastPhotoAt : lastPhotoAt // ignore: cast_nullable_to_non_nullable
 as int?,joinedAt: null == joinedAt ? _self.joinedAt : joinedAt // ignore: cast_nullable_to_non_nullable
-as int,
+as int,online: freezed == online ? _self.online : online // ignore: cast_nullable_to_non_nullable
+as bool?,leftAt: freezed == leftAt ? _self.leftAt : leftAt // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 

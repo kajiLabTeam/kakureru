@@ -213,8 +213,9 @@ class GamePage extends HookConsumerWidget {
     // ゲーム画面に滞在している間だけ、位置情報・気圧・Wi-Fi・BLEを動かす。
     useGameSession(ref, roomId: roomId, myUid: myUid);
 
-    // 撮影プロンプトのタイマー。間隔はsetting/photoIntervalSec、前回の撮影
-    // 時刻はusers/{uid}/lastPhotoAt(アプリ再起動をまたいで復元するため)。
+    // 撮影プロンプトのタイマー。鬼の放出(meta/releasedAt)から
+    // setting/photoIntervalSecたった時点を1回目とし、以後その間隔ごとの
+    // スロットで、今のスロットに撮ったか(users/{uid}/lastPhotoAt)を見る。
     // PHOTO_API_BASE_URL未設定の環境では機能を無効化するだけで、
     // タイマー自体は動かしたままにしても実害は無いためフックは常に呼ぶ
     // (呼び出しを条件分岐するとhooksの呼び出し順が崩れるため)。
@@ -224,6 +225,8 @@ class GamePage extends HookConsumerWidget {
       roomId: roomId,
       myUid: myUid,
       intervalSec: room?.setting.photoIntervalSec ?? 300,
+      releasedAt: room?.releasedAt,
+      serverTimeOffsetMillis: offset,
       lastPhotoAt: myUid == null
           ? null
           : findUser(room?.users ?? const [], myUid)?.lastPhotoAt,
@@ -619,30 +622,12 @@ class GamePage extends HookConsumerWidget {
                         alert: outsideAreaAlert,
                         // 偽プレイヤーのピンにも名前と役割色を出すため、
                         // 地図には表示用の一覧を渡す(issue #67)。
-                        map: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: GameLocationMap(
-                                locations: visibleLocations,
-                                users: displayUsers,
-                                myUid: myUid,
-                                cachedPosition: cachedPosition.value,
-                                gameArea: room.setting.gameArea,
-                              ),
-                            ),
-                            // 逃走者のピンは実際の位置そのものではない、と
-                            // 鬼に断っておく(モック02)。正確な点だと思って
-                            // 探すと見つからず、不具合と区別が付かないため。
-                            if (myRole == UserRole.demon)
-                              const Positioned(
-                                left: 12,
-                                bottom: 10,
-                                child: _MapCaption(
-                                  '逃走者はマス目のどこかにいます'
-                                  '（正確な点ではありません）',
-                                ),
-                              ),
-                          ],
+                        map: GameLocationMap(
+                          locations: visibleLocations,
+                          users: displayUsers,
+                          myUid: myUid,
+                          cachedPosition: cachedPosition.value,
+                          gameArea: room.setting.gameArea,
                         ),
                       ),
                     ),
@@ -820,28 +805,6 @@ UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
     if (location.uid == uid) return location;
   }
   return null;
-}
-
-/// 地図の左下に重ねる小さな注記(モック02)。
-class _MapCaption extends StatelessWidget {
-  const _MapCaption(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 10, color: gameInkSoft),
-      ),
-    );
-  }
 }
 
 /// 選んだ相手1人ぶんの手がかりカード(モックC1〜C5)。

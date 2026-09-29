@@ -38,6 +38,8 @@ rooms/
         lastPhotoAt
         joinedAt
         fcmToken
+        online            false なら退出済み。未設定(古いデータ)は参加中扱い。下の「退出してもデータは消さない」参照
+        leftAt            退出した時刻(ServerValue.timestamp)。入り直すと消える
     locations/
       {uid}/              高頻度更新。users と分離する
         lat
@@ -69,6 +71,7 @@ rooms/
         type                "game_started" | "released" | "catch" | "became_demon" | "game_ended" | "photo_taken"
         at                  ServerValue.timestamp
         uid                 出来事の主体のuid
+        displayName         記録した時点の uid の表示名。users/{uid} が後から欠けても誰だったか辿れるようにする
         targetUid           相手のuid(無ければ省略)
         lat / lng           位置(あれば)
         accuracy            GPSの精度(m、あれば)
@@ -126,6 +129,23 @@ RTDBの `.read`/`.write` 権限は、**アクセス先のパス自身か、そ�
 そのため `RoomRepository.finishRoom` は `meta/status` を `"FINISHED"` にし `meta/endedAt` を記録するだけで、`users` / `setting` / それ以外の `meta` / `roomCodes` の実データは削除しない。これらの削除は **Phase 2 の `finishGame` Cloud Function**（Admin SDK でルールをバイパスして全参加者分をまとめて消せる）に任せる。
 
 **参加時のガード**: 残り続けるコードで終わった部屋に入ってしまわないよう、`RoomRepository.joinRoom` は `roomCodes/{code}` を引いた後に `rooms/{roomId}/meta` を読み、(1) `meta` が無い（ルームだけ手動削除された等）なら `notFound`、(2) そのルームが終了済みなら `finished` として参加させない。終了したかどうかの判定は画面側と同じ `isGameOver`（`status` が `"FINISHED"` / `endsAt` を過ぎた / `PLAYING` 中に逃走者が0人）に任せる——判定をここで書き直すと、片方だけ条件が増えたときに「画面では終わっているのに参加できる」ズレが生まれるため。`finishRoom` はまだどこからも呼ばれておらず、遊び終えた部屋は `status` が `"PLAYING"` のままなので、実際に効くのは残り2つ（時間切れ・全員捕まった）である。逃走者の有無を見るために `PLAYING` のときだけ `rooms/{roomId}/users` も読む。なおこのガードは完全な保証ではない: 読み取りから `users/{uid}` の書き込みまでの間に最後の逃走者が捕まるレースは残る（`rooms/{roomId}` をまたぐ原子的な読み書きが上記の理由でできないため）。
+
+### 退出してもデータは消さない
+
+プレイテスト(roomCode 5189)で、`events` / `photos` には6人分のuidがあるのに `users` / `locations` にはホストしか残っていなかった。原因は `RoomRepository.leaveRoom` が「ホームに戻る」・戻る操作・待機画面の破棄のたびに `users/{uid}` と `locations/{uid}` を `remove()` していたこと。アプリを閉じただけの人は破棄処理が走らないので残り、同じ試合でも残る人と消える人が出た(4371は全員残っていた)。さらに、消えた後に届いた `pressureSensorAvailable` の書き込みで `users/{uid}` が「`pressureSensorAvailable: true` だけ」のノードとして復活していた。
+
+そのため現在は:
+
+- `leaveRoom` は `users/{uid}` に `online: false` と `leftAt` を `update()` するだけで、`users/{uid}` / `locations/{uid}` を削除しない。`onDisconnect` は使っていない(使うとしても削除ではなく `online: false` を書く形にする)
+- 画面側は `Room.fromMap` で `online == false` の人を参加者から除く。人数・結果画面・鬼の選出・「逃走者が残っているか」の判定から退出者が消える挙動は以前と同じ。入り直す(`joinRoom`)と `online: true` に戻り `leftAt` は消える
+- `users/{uid}` への書き込みは `createRoom` / `joinRoom` / `reportSensorAvailability` とも `update()` で行い、ノードごと置き換える `set()` を使わない(先に書かれた `pressureOffset` 等を消さないため)。例外は `createRoom` 失敗時のロールバックだけ
+- 退出者の `locations/{uid}`(最後の位置・Wi-Fiスキャン)は残る。消えないぶん古い値が残り続ける点に注意
+
+**ルームの掃除方針(未実装)**: 退出で消さない代わりに、**作成から7日以上たったルームを `rooms/{roomId}` ごと(と対応する `roomCodes/{code}` を)削除する**。個々の `users/{uid}` を消すことはしない。実装はPhase 2のCloud Functions(Admin SDK)かスクリプトで行う予定で、現時点では何も消えない。
+
+### オフライン永続化
+
+`main.dart` で `Firebase.initializeApp` の直後、他のFirebase利用より前に `enableDatabasePersistence`(`lib/core/utils/database_persistence.dart`)を1回だけ呼び、`setPersistenceEnabled(true)` にしている。通信が切れている間の書き込みは端末に溜まり、再接続時に送られる。二重呼び出しは関数内のフラグで防いでいる。
 
 **Phase 1 の間の既知の制約**: 削除処理が無いため、遊び終わったあとも `roomCodes/{code}` が残り続ける。4桁コードは9000通り(1000〜9999)しかないので、開発中に何度もルームを作り直していると枯渇しうる。Phase 2 実装までは、開発中に溜まった `roomCodes` / `rooms` を手動（Firebase Console）または簡単なクリーンアップスクリプトで消す運用が必要。
 
@@ -222,4 +242,5 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 - `released` / `game_ended` は全端末で同じ判定が回るため、重複を避けてホスト端末だけが書く。`at` は「ホスト端末が検知した時刻」で、バックグラウンド等で遅れうる。正確な予定時刻は `meta/releasedAt` / `meta/endsAt` を使うこと。ホストのアプリが閉じていると記録されない
 - `catch` の `lat`/`lng`/`accuracy` は、その時点で自分が最後に送った `locations/{uid}` の値。`pressure` は端末の最新の気圧(取れなければ `locations/{uid}/pressure`)
+- 各イベントには記録時点の `displayName` を入れる。呼び出し側が渡さなければ `users/{uid}/displayName` を読んで補い、読めなければ省く(イベント自体は記録する)
 - `meta/endedAt` は `finishRoom` がどこからも呼ばれていないため現状書かれない。終了時刻は `game_ended` イベントか `meta/endsAt`(全員捕獲で早期終了した場合は最後の `catch`)から求める
