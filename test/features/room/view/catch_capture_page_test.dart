@@ -17,7 +17,6 @@ Future<({List<String> calls})> _pump(
         isSending: isSending,
         canTakePhoto: true,
         onTakePhoto: () => calls.add('take'),
-        onSkip: () => calls.add('skip'),
       ),
     ),
   );
@@ -36,13 +35,12 @@ void main() {
       expect(result.calls, ['take']);
     });
 
-    testWidgets('送信中は「送信中…」と出し、撮影も「撮らずに続ける」も押せない', (tester) async {
+    testWidgets('送信中は「送信中…」と出し、撮影ボタンを押せない', (tester) async {
       final result = await _pump(tester, isSending: true);
 
       expect(find.text('送信中…'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       await tester.tap(find.byType(InkWell).first);
-      await tester.tap(find.text('撮らずに続ける'));
       expect(result.calls, isEmpty);
     });
 
@@ -52,6 +50,13 @@ void main() {
 
       expect(find.byType(LinearProgressIndicator), findsNothing);
       expect(find.textContaining('秒後にゲーム画面へもどります'), findsNothing);
+    });
+
+    testWidgets('「撮らずに続ける」ボタンは出さない', (tester) async {
+      await _pump(tester);
+
+      expect(find.text('撮らずに続ける'), findsNothing);
+      expect(find.byType(OutlinedButton), findsNothing);
     });
 
     testWidgets('確認画面(みんなに送る・撮り直す・送らない)は出さない', (tester) async {

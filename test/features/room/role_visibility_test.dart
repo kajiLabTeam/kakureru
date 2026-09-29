@@ -1,10 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/room/model/room.dart';
+import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 
 void main() {
   group('isRoleVisible', () {
+    test('既定の設定では、逃走者は鬼の放出と同時に鬼が見える', () {
+      final visible = isRoleVisible(
+        viewerRole: UserRole.fugitive,
+        targetRole: UserRole.demon,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: const RoomSetting().fugitiveInfoDelaySec,
+        nowMillis: 100000,
+      );
+      expect(visible, isTrue);
+    });
+
     const releasedAt = 100000;
     const fugitiveInfoDelaySec = 60;
 
@@ -358,6 +370,29 @@ void main() {
   });
 
   group('hiddenOpponentReason(逃走者視点)', () {
+    // 待ち時間が0秒(既定)なら「0秒経つと」とは言わない。
+    test('待ち時間0秒なら、鬼放出前は「放出されると表示」と案内する', () {
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.fugitive,
+        phase: GamePhase.beforeRelease,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: 0,
+        nowMillis: 0,
+      );
+      expect(reason, '鬼が放出されると表示されます');
+    });
+
+    test('待ち時間0秒なら、放出された瞬間から案内を出さない', () {
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.fugitive,
+        phase: GamePhase.released,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: 0,
+        nowMillis: 100000,
+      );
+      expect(reason, isNull);
+    });
+
     test('鬼放出前は、放出後の待ち時間を案内する', () {
       final reason = hiddenOpponentReason(
         viewerRole: UserRole.fugitive,

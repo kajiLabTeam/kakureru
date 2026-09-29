@@ -17,7 +17,7 @@ const _captureSubInk = Color(0xFFFFE0E0);
 
 /// 鬼が「捕まえた」を確定した直後の、記念写真の撮影画面(issue #140)。
 ///
-/// 撮らなくてもゲームは進む(「撮らずに続ける」で戻る)。時間切れで
+/// 撮らなくてもゲームは進む(端末の「戻る」で戻る)。時間切れで
 /// 勝手にゲーム画面へ戻すことはしない(撮る前に閉じてしまうため)。
 /// 撮った写真は確認画面を挟まずにそのまま全員へ送る(送る・送らない・
 /// 撮り直すを選ばせると、捕まえた直後の手間が増えるため)。
@@ -126,7 +126,6 @@ class CatchCapturePage extends HookConsumerWidget {
         isSending: isSending.value,
         canTakePhoto: isPhotoFeatureConfigured,
         onTakePhoto: () => unawaited(takeAndSend()),
-        onSkip: () => Navigator.of(context).pop(),
       ),
     );
   }
@@ -143,7 +142,6 @@ class CatchCaptureView extends StatelessWidget {
     required this.isSending,
     required this.canTakePhoto,
     required this.onTakePhoto,
-    required this.onSkip,
   });
 
   /// 捕まえた相手の名前。
@@ -163,9 +161,6 @@ class CatchCaptureView extends StatelessWidget {
 
   /// 「写真を撮る」。
   final VoidCallback onTakePhoto;
-
-  /// 「撮らずに続ける」。
-  final VoidCallback onSkip;
 
   @override
   Widget build(BuildContext context) {
@@ -254,23 +249,6 @@ class CatchCaptureView extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              SizedBox(
-                height: 52,
-                child: OutlinedButton(
-                  onPressed: isSending ? null : onSkip,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    '撮らずに続ける',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
             ],
           ),
         ),

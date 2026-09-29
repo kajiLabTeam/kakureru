@@ -24,7 +24,7 @@ rooms/
       releaseWaitSec
       gameDurationSec     鬼ごっこの時間（鬼放出後）。放出待ちの時間は含まない
       photoIntervalSec
-      fugitiveInfoDelaySec
+      fugitiveInfoDelaySec  鬼の放出後、逃走者が鬼の位置を見られるまでの秒数（既定0＝すぐ見える）
       senseDistanceRadiusM
       meetingPointLat
       meetingPointLng

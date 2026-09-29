@@ -9,8 +9,8 @@ import 'package:kakureru/features/room/model/room_user.dart';
 /// - 同じ役割同士は常に見える(チームメイトを隠す理由が無い)
 /// - 鬼→逃走者: releasedAt を過ぎたら(released フェーズ)見える
 /// - 逃走者→鬼: 鬼放出前(beforeRelease)は一切見えない(issue #10)、
-///   放出後も releasedAt + fugitiveInfoDelaySec(=最初の1分は鬼タイム)
-///   を過ぎるまで見えない
+///   放出後は releasedAt + fugitiveInfoDelaySec を過ぎたら見える
+///   (既定は0秒=放出されたらすぐ見える。以前は最初の1分を鬼タイムにしていた)
 ///
 /// Phase 1ではクライアント側の表示制御のみ(Phase 3でvisible/方式へ移行、
 /// docs/rtdb-schema.md参照)。
@@ -144,6 +144,7 @@ String? hiddenOpponentReason({
     case UserRole.fugitive:
       // 逃走者→鬼は、放出前に加えてfugitiveInfoDelaySecの間も見えない。
       if (phase == GamePhase.beforeRelease) {
+        if (fugitiveInfoDelaySec <= 0) return '鬼が放出されると表示されます';
         return '鬼の放出後、$fugitiveInfoDelaySec秒経つと表示されます';
       }
       if (releasedAt == null) return null;
