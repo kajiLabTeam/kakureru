@@ -50,7 +50,7 @@ List<PhotoGallerySection> buildPhotoGallerySections({
 /// セクション見出しの右側に出す補足文言。
 ///
 /// 現在のスロットなら「つぎの撮影まで M:SS」、過去のスロットなら
-/// 「N人ぶん」(そのスロットで写真を撮った人数=[photoCount])。
+/// 「N人分」(そのスロットで写真を撮った人数=[photoCount])。
 String photoGallerySectionSubtitle({
   required bool isCurrentSlot,
   required int photoCount,

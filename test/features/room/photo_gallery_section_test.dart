@@ -92,14 +92,14 @@ void main() {
       );
     });
 
-    test('過去のスロットは「N人ぶん」', () {
+    test('過去のスロットは「N人分」', () {
       expect(
         photoGallerySectionSubtitle(
           isCurrentSlot: false,
           photoCount: 4,
           remainingSec: 0,
         ),
-        '4人ぶん',
+        '4人分',
       );
     });
   });

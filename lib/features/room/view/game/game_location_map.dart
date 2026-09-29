@@ -290,9 +290,11 @@ class GameLocationMap extends HookWidget {
       height: markerHeight,
       // 役割アイコン(local_fire_department/directions_run)はlocation_pinと
       // 異なり下端に尖った先端が無い対称な形なので、アイコンの中心を実座標に
-      // 合わせる。location_pinへのフォールバック時は旧実装同様、先端を座標に
-      // 合わせるためtopCenterのままにする。
-      alignment: usesRoleIcon ? markerIconCenterAlignment : Alignment.topCenter,
+      // 合わせる。location_pinへのフォールバック時は、下端の先端を座標に
+      // 合わせる。
+      alignment: usesRoleIcon
+          ? markerIconCenterAlignment
+          : markerIconTipAlignment,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -342,18 +344,27 @@ const markerIconSize = 40.0;
 
 /// アイコンの中心を実座標に合わせるためのalignment。
 ///
-/// flutter_mapのMarker.alignmentは「マーカーwidget全体」の中のどの点を
-/// 実座標に合わせるかの指定で、`Alignment.center` はwidget全体
-/// ([markerWidth]×[markerHeight])の中心、つまりアイコンとラベルを
-/// 合わせた中心を座標に置く。マーカーの子はColumn[アイコン, ラベル]で
-/// 上詰めに並ぶため、アイコンの中心はwidget上端から
-/// [markerIconSize]/2 の位置にあり、`Alignment.center`のままだと
-/// アイコンは実座標より約8論理px北へずれる。
-/// alignment.y は widget中心を0・下端を1とする比なので、
-/// (アイコン中心 - widget中心) / (widget高さ/2) を指定して一致させる。
+/// flutter_map(v6以降)のMarker.alignmentは「実座標から見てマーカー
+/// widget全体をどちら側に置くか」の指定で、widget内のどの点を座標に
+/// 合わせるかとは**向きが逆**になる。`Alignment.topCenter` はwidget全体を
+/// 座標の上に置き(=widgetの下端中央が座標に来る)、`Alignment(0, y)` なら
+/// widget内で上端から `(1 - y) / 2 × 高さ` の点が座標に来る。
+///
+/// マーカーの子はColumn[アイコン, ラベル]で上詰めに並ぶため、アイコンの
+/// 中心はwidget上端から [markerIconSize]/2 の位置にある。これを座標に
+/// 合わせるには y = (widget中心 - アイコン中心) / (widget高さ/2) を指定する。
+/// 以前は符号が逆で、アイコンが実座標より16論理px北に描かれていた。
 const markerIconCenterAlignment = Alignment(
   0,
-  (markerIconSize / 2 - markerHeight / 2) / (markerHeight / 2),
+  (markerHeight / 2 - markerIconSize / 2) / (markerHeight / 2),
+);
+
+/// location_pin(下端が尖った先端)の先端を実座標に合わせるためのalignment。
+/// 考え方は [markerIconCenterAlignment] と同じで、アイコンの下端
+/// (widget上端から [markerIconSize])を座標に合わせる。
+const markerIconTipAlignment = Alignment(
+  0,
+  (markerHeight / 2 - markerIconSize) / (markerHeight / 2),
 );
 
 /// GPSピンに表示するラベルテキストを返す(issue #13、役割表記はissue #42)。
@@ -436,7 +447,8 @@ latlong.LatLng lerpLatLng(latlong.LatLng from, latlong.LatLng to, double t) {
 /// 位置は4秒ごとにしか更新されないため、補間しないと走っている人の
 /// ピンが1回で10〜20m跳ぶ。補間するのは描画位置だけで、渡される
 /// [Marker.point] (実座標)そのものは変えない。重なったピンをずらす
-/// ときも同じで、見た目をずらすだけにしている(issue #123)。
+/// ときも同じで、見た目をずらすだけにしている(issue #123)。ずらした
+/// ピンには、本当の位置の点とそこへの線を添える。
 ///
 /// 補間の途中経過はこのウィジェットが消えたら一緒に消えてよい一時状態
 /// なので、hooksで持つ(AGENTS.mdの規約)。
@@ -510,27 +522,81 @@ class AnimatedMarkerLayer extends HookWidget {
             for (final point in points) camera.latLngToScreenOffset(point),
           ]);
 
-    return MarkerLayer(
-      markers: [
-        for (var i = 0; i < markers.length; i++)
-          Marker(
-            key: markers[i].marker.key,
-            point: points[i],
-            width: markers[i].marker.width,
-            height: markers[i].marker.height,
-            alignment: markers[i].marker.alignment,
-            rotate: markers[i].marker.rotate,
-            child: shifts[i] == Offset.zero
-                ? markers[i].marker.child
-                : Transform.translate(
-                    offset: shifts[i],
-                    child: markers[i].marker.child,
-                  ),
+    // ずらし幅は画面ピクセルで固定なので、エリア全体を映すくらい引いた
+    // 地図では100m前後になり、誰のピンも本当の位置に無い状態になる。
+    // ずらしたピンには本当の位置に点を打ち、ピンからそこへ線を引いて、
+    // どこにいるのかを読み違えないようにする。地図は回転しない
+    // (gameMapInteractionOptions)ので、画面上のずらし量をそのまま足した
+    // 点がずらした後のアイコンの中心になる。
+    final shiftedIndexes = [
+      for (var i = 0; i < markers.length; i++)
+        if (shifts[i] != Offset.zero) i,
+    ];
+
+    return Stack(
+      children: [
+        if (camera != null && shiftedIndexes.isNotEmpty) ...[
+          PolylineLayer(
+            polylines: [
+              for (final i in shiftedIndexes)
+                Polyline(
+                  points: [
+                    points[i],
+                    camera.screenOffsetToLatLng(
+                      camera.latLngToScreenOffset(points[i]) + shifts[i],
+                    ),
+                  ],
+                  strokeWidth: leaderLineWidth,
+                  color: leaderLineColor,
+                ),
+            ],
           ),
+          CircleLayer(
+            circles: [
+              for (final i in shiftedIndexes)
+                CircleMarker(
+                  point: points[i],
+                  radius: trueLocationDotRadius,
+                  color: leaderLineColor,
+                  borderColor: Colors.white,
+                  borderStrokeWidth: 1.5,
+                ),
+            ],
+          ),
+        ],
+        MarkerLayer(
+          markers: [
+            for (var i = 0; i < markers.length; i++)
+              Marker(
+                key: markers[i].marker.key,
+                point: points[i],
+                width: markers[i].marker.width,
+                height: markers[i].marker.height,
+                alignment: markers[i].marker.alignment,
+                rotate: markers[i].marker.rotate,
+                child: shifts[i] == Offset.zero
+                    ? markers[i].marker.child
+                    : Transform.translate(
+                        offset: shifts[i],
+                        child: markers[i].marker.child,
+                      ),
+              ),
+          ],
+        ),
       ],
     );
   }
 }
+
+/// ずらしたピンと本当の位置を結ぶ線、および本当の位置の点の色。
+/// 役割の色(赤=鬼・青=自分・緑=逃走者)と紛れないよう無彩色にする。
+const Color leaderLineColor = Color(0xCC424242);
+
+/// ずらしたピンと本当の位置を結ぶ線の太さ(論理px)。
+const double leaderLineWidth = 1.5;
+
+/// 本当の位置に打つ点の半径(論理px)。
+const double trueLocationDotRadius = 4;
 
 /// 画面上でピン同士がこれより近ければ「重なっている」とみなす距離(論理px)。
 /// アイコン同士がぶつかり始める距離にしている。
