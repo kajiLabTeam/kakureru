@@ -18,6 +18,7 @@ void main() {
     VoidCallback? onHelp,
     VoidCallback? onCalibrate,
     bool isCalibrating = false,
+    UserRole viewerRole = UserRole.demon,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -25,7 +26,11 @@ void main() {
           width: 328,
           child: ClueCard(
             name: 'たろう',
-            role: UserRole.demon,
+            // 鬼は逃走者を、逃走者は鬼を見る。
+            role: viewerRole == UserRole.demon
+                ? UserRole.fugitive
+                : UserRole.demon,
+            viewerRole: viewerRole,
             verdict: verdict,
             meter: meter,
             matchCount: matchCount,
@@ -195,18 +200,96 @@ void main() {
     });
   });
 
+  group('逃走者から見たとき (issue #135)', () {
+    const fugitive = UserRole.fugitive;
+
+    testWidgets('探す・追うではなく、鬼がどこにいるかを出す', (tester) async {
+      await tester.pumpWidget(target(viewerRole: fugitive));
+
+      expect(find.text('鬼がこのあたりにいるかも'), findsOneWidget);
+      expect(find.text('鬼は上の階にいるかも'), findsOneWidget);
+      // 見出しと傾向チップは役割によらず同じ。
+      expect(find.text('近いかも'), findsOneWidget);
+      expect(find.text('1階ぶんくらい 上かも'), findsOneWidget);
+      expect(find.text('近づいた'), findsOneWidget);
+      expect(find.textContaining('探して'), findsNothing);
+    });
+
+    testWidgets('手がかりがまだ無いときは、地図で鬼の位置を確かめるよう出す', (tester) async {
+      await tester.pumpWidget(
+        target(
+          viewerRole: fugitive,
+          verdict: ClueVerdict.unknown,
+          meter: null,
+          matchCount: 0,
+          trend: ClueTrend.unchanged,
+        ),
+      );
+
+      expect(find.text('同じWi-Fiが届いていません'), findsOneWidget);
+      expect(find.textContaining('地図のピンで鬼の位置を確かめて'), findsOneWidget);
+      expect(find.textContaining('目指して'), findsNothing);
+    });
+
+    testWidgets('高さが出せないときは「追えます」と言わない', (tester) async {
+      await tester.pumpWidget(
+        target(
+          viewerRole: fugitive,
+          heightStatus: ClueHeightStatus.unsupported,
+        ),
+      );
+      expect(find.text('上のメーターだけで距離が分かります'), findsOneWidget);
+
+      await tester.pumpWidget(
+        target(viewerRole: fugitive, heightStatus: ClueHeightStatus.waiting),
+      );
+      expect(find.text('届くまでは上のメーターで距離が分かります'), findsOneWidget);
+      expect(find.textContaining('追えます'), findsNothing);
+    });
+
+    test('一言は状況だけで、どう動くかは書かない', () {
+      String hint(ClueVerdict verdict, ClueTrend trend) =>
+          clueVerdictHint(verdict, trend, viewerRole: fugitive);
+
+      expect(hint(ClueVerdict.close, ClueTrend.closer), '鬼がこのあたりにいるかも');
+      expect(hint(ClueVerdict.far, ClueTrend.closer), '鬼が近づいてきている');
+      expect(hint(ClueVerdict.far, ClueTrend.farther), '鬼は離れていった');
+      expect(hint(ClueVerdict.far, ClueTrend.unchanged), '鬼との距離は変わらない');
+      expect(hint(ClueVerdict.unknown, ClueTrend.closer), '同じWi-Fiが届いていません');
+    });
+  });
+
   group('clueVerdictHint', () {
+    test('役割が分からないときは鬼と同じ文言にする', () {
+      expect(
+        clueVerdictHint(ClueVerdict.close, ClueTrend.closer, viewerRole: null),
+        'このあたりを探してみよう',
+      );
+    });
+
     test('遠いときは傾向ごとに一言を変える', () {
       expect(
-        clueVerdictHint(ClueVerdict.far, ClueTrend.closer),
+        clueVerdictHint(
+          ClueVerdict.far,
+          ClueTrend.closer,
+          viewerRole: UserRole.demon,
+        ),
         '方向は合っている。このまま進もう',
       );
       expect(
-        clueVerdictHint(ClueVerdict.far, ClueTrend.farther),
+        clueVerdictHint(
+          ClueVerdict.far,
+          ClueTrend.farther,
+          viewerRole: UserRole.demon,
+        ),
         '反対方向へ行ってみよう',
       );
       expect(
-        clueVerdictHint(ClueVerdict.far, ClueTrend.unchanged),
+        clueVerdictHint(
+          ClueVerdict.far,
+          ClueTrend.unchanged,
+          viewerRole: UserRole.demon,
+        ),
         '歩いて、近づくか確かめよう',
       );
     });

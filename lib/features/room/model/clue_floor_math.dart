@@ -7,6 +7,7 @@
 library;
 
 import 'package:kakureru/features/pressure/pressure_math.dart';
+import 'package:kakureru/features/room/model/room_user.dart';
 
 /// 1階ぶんとみなす気圧差(hPa)。暫定。
 const double hectoPascalPerFloor = 0.4;
@@ -43,8 +44,18 @@ String floorHeadline(int floors) {
   return '${floors.abs()}階ぶんくらい $directionかも';
 }
 
-/// 高さ欄の行動のすすめ(例: 「階段をのぼってみよう」)。
-String floorActionHint(int floors) {
+/// 高さ欄の見出しの下に添える一言(issue #135)。
+///
+/// 鬼([viewerRole]がnullのときも)には探すための行動のすすめ
+/// (例: 「階段をのぼってみよう」)を出す。逃走者には鬼がどこにいるかの
+/// 状況だけを伝え、どう動くかは書かない。逃げ方まで指示すると、同じ
+/// 情報でも逃走者が動きやすくなり、Wi-Fi・気圧で鬼の情報を増やして
+/// 対等にするというゲームの狙いに反するため。
+String floorActionHint(int floors, {required UserRole? viewerRole}) {
+  if (viewerRole == UserRole.fugitive) {
+    if (floors == 0) return '鬼は同じフロアにいるかも';
+    return floors > 0 ? '鬼は上の階にいるかも' : '鬼は下の階にいるかも';
+  }
   if (floors == 0) return 'このフロアを探してみよう';
   return floors > 0 ? '階段をのぼってみよう' : '階段をおりてみよう';
 }
