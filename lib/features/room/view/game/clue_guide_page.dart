@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 
@@ -7,11 +8,17 @@ import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 /// 初回はGamePageが自動で1回だけ開き、以後は手がかりカードの「?」から
 /// いつでも開ける(ヘッダーの「?」は使ってよい場所の一覧を開く)。
 /// 閉じる(「わかった」「戻る」)まで待つ`Future`を返す。
-Future<void> showClueGuide(BuildContext context) {
+///
+/// [viewerRole] は見ている人(自分)の役割で、説明の文言を出し分ける
+/// (issue #135)。nullなら鬼向けの文言を出す。
+Future<void> showClueGuide(
+  BuildContext context, {
+  required UserRole? viewerRole,
+}) {
   return Navigator.of(context).push<void>(
     MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => const ClueGuidePage(),
+      builder: (_) => ClueGuidePage(viewerRole: viewerRole),
     ),
   );
 }
@@ -21,7 +28,10 @@ Future<void> showClueGuide(BuildContext context) {
 /// 見た目だけの静的な画面で、状態は持たない。
 class ClueGuidePage extends StatelessWidget {
   /// 手がかりの見方の画面を作る。
-  const ClueGuidePage({super.key});
+  const ClueGuidePage({required this.viewerRole, super.key});
+
+  /// 見ている人(自分)の役割。nullなら鬼向けの文言を出す。
+  final UserRole? viewerRole;
 
   @override
   Widget build(BuildContext context) {
@@ -47,8 +57,8 @@ class ClueGuidePage extends StatelessWidget {
               ),
               Expanded(
                 child: ListView(
-                  children: const [
-                    _GuideCard(
+                  children: [
+                    const _GuideCard(
                       title: '1. バーが右にのびるほど近い',
                       visual: _SampleMeter(),
                       body:
@@ -56,24 +66,27 @@ class ClueGuidePage extends StatelessWidget {
                           '表しています。似ているほど、近くにいる可能性が高く'
                           'なります。',
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     _GuideCard(
                       title: '2. 歩きながら「近づいた」を見る',
-                      visual: _SampleTrendTags(),
-                      body:
-                          'いま進んでいる向きが合っているかが分かります。'
-                          '「離れた」が続いたら、反対方向へ行ってみてください。',
+                      visual: const _SampleTrendTags(),
+                      // 逃走者には状況だけを伝え、どう動くかは書かない
+                      // (clueVerdictHintと同じ方針。issue #135)。
+                      body: viewerRole == UserRole.fugitive
+                          ? '鬼が近づいているのか、離れているのかが分かります。'
+                          : 'いま進んでいる向きが合っているかが分かります。'
+                                '「離れた」が続いたら、反対方向へ行ってみてください。',
                     ),
-                    SizedBox(height: 12),
-                    _GuideCard(
+                    const SizedBox(height: 12),
+                    const _GuideCard(
                       title: '3. 高さは「階」で出ます',
                       visual: _SampleFloor(),
                       body:
                           '気圧から推定しています。ぴったりの階数ではないので、'
                           '目安として使ってください。',
                     ),
-                    SizedBox(height: 16),
-                    Text(
+                    const SizedBox(height: 16),
+                    const Text(
                       'どれも推定なので「〜かも」と出ます。\n'
                       'あとから、手がかりカードの ? でいつでも読み直せます。',
                       textAlign: TextAlign.center,

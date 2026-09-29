@@ -51,8 +51,28 @@ String clueVerdictLabel(ClueVerdict verdict) {
   }
 }
 
-/// 判定の下に添える一言。遠いときは傾向に応じて次の一歩を示す。
-String clueVerdictHint(ClueVerdict verdict, ClueTrend trend) {
+/// 判定の下に添える一言。
+///
+/// 鬼([viewerRole]がnullのときも)には、遠いときは傾向に応じて次の一歩を
+/// 示す。逃走者には鬼との距離の状況だけを伝え、どう動くかは書かない
+/// (理由は [floorActionHint] と同じ。issue #135)。
+String clueVerdictHint(
+  ClueVerdict verdict,
+  ClueTrend trend, {
+  required UserRole? viewerRole,
+}) {
+  if (verdict == ClueVerdict.unknown) return '同じWi-Fiが届いていません';
+  if (viewerRole == UserRole.fugitive) {
+    if (verdict == ClueVerdict.close) return '鬼がこのあたりにいるかも';
+    switch (trend) {
+      case ClueTrend.closer:
+        return '鬼が近づいてきている';
+      case ClueTrend.farther:
+        return '鬼は離れていった';
+      case ClueTrend.unchanged:
+        return '鬼との距離は変わらない';
+    }
+  }
   switch (verdict) {
     case ClueVerdict.close:
       return 'このあたりを探してみよう';
@@ -131,6 +151,7 @@ class ClueCard extends StatelessWidget {
   const ClueCard({
     required this.name,
     required this.role,
+    required this.viewerRole,
     required this.verdict,
     required this.meter,
     required this.matchCount,
@@ -148,6 +169,13 @@ class ClueCard extends StatelessWidget {
 
   /// 相手の役割。点やメーターの色に使う。
   final UserRole? role;
+
+  /// 見ている人(自分)の役割。一言の文言を鬼向け・逃走者向けで出し分ける
+  /// (issue #135)。相手の役割から逆算しない(鬼同士など、相手と自分の
+  /// 役割が逆とは限らないため)。nullなら鬼向けの文言を出す。
+  final UserRole? viewerRole;
+
+  bool get _viewerIsFugitive => viewerRole == UserRole.fugitive;
 
   /// 近さの判定。
   final ClueVerdict verdict;
@@ -215,9 +243,11 @@ class ClueCard extends StatelessWidget {
                       color: gameHint,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Text(
-                      '建物に近づくと手がかりが出ます。まずは地図のピンを目指してください。',
-                      style: TextStyle(
+                    child: Text(
+                      _viewerIsFugitive
+                          ? '近くに来ると手がかりが出ます。それまでは地図のピンで鬼の位置を確かめてください。'
+                          : '建物に近づくと手がかりが出ます。まずは地図のピンを目指してください。',
+                      style: const TextStyle(
                         fontSize: 11,
                         height: 1.6,
                         color: gameInkSoft,
@@ -337,7 +367,7 @@ class ClueCard extends StatelessWidget {
               ),
               const SizedBox(height: 1),
               Text(
-                clueVerdictHint(verdict, trend),
+                clueVerdictHint(verdict, trend, viewerRole: viewerRole),
                 style: const TextStyle(fontSize: 11, color: gameMuted),
               ),
             ],
@@ -445,7 +475,7 @@ class ClueCard extends StatelessWidget {
         return _heightNotice(
           icon: Icons.layers_clear_outlined,
           title: 'この端末では高さが分かりません',
-          subtitle: '上のメーターだけで追えます',
+          subtitle: _viewerIsFugitive ? '上のメーターだけで距離が分かります' : '上のメーターだけで追えます',
         );
       case ClueHeightStatus.checking:
         return _heightNotice(
@@ -457,7 +487,9 @@ class ClueCard extends StatelessWidget {
         return _heightNotice(
           icon: Icons.sync,
           title: '相手の高さがまだ届いていません',
-          subtitle: '届くまでは上のメーターで追えます',
+          subtitle: _viewerIsFugitive
+              ? '届くまでは上のメーターで距離が分かります'
+              : '届くまでは上のメーターで追えます',
         );
     }
   }
@@ -550,7 +582,7 @@ class ClueCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  floorActionHint(floors),
+                  floorActionHint(floors, viewerRole: viewerRole),
                   style: const TextStyle(fontSize: 11, color: gameMuted),
                 ),
                 const SizedBox(height: 3),

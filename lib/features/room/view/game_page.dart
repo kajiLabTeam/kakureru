@@ -177,7 +177,13 @@ class GamePage extends HookConsumerWidget {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (disposed || !context.mounted) return;
           unawaited(prefs.saveClueGuideSeen());
-          unawaited(showClueGuide(context));
+          // 開く時点のルームから自分の役割を引く(このeffectは初回に1度だけ
+          // 走るので、buildの時点の値を閉じ込めると古いことがある)。
+          final users = ref.read(roomStreamProvider(roomId)).value?.users;
+          final viewerRole = users == null
+              ? null
+              : roleOf(users, ref.read(myUidProvider));
+          unawaited(showClueGuide(context, viewerRole: viewerRole));
         });
       }
 
@@ -858,6 +864,7 @@ class _SelectedClueCard extends ConsumerWidget {
       builder: (context, trend) => ClueCard(
         name: findUser(users, uid)?.displayName ?? '',
         role: roleOf(users, uid),
+        viewerRole: roleOf(users, myUid),
         verdict: clueVerdictOf(level: levelFor(wifiEntries, uid), meter: meter),
         meter: meter,
         matchCount: countMatchingSignals(comparisons),
@@ -870,7 +877,9 @@ class _SelectedClueCard extends ConsumerWidget {
         opponentLowerHPa: vertical == null
             ? null
             : opponentLowerPressureHPaOf(vertical.deltaMeters),
-        onHelp: () => unawaited(showClueGuide(context)),
+        onHelp: () => unawaited(
+          showClueGuide(context, viewerRole: roleOf(users, myUid)),
+        ),
         onCalibrate: canCalibrate
             ? () {
                 final notifier = ref.read(pressureViewModelProvider.notifier);

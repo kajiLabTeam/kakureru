@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/pressure/pressure_math.dart';
 import 'package:kakureru/features/room/model/clue_floor_math.dart';
+import 'package:kakureru/features/room/model/room_user.dart';
 
 /// 手がかりカードの高さ欄(階数・文言)の計算のテスト。
 void main() {
@@ -65,10 +66,22 @@ void main() {
       expect(floorHeadline(-2), '2階ぶんくらい 下かも');
     });
 
-    test('行動のすすめ', () {
-      expect(floorActionHint(0), 'このフロアを探してみよう');
-      expect(floorActionHint(1), '階段をのぼってみよう');
-      expect(floorActionHint(-1), '階段をおりてみよう');
+    test('鬼には探すための行動のすすめを出す', () {
+      const demon = UserRole.demon;
+      expect(floorActionHint(0, viewerRole: demon), 'このフロアを探してみよう');
+      expect(floorActionHint(1, viewerRole: demon), '階段をのぼってみよう');
+      expect(floorActionHint(-1, viewerRole: demon), '階段をおりてみよう');
+    });
+
+    test('役割が分からないときは鬼と同じ文言にする', () {
+      expect(floorActionHint(1, viewerRole: null), '階段をのぼってみよう');
+    });
+
+    test('逃走者には鬼がどこにいるかだけを出す (issue #135)', () {
+      const fugitive = UserRole.fugitive;
+      expect(floorActionHint(0, viewerRole: fugitive), '鬼は同じフロアにいるかも');
+      expect(floorActionHint(2, viewerRole: fugitive), '鬼は上の階にいるかも');
+      expect(floorActionHint(-1, viewerRole: fugitive), '鬼は下の階にいるかも');
     });
 
     test('気圧の補足は小数1桁', () {

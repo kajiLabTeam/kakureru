@@ -86,28 +86,31 @@ void main() {
         // ガタつく(issue #29フォローアップ)。ClueCardやチップの見た目を
         // 変えたらここが落ちるので、hiddenOpponentCardMinHeightを合わせ直す。
         final clueHeights = <double>[];
-        for (final verdict in ClueVerdict.values) {
-          for (final heightStatus in ClueHeightStatus.values) {
-            await tester.pumpWidget(
-              _wrap(
-                SizedBox(
-                  width: 328,
-                  child: ClueCard(
-                    name: 'たろう',
-                    role: UserRole.demon,
-                    verdict: verdict,
-                    meter: 50,
-                    matchCount: 2,
-                    trend: ClueTrend.closer,
-                    heightStatus: heightStatus,
-                    opponentLowerHPa: 0.4,
-                    onHelp: () {},
-                    onCalibrate: () {},
+        for (final viewerRole in [UserRole.demon, UserRole.fugitive]) {
+          for (final verdict in ClueVerdict.values) {
+            for (final heightStatus in ClueHeightStatus.values) {
+              await tester.pumpWidget(
+                _wrap(
+                  SizedBox(
+                    width: 328,
+                    child: ClueCard(
+                      name: 'たろう',
+                      role: UserRole.demon,
+                      viewerRole: viewerRole,
+                      verdict: verdict,
+                      meter: 50,
+                      matchCount: 2,
+                      trend: ClueTrend.closer,
+                      heightStatus: heightStatus,
+                      opponentLowerHPa: 0.4,
+                      onHelp: () {},
+                      onCalibrate: () {},
+                    ),
                   ),
                 ),
-              ),
-            );
-            clueHeights.add(tester.getSize(find.byType(ClueCard)).height);
+              );
+              clueHeights.add(tester.getSize(find.byType(ClueCard)).height);
+            }
           }
         }
         await tester.pumpWidget(
