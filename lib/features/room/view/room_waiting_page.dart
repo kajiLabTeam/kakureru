@@ -676,6 +676,11 @@ class RoomWaitingPage extends HookConsumerWidget {
                       ),
                     ),
                   ),
+                // Android 15以降は画面がナビゲーションバーの下まで広がるので、
+                // 最下部の文字・ボタンがバーに潜らないよう、バーの高さぶん
+                // 空ける(issue #136)。他の画面のようにSafeAreaで包むと、
+                // 入れ子の深い参加者の行が1行80字に収まらなくなるため。
+                SizedBox(height: MediaQuery.paddingOf(context).bottom),
               ],
             );
           },

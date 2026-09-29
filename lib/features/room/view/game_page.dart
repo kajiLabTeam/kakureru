@@ -386,400 +386,420 @@ class GamePage extends HookConsumerWidget {
                 if (kDebugMode) DebugMockPlayersToggle(),
               ],
             ),
-            body: roomAsync.when(
-              data: (room) {
-                // now/phase/countdownSecはヘッダー(AppBar)側でも使うため
-                // build()の上のほうで計算済み。ここではroomがnon-nullに
-                // 確定した状態でそのまま使い回す。
-                final myRole = roleOf(room.users, myUid);
+            body: SafeArea(
+              // Android 15以降は画面がナビゲーションバーの下まで広がるので、
+              // 下端の文字・ボタンがバーに潜らないよう下だけ余白を取る
+              // (issue #136)。上端はAppBarが処理する。
+              top: false,
+              child: roomAsync.when(
+                data: (room) {
+                  // now/phase/countdownSecはヘッダー(AppBar)側でも使うため
+                  // build()の上のほうで計算済み。ここではroomがnon-nullに
+                  // 確定した状態でそのまま使い回す。
+                  final myRole = roleOf(room.users, myUid);
 
-                // 役割による表示制御(7/13のプレイテストで決まった非対称な可視性)。
-                // 自分は常に見える。相手は同role同士なら常に、異roleなら
-                // releasedAt(鬼→逃走者)/releasedAt+fugitiveInfoDelaySec
-                // (逃走者→鬼)を過ぎるまで見えない。地図・上下バー・Wi-Fi表示
-                // すべてにこれを適用する。
-                bool isVisibleToMe(String uid) {
-                  if (uid == myUid) return true;
-                  final targetRole = roleOf(room.users, uid);
-                  if (myRole == null || targetRole == null) return false;
-                  return isRoleVisible(
-                    viewerRole: myRole,
-                    targetRole: targetRole,
-                    releasedAt: room.releasedAt,
-                    fugitiveInfoDelaySec: room.setting.fugitiveInfoDelaySec,
-                    nowMillis: now,
-                  );
-                }
-
-                // デバッグ用の偽プレイヤー(issue #67)。表示用のリストに
-                // 「足すだけ」で、RTDB由来の値は書き換えないし、RTDBにも
-                // 一切書かない(他の参加者には影響しない)。kDebugModeが
-                // falseのリリースビルドでは、この分岐ごと落ちる
-                // (game_map_options.dartと同じ方針)。
-                var mockUsers = const <RoomUser>[];
-                var mockWifiEntries = const <WifiProximityEntry>[];
-                var mockVerticalPositions = const <RelativeVerticalPosition>[];
-                var mockLocations = const <UserLocation>[];
-                if (showMocks && myRole != null) {
-                  final center = debugMockCenterOf(
-                    locations: locationState.locations,
-                    myUid: myUid,
-                    fallbackLatitude:
-                        cachedPosition.value?.latitude ??
-                        fallbackMapCenter.latitude,
-                    fallbackLongitude:
-                        cachedPosition.value?.longitude ??
-                        fallbackMapCenter.longitude,
-                  );
-                  mockUsers = debugMockUsers(myRole: myRole);
-                  mockWifiEntries = debugMockWifiEntries();
-                  mockVerticalPositions = debugMockVerticalPositions();
-                  mockLocations = debugMockLocations(
-                    centerLatitude: center.latitude,
-                    centerLongitude: center.longitude,
-                  );
-                }
-                // 地図のピンのラベル・役割色と、詳細カードの名前は
-                // room.users(RTDB由来)から引くため、偽プレイヤーのぶんは
-                // ここで足した表示専用の一覧を渡す。可視性やBLEの判定には
-                // 使わない(そちらはRTDB由来のroom.usersのまま)。
-                final displayUsers = mockUsers.isEmpty
-                    ? room.users
-                    : [...room.users, ...mockUsers];
-
-                final visibleLocations = [
-                  ...locationState.locations.where(
-                    (location) => isVisibleToMe(location.uid),
-                  ),
-                  ...mockLocations,
-                ];
-                final visibleWifiEntries = [
-                  ...ref
-                      .watch(wifiProximityLevelsProvider(roomId))
-                      .where((entry) => isVisibleToMe(entry.uid)),
-                  ...mockWifiEntries,
-                ];
-                final rawNearestOpponentUid = ref.watch(
-                  nearestOpponentUidProvider(roomId),
-                );
-                final visibleNearestOpponentUid =
-                    rawNearestOpponentUid != null &&
-                        isVisibleToMe(rawNearestOpponentUid)
-                    ? rawNearestOpponentUid
-                    : null;
-                final visibleVerticalPositions = [
-                  ...ref
-                      .watch(relativeVerticalPositionsProvider(roomId))
-                      .where((position) => isVisibleToMe(position.uid)),
-                  ...mockVerticalPositions,
-                ];
-
-                // 「対象の役割」(自分と逆の役割)。BLEの至近距離検知、相手
-                // 選択チップ、「まだ見えない理由」の3つで使う。
-                final opponentRole = myRole == UserRole.demon
-                    ? UserRole.fugitive
-                    : UserRole.demon;
-
-                // 可視性ディレイでまだ見えていない相手がいるか
-                // (UI改修モック2a-04)。何も表示しないと不具合と区別が付かない
-                // ため、理由を明示するカードに切り替える。鬼放出前は鬼からも
-                // 逃走者が見えない(role_visibility.dart)ので、逃走者視点だけ
-                // でなく鬼視点でも出す(issue #30)。
-                final anyOpponentHiddenFromMe =
-                    myRole != null &&
-                    room.users.any(
-                      (u) => u.role == opponentRole && !isVisibleToMe(u.id),
+                  // 役割による表示制御(7/13のプレイテストで決まった非対称な可視性)。
+                  // 自分は常に見える。相手は同role同士なら常に、異roleなら
+                  // releasedAt(鬼→逃走者)/releasedAt+fugitiveInfoDelaySec
+                  // (逃走者→鬼)を過ぎるまで見えない。地図・上下バー・Wi-Fi表示
+                  // すべてにこれを適用する。
+                  bool isVisibleToMe(String uid) {
+                    if (uid == myUid) return true;
+                    final targetRole = roleOf(room.users, uid);
+                    if (myRole == null || targetRole == null) return false;
+                    return isRoleVisible(
+                      viewerRole: myRole,
+                      targetRole: targetRole,
+                      releasedAt: room.releasedAt,
+                      fugitiveInfoDelaySec: room.setting.fugitiveInfoDelaySec,
+                      nowMillis: now,
                     );
-                final beforeRelease = phase == GamePhase.beforeRelease;
+                  }
 
-                // BLEで対象の役割の相手が至近距離(3m程度)にいるかどうか(issue #16)。
-                // 「捕まった」ボタン(常時表示・自己申告)とは別に、確実な捕捉を
-                // 支援するためのボタンを検知時だけ追加で出す。isVisibleToMeで
-                // 絞るのは、他の近接表示(Wi-Fi・気圧)と同じく「鬼タイム」中は
-                // 逃走者から鬼の至近距離情報も見せない、という既存の非対称な
-                // 可視性ルール(role_visibility.dart)をBLEにも適用するため。
-                final opponentShortUids = myRole == null
-                    ? const <String>{}
-                    : room.users
-                          .where(
+                  // デバッグ用の偽プレイヤー(issue #67)。表示用のリストに
+                  // 「足すだけ」で、RTDB由来の値は書き換えないし、RTDBにも
+                  // 一切書かない(他の参加者には影響しない)。kDebugModeが
+                  // falseのリリースビルドでは、この分岐ごと落ちる
+                  // (game_map_options.dartと同じ方針)。
+                  var mockUsers = const <RoomUser>[];
+                  var mockWifiEntries = const <WifiProximityEntry>[];
+                  var mockVerticalPositions =
+                      const <RelativeVerticalPosition>[];
+                  var mockLocations = const <UserLocation>[];
+                  if (showMocks && myRole != null) {
+                    final center = debugMockCenterOf(
+                      locations: locationState.locations,
+                      myUid: myUid,
+                      fallbackLatitude:
+                          cachedPosition.value?.latitude ??
+                          fallbackMapCenter.latitude,
+                      fallbackLongitude:
+                          cachedPosition.value?.longitude ??
+                          fallbackMapCenter.longitude,
+                    );
+                    mockUsers = debugMockUsers(myRole: myRole);
+                    mockWifiEntries = debugMockWifiEntries();
+                    mockVerticalPositions = debugMockVerticalPositions();
+                    mockLocations = debugMockLocations(
+                      centerLatitude: center.latitude,
+                      centerLongitude: center.longitude,
+                    );
+                  }
+                  // 地図のピンのラベル・役割色と、詳細カードの名前は
+                  // room.users(RTDB由来)から引くため、偽プレイヤーのぶんは
+                  // ここで足した表示専用の一覧を渡す。可視性やBLEの判定には
+                  // 使わない(そちらはRTDB由来のroom.usersのまま)。
+                  final displayUsers = mockUsers.isEmpty
+                      ? room.users
+                      : [...room.users, ...mockUsers];
+
+                  final visibleLocations = [
+                    ...locationState.locations.where(
+                      (location) => isVisibleToMe(location.uid),
+                    ),
+                    ...mockLocations,
+                  ];
+                  final visibleWifiEntries = [
+                    ...ref
+                        .watch(wifiProximityLevelsProvider(roomId))
+                        .where((entry) => isVisibleToMe(entry.uid)),
+                    ...mockWifiEntries,
+                  ];
+                  final rawNearestOpponentUid = ref.watch(
+                    nearestOpponentUidProvider(roomId),
+                  );
+                  final visibleNearestOpponentUid =
+                      rawNearestOpponentUid != null &&
+                          isVisibleToMe(rawNearestOpponentUid)
+                      ? rawNearestOpponentUid
+                      : null;
+                  final visibleVerticalPositions = [
+                    ...ref
+                        .watch(relativeVerticalPositionsProvider(roomId))
+                        .where((position) => isVisibleToMe(position.uid)),
+                    ...mockVerticalPositions,
+                  ];
+
+                  // 「対象の役割」(自分と逆の役割)。BLEの至近距離検知、相手
+                  // 選択チップ、「まだ見えない理由」の3つで使う。
+                  final opponentRole = myRole == UserRole.demon
+                      ? UserRole.fugitive
+                      : UserRole.demon;
+
+                  // 可視性ディレイでまだ見えていない相手がいるか
+                  // (UI改修モック2a-04)。何も表示しないと不具合と区別が付かない
+                  // ため、理由を明示するカードに切り替える。鬼放出前は鬼からも
+                  // 逃走者が見えない(role_visibility.dart)ので、逃走者視点だけ
+                  // でなく鬼視点でも出す(issue #30)。
+                  final anyOpponentHiddenFromMe =
+                      myRole != null &&
+                      room.users.any(
+                        (u) => u.role == opponentRole && !isVisibleToMe(u.id),
+                      );
+                  final beforeRelease = phase == GamePhase.beforeRelease;
+
+                  // BLEで対象の役割の相手が至近距離(3m程度)にいるかどうか(issue #16)。
+                  // 「捕まった」ボタン(常時表示・自己申告)とは別に、確実な捕捉を
+                  // 支援するためのボタンを検知時だけ追加で出す。isVisibleToMeで
+                  // 絞るのは、他の近接表示(Wi-Fi・気圧)と同じく「鬼タイム」中は
+                  // 逃走者から鬼の至近距離情報も見せない、という既存の非対称な
+                  // 可視性ルール(role_visibility.dart)をBLEにも適用するため。
+                  final opponentShortUids = myRole == null
+                      ? const <String>{}
+                      : room.users
+                            .where(
+                              (u) =>
+                                  u.role == opponentRole &&
+                                  u.id != myUid &&
+                                  isVisibleToMe(u.id),
+                            )
+                            .map((u) => shortenUid(u.id))
+                            .toSet();
+                  // BLEの検知時刻(detectedAtMillis)は端末ローカル時計で記録している
+                  // ため、freshness判定もサーバー時刻(now)ではなく端末ローカル時刻で
+                  // 比較する必要がある(単位を揃えないとserverTimeOffset分ずれる)。
+                  final bleBecomeDemonDetected =
+                      isOpponentWithinBecomeDemonRange(
+                        detections: bleDetections,
+                        opponentShortUids: opponentShortUids,
+                        nowMillis: DateTime.now().millisecondsSinceEpoch,
+                      );
+
+                  // 相手選択チップの一覧(UI改修モック2a-03「逃走者を選んで詳細を
+                  // 見る」)。Wi-Fiスキャン結果がまだ無い相手(visibleWifiEntries
+                  // には現れない)も「検知なし」として一覧には出す必要があるため、
+                  // room.usersを起点に絞り込む(visibleWifiEntriesを起点にすると
+                  // スキャン未着の相手が一覧から消えてしまう)。
+                  final opponentRoster = myRole == null
+                      ? const <RoomUser>[]
+                      : [
+                          ...room.users.where(
                             (u) =>
                                 u.role == opponentRole &&
                                 u.id != myUid &&
                                 isVisibleToMe(u.id),
-                          )
-                          .map((u) => shortenUid(u.id))
-                          .toSet();
-                // BLEの検知時刻(detectedAtMillis)は端末ローカル時計で記録している
-                // ため、freshness判定もサーバー時刻(now)ではなく端末ローカル時刻で
-                // 比較する必要がある(単位を揃えないとserverTimeOffset分ずれる)。
-                final bleBecomeDemonDetected = isOpponentWithinBecomeDemonRange(
-                  detections: bleDetections,
-                  opponentShortUids: opponentShortUids,
-                  nowMillis: DateTime.now().millisecondsSinceEpoch,
-                );
+                          ),
+                          ...mockUsers,
+                        ];
+                  final rosterUids = opponentRoster.map((u) => u.id).toSet();
+                  // 選択中のuidがまだ一覧に残っていればそれを使い、無ければ
+                  // (未選択・退室・可視性が外れた等)既定で最も近い相手に戻す。
+                  final effectiveSelectedUid =
+                      selectedOpponentUid.value != null &&
+                          rosterUids.contains(selectedOpponentUid.value)
+                      ? selectedOpponentUid.value
+                      : visibleNearestOpponentUid ??
+                            (opponentRoster.isEmpty
+                                ? null
+                                : opponentRoster.first.id);
+                  final selectedComparisons = effectiveSelectedUid != null
+                      ? ref.watch(
+                          wifiComparisonsForProvider((
+                            roomId,
+                            effectiveSelectedUid,
+                          )),
+                        )
+                      : const <WifiApComparison>[];
 
-                // 相手選択チップの一覧(UI改修モック2a-03「逃走者を選んで詳細を
-                // 見る」)。Wi-Fiスキャン結果がまだ無い相手(visibleWifiEntries
-                // には現れない)も「検知なし」として一覧には出す必要があるため、
-                // room.usersを起点に絞り込む(visibleWifiEntriesを起点にすると
-                // スキャン未着の相手が一覧から消えてしまう)。
-                final opponentRoster = myRole == null
-                    ? const <RoomUser>[]
-                    : [
-                        ...room.users.where(
-                          (u) =>
-                              u.role == opponentRole &&
-                              u.id != myUid &&
-                              isVisibleToMe(u.id),
+                  final mapPageContent = Column(
+                    children: [
+                      // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
+                      // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
+                      // なので逃走者のみに出す。
+                      if (myRole == UserRole.fugitive &&
+                          phase == GamePhase.beforeRelease)
+                        PreReleaseBanner(countdownSec: countdownSec),
+                      // 撮影プロンプト。間隔が来た、またはアップロード失敗で
+                      // 再送待ちの画像がある間だけ出す(PHOTO_API_BASE_URL
+                      // 未設定の環境では機能ごと隠す)。鬼は撮影対象ではないため
+                      // 逃走者のみに出す(photo_gallery_page.dartのshowBannerと
+                      // 同じ判定。以前ここに役割チェックが無く、鬼の画面にも
+                      // バナーが出て撮影できてしまっていた)。
+                      if (isPhotoFeatureConfigured &&
+                          myRole == UserRole.fugitive &&
+                          (photoCapture.state.isDue ||
+                              photoCapture.state.pendingBytes != null))
+                        PhotoCaptureBanner(
+                          state: photoCapture.state,
+                          onCapture: () {
+                            unawaited(photoCapture.capture());
+                          },
+                          onResend: () {
+                            unawaited(photoCapture.resend());
+                          },
                         ),
-                        ...mockUsers,
-                      ];
-                final rosterUids = opponentRoster.map((u) => u.id).toSet();
-                // 選択中のuidがまだ一覧に残っていればそれを使い、無ければ
-                // (未選択・退室・可視性が外れた等)既定で最も近い相手に戻す。
-                final effectiveSelectedUid =
-                    selectedOpponentUid.value != null &&
-                        rosterUids.contains(selectedOpponentUid.value)
-                    ? selectedOpponentUid.value
-                    : visibleNearestOpponentUid ??
-                          (opponentRoster.isEmpty
-                              ? null
-                              : opponentRoster.first.id);
-                final selectedComparisons = effectiveSelectedUid != null
-                    ? ref.watch(
-                        wifiComparisonsForProvider((
-                          roomId,
-                          effectiveSelectedUid,
-                        )),
-                      )
-                    : const <WifiApComparison>[];
-
-                final mapPageContent = Column(
-                  children: [
-                    // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
-                    // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
-                    // なので逃走者のみに出す。
-                    if (myRole == UserRole.fugitive &&
-                        phase == GamePhase.beforeRelease)
-                      PreReleaseBanner(countdownSec: countdownSec),
-                    // 撮影プロンプト。間隔が来た、またはアップロード失敗で
-                    // 再送待ちの画像がある間だけ出す(PHOTO_API_BASE_URL
-                    // 未設定の環境では機能ごと隠す)。鬼は撮影対象ではないため
-                    // 逃走者のみに出す(photo_gallery_page.dartのshowBannerと
-                    // 同じ判定。以前ここに役割チェックが無く、鬼の画面にも
-                    // バナーが出て撮影できてしまっていた)。
-                    if (isPhotoFeatureConfigured &&
-                        myRole == UserRole.fugitive &&
-                        (photoCapture.state.isDue ||
-                            photoCapture.state.pendingBytes != null))
-                      PhotoCaptureBanner(
-                        state: photoCapture.state,
-                        onCapture: () {
-                          unawaited(photoCapture.capture());
-                        },
-                        onResend: () {
-                          unawaited(photoCapture.resend());
-                        },
-                      ),
-                    // 位置が送れていないときの警告。原因によって直し方が
-                    // 違う(設定で許可する/入り直す)ため文言を出し分ける。
-                    if (locationWarningMessage(locationState)
-                        case final message?)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text(
-                          message,
-                          style: const TextStyle(color: Color(0xFFE5484D)),
+                      // 位置が送れていないときの警告。原因によって直し方が
+                      // 違う(設定で許可する/入り直す)ため文言を出し分ける。
+                      if (locationWarningMessage(locationState)
+                          case final message?)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            message,
+                            style: const TextStyle(color: Color(0xFFE5484D)),
+                          ),
                         ),
-                      ),
-                    // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた
-                    // ときだけ押せる「鬼になる」に一本化した。ローディング表示・
-                    // エラー処理・確定演出(CaughtTransitionOverlay)は、旧
-                    // 「捕まった」ボタンのものをそのまま踏襲している。
-                    //
-                    // ボタン自体は常に表示し、BLEで検知していない間はdisabled
-                    // にする(issue #43)。以前(issue #16/#29)はBLE検知時だけ
-                    // Widgetごと出し入れする方式だったが、検知距離が閾値付近を
-                    // 行き来するたびにボタンの出現/消滅でレイアウト全体が
-                    // 上下にガタつく問題があった。「常時表示にすると誤タップが
-                    // 増えるのでは」という2a-05以来の懸念は、disabledのままなら
-                    // 押しても何も起きない=誤タップにならないため両立する
-                    // (誤タップ防止という元の目的はdisabled化で引き継ぐ)。
-                    // アプリ全体のテーマ変更の影響も受けないよう、Flutter標準の
-                    // ThemeDataで局所的に上書きする構造は維持する。
-                    if (shouldShowBecomeDemonButton(role: myRole, phase: phase))
-                      BecomeDemonButton(
-                        isDetected: bleBecomeDemonDetected,
-                        isSubmitting: becomeDemon.isRunning,
-                        onPressed: handleBecomeDemonPressed,
-                      ),
-                    // エリア外アラート(赤帯・赤かぶせ・矢印・戻り方カード)は
-                    // 地図の上に重ねる。Columnに足すと、その分だけ地図と
-                    // 下のカードが押し出されて画面外へ消えるため
-                    // (OutsideAreaAlertMapのコメント参照)。
-                    Expanded(
-                      child: OutsideAreaAlertMap(
-                        alert: outsideAreaAlert,
-                        // 偽プレイヤーのピンにも名前と役割色を出すため、
-                        // 地図には表示用の一覧を渡す(issue #67)。
-                        map: GameLocationMap(
-                          locations: visibleLocations,
-                          users: displayUsers,
-                          myUid: myUid,
-                          cachedPosition: cachedPosition.value,
-                          gameArea: room.setting.gameArea,
+                      // 「捕まった」(自己申告のみ)は廃止し、BLEで近接を検知できた
+                      // ときだけ押せる「鬼になる」に一本化した。ローディング表示・
+                      // エラー処理・確定演出(CaughtTransitionOverlay)は、旧
+                      // 「捕まった」ボタンのものをそのまま踏襲している。
+                      //
+                      // ボタン自体は常に表示し、BLEで検知していない間はdisabled
+                      // にする(issue #43)。以前(issue #16/#29)はBLE検知時だけ
+                      // Widgetごと出し入れする方式だったが、検知距離が閾値付近を
+                      // 行き来するたびにボタンの出現/消滅でレイアウト全体が
+                      // 上下にガタつく問題があった。「常時表示にすると誤タップが
+                      // 増えるのでは」という2a-05以来の懸念は、disabledのままなら
+                      // 押しても何も起きない=誤タップにならないため両立する
+                      // (誤タップ防止という元の目的はdisabled化で引き継ぐ)。
+                      // アプリ全体のテーマ変更の影響も受けないよう、Flutter標準の
+                      // ThemeDataで局所的に上書きする構造は維持する。
+                      if (shouldShowBecomeDemonButton(
+                        role: myRole,
+                        phase: phase,
+                      ))
+                        BecomeDemonButton(
+                          isDetected: bleBecomeDemonDetected,
+                          isSubmitting: becomeDemon.isRunning,
+                          onPressed: handleBecomeDemonPressed,
+                        ),
+                      // エリア外アラート(赤帯・赤かぶせ・矢印・戻り方カード)は
+                      // 地図の上に重ねる。Columnに足すと、その分だけ地図と
+                      // 下のカードが押し出されて画面外へ消えるため
+                      // (OutsideAreaAlertMapのコメント参照)。
+                      Expanded(
+                        child: OutsideAreaAlertMap(
+                          alert: outsideAreaAlert,
+                          // 偽プレイヤーのピンにも名前と役割色を出すため、
+                          // 地図には表示用の一覧を渡す(issue #67)。
+                          map: GameLocationMap(
+                            locations: visibleLocations,
+                            users: displayUsers,
+                            myUid: myUid,
+                            cachedPosition: cachedPosition.value,
+                            gameArea: room.setting.gameArea,
+                          ),
                         ),
                       ),
-                    ),
-                    // マップの下は、対象役割の相手をタップで選べるチップ一覧と、
-                    // 選んだ1人だけの手がかりカード(モック01/02)。人数が
-                    // 増えても見やすいよう、対象を常に1人だけに絞る
-                    // (issue #29フォローアップ)。
-                    //
-                    // チップ一覧が出せないときは、その理由を明示するカードに
-                    // 差し替える。「可視性ディレイでまだ見えない」「対象役割
-                    // の相手がそもそも居ない」「居るがまだ検知できていない」
-                    // の3つは、以前は一律「検知なし」と出していて区別が付か
-                    // なかった(issue #30)。
-                    //
-                    // 差し替えや手がかりカードの状態(C1〜C5)で高さが変わる
-                    // ため、AnimatedSizeで地図の伸び縮みを滑らかにする。
-                    // 差し替え時の段差そのものはHiddenOpponentCardの最低の
-                    // 高さで小さくしてある(issue #29フォローアップ)。
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeOut,
-                      alignment: Alignment.topCenter,
-                      child:
-                          opponentRoster.isEmpty || effectiveSelectedUid == null
-                          ? Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                16,
-                                beforeRelease ? 12 : 10,
-                                16,
-                                0,
-                              ),
-                              child: Column(
-                                children: [
-                                  HiddenOpponentCard(
-                                    message: emptyOpponentMessage(
-                                      // 役割がまだ確定していない間の扱いは
-                                      // opponentRoleの既定と揃える(鬼と確定するまで
-                                      // 逃走者側として扱う)。
-                                      viewerRole: myRole ?? UserRole.fugitive,
-                                      opponentCountInRoom: room.users
-                                          .where((u) => u.role == opponentRole)
-                                          .length,
-                                      hiddenByVisibility:
-                                          anyOpponentHiddenFromMe,
-                                      beforeRelease: beforeRelease,
-                                      revealRemainingSec:
-                                          opponentRevealRemainingSec(
-                                            viewerRole:
-                                                myRole ?? UserRole.fugitive,
-                                            releasedAt: room.releasedAt,
-                                            fugitiveInfoDelaySec: room
-                                                .setting
-                                                .fugitiveInfoDelaySec,
-                                            nowMillis: now,
-                                          ),
-                                    ),
-                                  ),
-                                  // 放出前の逃走者には「鬼になる」がまだ押せない
-                                  // 理由を添える(モック03)。
-                                  if (myRole == UserRole.fugitive &&
-                                      beforeRelease)
-                                    const Padding(
-                                      padding: EdgeInsets.only(top: 10),
-                                      child: Text(
-                                        '「鬼になる」は、鬼が3m以内に来ると'
-                                        '押せるようになります',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: gameMuted,
-                                        ),
+                      // マップの下は、対象役割の相手をタップで選べるチップ一覧と、
+                      // 選んだ1人だけの手がかりカード(モック01/02)。人数が
+                      // 増えても見やすいよう、対象を常に1人だけに絞る
+                      // (issue #29フォローアップ)。
+                      //
+                      // チップ一覧が出せないときは、その理由を明示するカードに
+                      // 差し替える。「可視性ディレイでまだ見えない」「対象役割
+                      // の相手がそもそも居ない」「居るがまだ検知できていない」
+                      // の3つは、以前は一律「検知なし」と出していて区別が付か
+                      // なかった(issue #30)。
+                      //
+                      // 差し替えや手がかりカードの状態(C1〜C5)で高さが変わる
+                      // ため、AnimatedSizeで地図の伸び縮みを滑らかにする。
+                      // 差し替え時の段差そのものはHiddenOpponentCardの最低の
+                      // 高さで小さくしてある(issue #29フォローアップ)。
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        alignment: Alignment.topCenter,
+                        child:
+                            opponentRoster.isEmpty ||
+                                effectiveSelectedUid == null
+                            ? Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  16,
+                                  beforeRelease ? 12 : 10,
+                                  16,
+                                  0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    HiddenOpponentCard(
+                                      message: emptyOpponentMessage(
+                                        // 役割がまだ確定していない間の扱いは
+                                        // opponentRoleの既定と揃える(鬼と確定するまで
+                                        // 逃走者側として扱う)。
+                                        viewerRole: myRole ?? UserRole.fugitive,
+                                        opponentCountInRoom: room.users
+                                            .where(
+                                              (u) => u.role == opponentRole,
+                                            )
+                                            .length,
+                                        hiddenByVisibility:
+                                            anyOpponentHiddenFromMe,
+                                        beforeRelease: beforeRelease,
+                                        revealRemainingSec:
+                                            opponentRevealRemainingSec(
+                                              viewerRole:
+                                                  myRole ?? UserRole.fugitive,
+                                              releasedAt: room.releasedAt,
+                                              fugitiveInfoDelaySec: room
+                                                  .setting
+                                                  .fugitiveInfoDelaySec,
+                                              nowMillis: now,
+                                            ),
                                       ),
                                     ),
-                                ],
+                                    // 放出前の逃走者には「鬼になる」がまだ押せない
+                                    // 理由を添える(モック03)。
+                                    if (myRole == UserRole.fugitive &&
+                                        beforeRelease)
+                                      const Padding(
+                                        padding: EdgeInsets.only(top: 10),
+                                        child: Text(
+                                          '「鬼になる」は、鬼が3m以内に来ると'
+                                          '押せるようになります',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: gameMuted,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  10,
+                                  16,
+                                  0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    OpponentSelectorChips(
+                                      roster: opponentRoster,
+                                      entries: visibleWifiEntries,
+                                      selectedUid: effectiveSelectedUid,
+                                      onSelect: (uid) =>
+                                          selectedOpponentUid.value = uid,
+                                      leadingLabel:
+                                          opponentRole == UserRole.fugitive
+                                          ? '逃走者\nを選ぶ'
+                                          : '鬼を選ぶ',
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _SelectedClueCard(
+                                      roomId: roomId,
+                                      room: room,
+                                      myUid: myUid,
+                                      uid: effectiveSelectedUid,
+                                      users: displayUsers,
+                                      wifiEntries: visibleWifiEntries,
+                                      verticalPositions:
+                                          visibleVerticalPositions,
+                                      comparisons: selectedComparisons,
+                                      pressureState: pressureState,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            )
-                          : Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                              child: Column(
-                                children: [
-                                  OpponentSelectorChips(
-                                    roster: opponentRoster,
-                                    entries: visibleWifiEntries,
-                                    selectedUid: effectiveSelectedUid,
-                                    onSelect: (uid) =>
-                                        selectedOpponentUid.value = uid,
-                                    leadingLabel:
-                                        opponentRole == UserRole.fugitive
-                                        ? '逃走者\nを選ぶ'
-                                        : '鬼を選ぶ',
-                                  ),
-                                  const SizedBox(height: 8),
-                                  _SelectedClueCard(
-                                    roomId: roomId,
-                                    room: room,
-                                    myUid: myUid,
-                                    uid: effectiveSelectedUid,
-                                    users: displayUsers,
-                                    wifiEntries: visibleWifiEntries,
-                                    verticalPositions: visibleVerticalPositions,
-                                    comparisons: selectedComparisons,
-                                    pressureState: pressureState,
-                                  ),
-                                ],
-                              ),
-                            ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                );
-
-                // 地図↔写真一覧の切り替え(issue #107)。地図ページ自体は
-                // 上のmapPageContentのまま変更せず、PageViewのもう一方の
-                // ページとしてPhotoGalleryPageを足す(photo_gallery_page.dart
-                // の設計コメント参照)。タブのタップとスワイプの両方で
-                // pageIndexとpageControllerを揃える。
-                return Column(
-                  children: [
-                    MapPhotoTabBar(
-                      selectedIndex: pageIndex.value,
-                      hasNewPhotos: hasNewPhotos,
-                      onSelect: (index) {
-                        pageIndex.value = index;
-                        pageController.animateToPage(
-                          index,
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeInOut,
-                        );
-                      },
-                    ),
-                    Expanded(
-                      child: PageView(
-                        controller: pageController,
-                        onPageChanged: (index) => pageIndex.value = index,
-                        children: [
-                          mapPageContent,
-                          PhotoGalleryPage(
-                            roomId: roomId,
-                            room: room,
-                            myUid: myUid,
-                            photos: photos,
-                            nowMillis: now,
-                            photoCapture: photoCapture,
-                          ),
-                        ],
                       ),
-                    ),
-                  ],
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
+                      const SizedBox(height: 8),
+                    ],
+                  );
+
+                  // 地図↔写真一覧の切り替え(issue #107)。地図ページ自体は
+                  // 上のmapPageContentのまま変更せず、PageViewのもう一方の
+                  // ページとしてPhotoGalleryPageを足す(photo_gallery_page.dart
+                  // の設計コメント参照)。タブのタップとスワイプの両方で
+                  // pageIndexとpageControllerを揃える。
+                  return Column(
+                    children: [
+                      MapPhotoTabBar(
+                        selectedIndex: pageIndex.value,
+                        hasNewPhotos: hasNewPhotos,
+                        onSelect: (index) {
+                          pageIndex.value = index;
+                          pageController.animateToPage(
+                            index,
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                      ),
+                      Expanded(
+                        child: PageView(
+                          controller: pageController,
+                          onPageChanged: (index) => pageIndex.value = index,
+                          children: [
+                            mapPageContent,
+                            PhotoGalleryPage(
+                              roomId: roomId,
+                              room: room,
+                              myUid: myUid,
+                              photos: photos,
+                              nowMillis: now,
+                              photoCapture: photoCapture,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
+              ),
             ),
           ),
           // 「捕まった」確定直後の全画面演出(issue #15)。マップ等の下に

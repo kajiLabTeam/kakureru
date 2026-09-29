@@ -15,6 +15,8 @@ import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view/room_setting_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
+import '../../../helpers/fake_navigation_bar.dart';
+
 const _roomId = 'room1';
 
 Room _room() => const Room(
@@ -166,5 +168,19 @@ void main() {
     expect(find.textContaining('firebase_database'), findsNothing);
     // 画面はそのまま残る(popはsaveが成功したときだけ)。
     expect(find.byType(RoomSettingPage), findsOneWidget);
+  });
+
+  testWidgets('下端がナビゲーションバーに重ならない (issue #136)', (tester) async {
+    fakeNavigationBar(tester);
+    await _openSettingPage(tester);
+    // 中身が画面より長くないとスクロール領域が中身の高さに縮み、下端まで
+    // 届かないので確かめられない。開いた後で画面を小さくしてはみ出させる。
+    await tester.binding.setSurfaceSize(const Size(800, 400));
+    await tester.pump();
+
+    expectAboveNavigationBar(
+      tester,
+      find.byType(SingleChildScrollView).first,
+    );
   });
 }

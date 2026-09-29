@@ -124,196 +124,206 @@ class RoomSettingPage extends HookConsumerWidget {
       data: buildGameToneTheme(Theme.of(context)),
       child: Scaffold(
         appBar: AppBar(title: const Text('ルーム設定')),
-        body: roomAsync.when(
-          data: (room) {
-            if (room.hostUserId != myUid || room.status != RoomStatus.waiting) {
-              // ホスト以外・WAITING以外は開けない画面。ここに来ること自体
-              // 想定外だが、来てしまったら閉じるだけにする。
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (Navigator.of(context).canPop()) Navigator.of(context).pop();
-              });
-              return const SizedBox.shrink();
-            }
+        body: SafeArea(
+          // Android 15以降は画面がナビゲーションバーの下まで広がるので、
+          // 下端の文字・ボタンがバーに潜らないよう下だけ余白を取る
+          // (issue #136)。上端はAppBarが処理する。
+          top: false,
+          child: roomAsync.when(
+            data: (room) {
+              if (room.hostUserId != myUid ||
+                  room.status != RoomStatus.waiting) {
+                // ホスト以外・WAITING以外は開けない画面。ここに来ること自体
+                // 想定外だが、来てしまったら閉じるだけにする。
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                });
+                return const SizedBox.shrink();
+              }
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  GameToneCard(
-                    title: '時間',
-                    padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-                    child: Column(
-                      children: [
-                        _MinuteStepper(
-                          label: '鬼放出までの待機時間',
-                          minutes: releaseWaitMin.value,
-                          step: 1,
-                          min: 1,
-                          max: _releaseWaitMaxMinutes,
-                          onChanged: (v) => releaseWaitMin.value = v,
-                        ),
-                        _MinuteStepper(
-                          // 放出後から数える(issue #119)。放出待ちの時間は含まない。
-                          label: '鬼ごっこの時間(放出後)',
-                          minutes: gameDurationMin.value,
-                          step: 5,
-                          min: 1,
-                          max: _gameDurationMaxMinutes,
-                          onChanged: (v) => gameDurationMin.value = v,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  GameToneCard(
-                    title: 'プレイエリア(ドラッグで矩形を指定)',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(
-                          height: 320,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: _AreaMap(
-                              initialCenter:
-                                  initialCenter.value ?? fallbackMapCenter,
-                              myLocation: myLocation.value,
-                              gameArea: gameArea.value,
-                              isDrawing: isDrawing.value,
-                              dragStart: dragStart.value,
-                              dragCurrent: dragCurrent.value,
-                              hasSizeError: areaSizeError.value != null,
-                              onDragStart: (point) {
-                                // 新しいドラッグを始めたら前回のエラー状態はクリアする。
-                                areaSizeError.value = null;
-                                dragStart.value = point;
-                                dragCurrent.value = point;
-                              },
-                              onDragUpdate: (point) =>
-                                  dragCurrent.value = point,
-                              onDragEnd: () {
-                                final start = dragStart.value;
-                                final current = dragCurrent.value;
-                                if (start == null || current == null) return;
-
-                                // 矩形の対角線の長さでサイズを検証する。数px程度の
-                                // タップに近いドラッグ(退化した矩形)や、地図を
-                                // 世界スケールまで引いてから引いた極端に大きい矩形を
-                                // 弾く(理由はgame_map_options.dartのコメント参照)。
-                                final diagonalMeters =
-                                    Geolocator.distanceBetween(
-                                      start.latitude,
-                                      start.longitude,
-                                      current.latitude,
-                                      current.longitude,
-                                    );
-                                final error = describeGameAreaSizeError(
-                                  diagonalMeters,
-                                );
-                                areaSizeError.value = error;
-                                if (error == null) {
-                                  gameArea.value = calculateRectangleCorners(
-                                    LatLng(
-                                      lat: start.latitude,
-                                      lng: start.longitude,
-                                    ),
-                                    LatLng(
-                                      lat: current.latitude,
-                                      lng: current.longitude,
-                                    ),
-                                  );
-                                  dragStart.value = null;
-                                  dragCurrent.value = null;
-                                }
-                                // エラー時はリセットせず、仮矩形を赤枠のまま残して
-                                // エラーメッセージと視覚的に結びつける
-                                // (次のドラッグ開始 or 有効なドラッグで上書きされる)。
-                              },
-                            ),
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    GameToneCard(
+                      title: '時間',
+                      padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                      child: Column(
+                        children: [
+                          _MinuteStepper(
+                            label: '鬼放出までの待機時間',
+                            minutes: releaseWaitMin.value,
+                            step: 1,
+                            min: 1,
+                            max: _releaseWaitMaxMinutes,
+                            onChanged: (v) => releaseWaitMin.value = v,
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        if (myLocation.value == null)
-                          const _Notice(
-                            '現在地を取得中です(位置情報がOFFだとピンは出ません)',
-                            color: gameMuted,
+                          _MinuteStepper(
+                            // 放出後から数える(issue #119)。放出待ちの時間は含まない。
+                            label: '鬼ごっこの時間(放出後)',
+                            minutes: gameDurationMin.value,
+                            step: 5,
+                            min: 1,
+                            max: _gameDurationMaxMinutes,
+                            onChanged: (v) => gameDurationMin.value = v,
                           ),
-                        if (gameArea.value.isEmpty)
-                          const _Notice(
-                            '未設定です。ドラッグして範囲を指定してください',
-                            color: gameNoticeAccent,
-                          ),
-                        if (areaSizeError.value != null)
-                          _Notice(areaSizeError.value!, color: gameNewBadge),
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            isDrawing.value = !isDrawing.value;
-                            // モード切り替え時に仮矩形とエラー表示も持ち越さない
-                            // (描画をやめたのに赤枠だけ残るのを防ぐ)。
-                            dragStart.value = null;
-                            dragCurrent.value = null;
-                            areaSizeError.value = null;
-                          },
-                          icon: Icon(
-                            isDrawing.value
-                                ? Icons.pan_tool_outlined
-                                : Icons.edit,
-                            size: 18,
-                          ),
-                          label: Text(
-                            isDrawing.value ? '描画をやめる(地図の移動に戻す)' : 'エリアを描く',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: !save.isRunning
-                        ? () => save.run(() async {
-                            await ref
-                                .read(roomRepositoryProvider)
-                                .updateSetting(
-                                  roomId,
-                                  room.setting.copyWith(
-                                    releaseWaitSec: releaseWaitMin.value * 60,
-                                    gameDurationSec: gameDurationMin.value * 60,
-                                    gameArea: gameArea.value,
-                                  ),
-                                );
-                            if (context.mounted) Navigator.of(context).pop();
-                          })
-                        : null,
-                    child: save.isRunning
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('保存'),
-                  ),
-                  if (save.error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Text(
-                        userFacingErrorMessage(save.error!),
-                        style: const TextStyle(
-                          color: gameNewBadge,
-                          fontWeight: FontWeight.w700,
-                        ),
+                        ],
                       ),
                     ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
+                    const SizedBox(height: 12),
+                    GameToneCard(
+                      title: 'プレイエリア(ドラッグで矩形を指定)',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            height: 320,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: _AreaMap(
+                                initialCenter:
+                                    initialCenter.value ?? fallbackMapCenter,
+                                myLocation: myLocation.value,
+                                gameArea: gameArea.value,
+                                isDrawing: isDrawing.value,
+                                dragStart: dragStart.value,
+                                dragCurrent: dragCurrent.value,
+                                hasSizeError: areaSizeError.value != null,
+                                onDragStart: (point) {
+                                  // 新しいドラッグを始めたら前回のエラー状態はクリアする。
+                                  areaSizeError.value = null;
+                                  dragStart.value = point;
+                                  dragCurrent.value = point;
+                                },
+                                onDragUpdate: (point) =>
+                                    dragCurrent.value = point,
+                                onDragEnd: () {
+                                  final start = dragStart.value;
+                                  final current = dragCurrent.value;
+                                  if (start == null || current == null) return;
+
+                                  // 矩形の対角線の長さでサイズを検証する。数px程度の
+                                  // タップに近いドラッグ(退化した矩形)や、地図を
+                                  // 世界スケールまで引いてから引いた極端に大きい矩形を
+                                  // 弾く(理由はgame_map_options.dartのコメント参照)。
+                                  final diagonalMeters =
+                                      Geolocator.distanceBetween(
+                                        start.latitude,
+                                        start.longitude,
+                                        current.latitude,
+                                        current.longitude,
+                                      );
+                                  final error = describeGameAreaSizeError(
+                                    diagonalMeters,
+                                  );
+                                  areaSizeError.value = error;
+                                  if (error == null) {
+                                    gameArea.value = calculateRectangleCorners(
+                                      LatLng(
+                                        lat: start.latitude,
+                                        lng: start.longitude,
+                                      ),
+                                      LatLng(
+                                        lat: current.latitude,
+                                        lng: current.longitude,
+                                      ),
+                                    );
+                                    dragStart.value = null;
+                                    dragCurrent.value = null;
+                                  }
+                                  // エラー時はリセットせず、仮矩形を赤枠のまま残して
+                                  // エラーメッセージと視覚的に結びつける
+                                  // (次のドラッグ開始 or 有効なドラッグで上書きされる)。
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (myLocation.value == null)
+                            const _Notice(
+                              '現在地を取得中です(位置情報がOFFだとピンは出ません)',
+                              color: gameMuted,
+                            ),
+                          if (gameArea.value.isEmpty)
+                            const _Notice(
+                              '未設定です。ドラッグして範囲を指定してください',
+                              color: gameNoticeAccent,
+                            ),
+                          if (areaSizeError.value != null)
+                            _Notice(areaSizeError.value!, color: gameNewBadge),
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              isDrawing.value = !isDrawing.value;
+                              // モード切り替え時に仮矩形とエラー表示も持ち越さない
+                              // (描画をやめたのに赤枠だけ残るのを防ぐ)。
+                              dragStart.value = null;
+                              dragCurrent.value = null;
+                              areaSizeError.value = null;
+                            },
+                            icon: Icon(
+                              isDrawing.value
+                                  ? Icons.pan_tool_outlined
+                                  : Icons.edit,
+                              size: 18,
+                            ),
+                            label: Text(
+                              isDrawing.value ? '描画をやめる(地図の移動に戻す)' : 'エリアを描く',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: !save.isRunning
+                          ? () => save.run(() async {
+                              await ref
+                                  .read(roomRepositoryProvider)
+                                  .updateSetting(
+                                    roomId,
+                                    room.setting.copyWith(
+                                      releaseWaitSec: releaseWaitMin.value * 60,
+                                      gameDurationSec:
+                                          gameDurationMin.value * 60,
+                                      gameArea: gameArea.value,
+                                    ),
+                                  );
+                              if (context.mounted) Navigator.of(context).pop();
+                            })
+                          : null,
+                      child: save.isRunning
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('保存'),
+                    ),
+                    if (save.error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          userFacingErrorMessage(save.error!),
+                          style: const TextStyle(
+                            color: gameNewBadge,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => RoomStreamErrorView(roomId: roomId, error: e),
+          ),
         ),
       ),
     );

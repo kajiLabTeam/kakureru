@@ -9,6 +9,8 @@ import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/room_home_page.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
+import '../../../helpers/fake_navigation_bar.dart';
+
 Finder _nameField() => find.byType(TextField).first;
 
 Finder _codeField() => find.byType(TextField).last;
@@ -287,5 +289,16 @@ void main() {
       expect(find.textContaining('Exception'), findsNothing);
       expect(find.text('通信に失敗しました。電波の良い場所でもう一度お試しください'), findsOneWidget);
     });
+  });
+
+  testWidgets('下端がナビゲーションバーに重ならない (issue #136)', (tester) async {
+    // 中身が画面より長くないとスクロール領域が中身の高さに縮み、下端まで
+    // 届かないので確かめられない。画面を小さくしてはみ出させる。
+    await tester.binding.setSurfaceSize(const Size(400, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    fakeNavigationBar(tester);
+    await _pumpHomePage(tester);
+
+    expectAboveNavigationBar(tester, find.byType(SingleChildScrollView));
   });
 }

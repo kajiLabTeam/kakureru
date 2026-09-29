@@ -93,107 +93,113 @@ class RoomHomePage extends HookConsumerWidget {
       data: buildGameToneTheme(Theme.of(context)),
       child: Scaffold(
         appBar: AppBar(title: const Text('kakureru')),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              GameToneCard(
-                title: 'なまえ',
-                child: TextField(
-                  controller: nameController,
-                  maxLength: playerNameMaxLength,
-                  onChanged: (_) => hasTouchedName.value = true,
-                  decoration: InputDecoration(
-                    hintText: '名前を入力',
-                    errorText: _nameErrorMessage(showNameError),
+        body: SafeArea(
+          // Android 15以降は画面がナビゲーションバーの下まで広がるので、
+          // 下端の文字・ボタンがバーに潜らないよう下だけ余白を取る
+          // (issue #136)。上端はAppBarが処理する。
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                GameToneCard(
+                  title: 'なまえ',
+                  child: TextField(
+                    controller: nameController,
+                    maxLength: playerNameMaxLength,
+                    onChanged: (_) => hasTouchedName.value = true,
+                    decoration: InputDecoration(
+                      hintText: '名前を入力',
+                      errorText: _nameErrorMessage(showNameError),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              GameToneCard(
-                title: 'ホストとして',
-                child: FilledButton(
-                  onPressed: state.isLoading || nameError != null
-                      ? null
-                      : () {
-                          isCreating.value = true;
-                          ref
-                              .read(roomViewModelProvider.notifier)
-                              .createRoom(nameController.text);
-                        },
-                  child: isCreating.value
-                      ? const _ButtonSpinner()
-                      : const Text('ルームを作る'),
+                const SizedBox(height: 12),
+                GameToneCard(
+                  title: 'ホストとして',
+                  child: FilledButton(
+                    onPressed: state.isLoading || nameError != null
+                        ? null
+                        : () {
+                            isCreating.value = true;
+                            ref
+                                .read(roomViewModelProvider.notifier)
+                                .createRoom(nameController.text);
+                          },
+                    child: isCreating.value
+                        ? const _ButtonSpinner()
+                        : const Text('ルームを作る'),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              GameToneCard(
-                title: 'ルームコードで参加',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextField(
-                      controller: codeController,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(roomCodeLength),
-                      ],
-                      onChanged: (_) => hasTouchedCode.value = true,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 8,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'ルームコード($roomCodeLength桁)',
-                        hintStyle: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.normal,
-                          letterSpacing: 0,
-                          color: gameFaint,
+                const SizedBox(height: 12),
+                GameToneCard(
+                  title: 'ルームコードで参加',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: codeController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(roomCodeLength),
+                        ],
+                        onChanged: (_) => hasTouchedCode.value = true,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 8,
                         ),
-                        errorText: _codeErrorMessage(showCodeError),
+                        decoration: InputDecoration(
+                          hintText: 'ルームコード($roomCodeLength桁)',
+                          hintStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.normal,
+                            letterSpacing: 0,
+                            color: gameFaint,
+                          ),
+                          errorText: _codeErrorMessage(showCodeError),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    // 以前は灰色の枠線ボタンで、押せる状態でも押せないように
-                    // 見えていた。「ルームを作る」と同じ塗りボタンにし、
-                    // 押せない間だけテーマの無効色(灰)になるようにする。
-                    FilledButton(
-                      onPressed:
-                          state.isLoading ||
-                              nameError != null ||
-                              codeError != null
-                          ? null
-                          : () {
-                              isJoining.value = true;
-                              ref
-                                  .read(roomViewModelProvider.notifier)
-                                  .joinRoom(
-                                    codeController.text,
-                                    nameController.text,
-                                  );
-                            },
-                      child: isJoining.value
-                          ? const _ButtonSpinner()
-                          : const Text('ルームに参加'),
-                    ),
-                  ],
-                ),
-              ),
-              if (state.hasError)
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Text(
-                    _actionErrorMessage(state.error),
-                    style: const TextStyle(
-                      color: gameNewBadge,
-                      fontWeight: FontWeight.w700,
-                    ),
+                      const SizedBox(height: 12),
+                      // 以前は灰色の枠線ボタンで、押せる状態でも押せないように
+                      // 見えていた。「ルームを作る」と同じ塗りボタンにし、
+                      // 押せない間だけテーマの無効色(灰)になるようにする。
+                      FilledButton(
+                        onPressed:
+                            state.isLoading ||
+                                nameError != null ||
+                                codeError != null
+                            ? null
+                            : () {
+                                isJoining.value = true;
+                                ref
+                                    .read(roomViewModelProvider.notifier)
+                                    .joinRoom(
+                                      codeController.text,
+                                      nameController.text,
+                                    );
+                              },
+                        child: isJoining.value
+                            ? const _ButtonSpinner()
+                            : const Text('ルームに参加'),
+                      ),
+                    ],
                   ),
                 ),
-            ],
+                if (state.hasError)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Text(
+                      _actionErrorMessage(state.error),
+                      style: const TextStyle(
+                        color: gameNewBadge,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

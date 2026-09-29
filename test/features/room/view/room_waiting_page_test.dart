@@ -20,6 +20,8 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
+import '../../../helpers/fake_navigation_bar.dart';
+
 const _roomId = 'room1';
 const _myUid = 'host';
 
@@ -798,5 +800,19 @@ void main() {
           tester.widget<FilledButton>(startButton).onPressed != null;
       expect(fill, enabled ? gameInk : gameSelected);
     });
+  });
+
+  testWidgets('「ゲーム開始」がナビゲーションバーに重ならない (issue #136)', (tester) async {
+    fakeNavigationBar(tester);
+    await _pumpWaitingPage(
+      tester,
+      roomRepo: _FakeRoomRepository(),
+      pressureViewModel: _FakePressureViewModel(),
+    );
+
+    expectAboveNavigationBar(
+      tester,
+      find.widgetWithText(FilledButton, 'ゲーム開始'),
+    );
   });
 }
