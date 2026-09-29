@@ -54,7 +54,7 @@ List<String> fugitivesWithinCatchRange({
       continue;
     }
     final distance = estimateDistanceMeters(detection.rssiDbm);
-    if (!isWithinBecomeDemonRange(distance)) continue;
+    if (!isWithinCatchRange(distance)) continue;
     inRange.add((uid: user.id, distance: distance));
   }
   inRange.sort((a, b) => a.distance.compareTo(b.distance));

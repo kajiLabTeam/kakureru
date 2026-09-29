@@ -9,7 +9,7 @@ class BleProximityThresholds {
   const BleProximityThresholds._();
 
   /// 鬼の「捕まえた」を押せるようにする距離のしきい値(m)。issue #16・#140。
-  static const becomeDemonRangeMeters = 3.0;
+  static const catchRangeMeters = 3.0;
 
   /// 1mの距離で観測される基準RSSI(dBm)。BLEチップ・端末機種・持ち方で
   /// 変動するため、実機測定(issue #16 検証上の制約)の後に調整が要る暫定値。
@@ -66,8 +66,8 @@ double estimateDistanceMeters(
 }
 
 /// 「捕まえた」ボタンを押せる距離(3m以内)かどうか(issue #140)。
-bool isWithinBecomeDemonRange(double distanceMeters) =>
-    distanceMeters <= BleProximityThresholds.becomeDemonRangeMeters;
+bool isWithinCatchRange(double distanceMeters) =>
+    distanceMeters <= BleProximityThresholds.catchRangeMeters;
 
 /// 検知結果がまだ新しい(古すぎない)かどうか。
 bool isDetectionFresh({required int detectedAtMillis, required int nowMillis}) {

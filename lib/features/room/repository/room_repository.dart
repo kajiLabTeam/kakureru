@@ -316,6 +316,13 @@ class RoomRepository {
   /// **捕獲を先に消し、役割を後で戻す**。逆の順にすると、役割がFUGITIVEに
   /// 戻った瞬間にまだ残っている捕獲を本人の端末が見つけて、また鬼に
   /// なってしまう([catchToAcceptAsCaught])。
+  ///
+  /// 3つの書き込みは**サーバーの応答を待たずに続けて出す**。1つずつ待つと、
+  /// 捕獲を消した後に通信が切れたりアプリが落ちたりしたとき、役割の書き戻しが
+  /// 出されないまま「捕獲は無いのに鬼」で取り残される(`catchToAcceptAsCaught`
+  /// は逃走者のときしか動かないので自動では戻らない)。続けて出せば3つとも
+  /// 端末の書き込み待ち行列(オフライン永続化で保存される)に積まれ、出した順に
+  /// 手元へ反映・サーバーへ送られるので、上の順序も保たれる。
   Future<void> undoCatch(String roomId, RoomCatch roomCatch) async {
     final now = await _serverNowMillis();
     if (now == null) throw const CatchUndoUnavailableException();
@@ -327,15 +334,16 @@ class RoomRepository {
     final photoIdSnapshot = await _db
         .ref('rooms/$roomId/catches/${roomCatch.id}/catchPhotoId')
         .get();
-    await catchRef.set(null);
     final photoId = photoIdSnapshot.value as String?;
-    if (photoId != null) {
-      await _db.ref('rooms/$roomId/catchPhotos/$photoId').set(null);
-    }
-    await _db.ref('rooms/$roomId/users/$_uid').update({
-      'role': 'FUGITIVE',
-      'becameDemonAt': null,
-    });
+    await Future.wait([
+      catchRef.set(null),
+      if (photoId != null)
+        _db.ref('rooms/$roomId/catchPhotos/$photoId').set(null),
+      _db.ref('rooms/$roomId/users/$_uid').update({
+        'role': 'FUGITIVE',
+        'becameDemonAt': null,
+      }),
+    ]);
     unawaited(
       _eventLog.log(
         roomId,
@@ -369,10 +377,16 @@ class RoomRepository {
     final result = await _db
         .ref('rooms/$roomId/catches/$catchId')
         .runTransaction((current) {
+          // 手元にキャッシュが無いと、最初はサーバーの値に関係なくnullで
+          // 呼ばれる。ここでabortするとサーバーの値で再実行されずに終わり、
+          // 取り消されていない捕獲を「取り消し済み」と誤判定してしまう。
+          // nullのまま成功を返せば、サーバーに捕獲があれば実際の値で呼び直され、
+          // 本当に無ければnullのまま確定する(下で存在を確かめる)。
+          if (current == null) return Transaction.success(null);
           if (current is! Map) return Transaction.abort();
           return Transaction.success({...current, 'catchPhotoId': photoId});
         });
-    if (!result.committed) {
+    if (!result.committed || result.snapshot.value == null) {
       await photoRef.set(null);
       throw const CatchAlreadyUndoneException();
     }

@@ -111,7 +111,10 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
       final catchesAsync = ref.read(catchesStreamProvider(roomId));
       final room = ref.read(roomStreamProvider(roomId)).value;
       if (!catchesAsync.hasValue || room == null) return;
-      final offset = ref.read(serverTimeOffsetProvider).value ?? 0;
+      // 端末時計で代用すると、時計のずれで他の端末と通知のタイミングが
+      // ずれる。取り消し(undoCatch)と同じく、サーバー時刻が取れるまで待つ。
+      final offset = ref.read(serverTimeOffsetProvider).value;
+      if (offset == null) return;
       final nowMillis = serverNowMillis(offset);
       final current = catchesOfCurrentGame(
         catchesAsync.value!,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:clock/clock.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -19,6 +21,7 @@ class _FakeDatabase implements FirebaseDatabase {
     this.root, {
     this.allRoomCodesTaken = false,
     this.serverTimeUnavailable = false,
+    this.transactionCacheEmpty = false,
   });
 
   /// RTDBのツリーをネストしたMapで持つ。
@@ -31,6 +34,15 @@ class _FakeDatabase implements FirebaseDatabase {
   /// trueにすると`.info/serverTimeOffset`の購読がエラーになる(オフライン等)。
   /// タイムアウト待ちをせずに「サーバー時刻が取れない」状態を作れる。
   final bool serverTimeUnavailable;
+
+  /// trueにすると、実機で手元にキャッシュが無いときと同じく、
+  /// `runTransaction`のハンドラを最初にnullで呼ぶ。abortされればそこで
+  /// 終わり(committed=false)、値を返せばサーバーの値で呼び直す。
+  final bool transactionCacheEmpty;
+
+  /// `set`/`update`の完了(サーバーの応答)を止めておく。書き込み自体は
+  /// 実機の「手元への即時反映」と同じくすぐ[root]に反映する。nullなら止めない。
+  Completer<void>? holdWrites;
 
   /// リポジトリが`get()`で読んだパス。「そもそも読みにいかない」ことを
   /// 検証するために記録する(テスト側から直接[read]した分は含めない)。
@@ -97,7 +109,10 @@ class _FakeReference implements DatabaseReference {
   }
 
   @override
-  Future<void> set(Object? value) async => _db.write(_path, value);
+  Future<void> set(Object? value) async {
+    _db.write(_path, value);
+    await _db.holdWrites?.future;
+  }
 
   /// RTDBの`update`と同じく、渡した子だけを書き換え、他の子は残す。
   /// 値が`null`の子は消す。
@@ -111,6 +126,7 @@ class _FakeReference implements DatabaseReference {
         _db.write(childPath, entry.value);
       }
     }
+    await _db.holdWrites?.future;
   }
 
   /// `push()`は新しい子への参照を返すだけなので、キーが毎回変わることだけ
@@ -126,10 +142,17 @@ class _FakeReference implements DatabaseReference {
     TransactionHandler handler, {
     bool applyLocally = true,
   }) async {
+    if (_db.transactionCacheEmpty) {
+      final guess = handler(null);
+      if (guess.aborted) return _FakeTransactionResult(committed: false);
+    }
     final result = handler(_db.read(_path));
     if (result.aborted) return _FakeTransactionResult(committed: false);
     _db.write(_path, result.value);
-    return _FakeTransactionResult(committed: true);
+    return _FakeTransactionResult(
+      committed: true,
+      snapshot: _FakeSnapshot(result.value),
+    );
   }
 
   @override
@@ -148,10 +171,16 @@ class _FakeReference implements DatabaseReference {
 int _pushCounter = 0;
 
 class _FakeTransactionResult implements TransactionResult {
-  _FakeTransactionResult({required this.committed});
+  _FakeTransactionResult({
+    required this.committed,
+    this.snapshot = const _FakeSnapshot(null),
+  });
 
   @override
   final bool committed;
+
+  @override
+  final DataSnapshot snapshot;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -168,7 +197,7 @@ class _FakeEvent implements DatabaseEvent {
 }
 
 class _FakeSnapshot implements DataSnapshot {
-  _FakeSnapshot(this.value);
+  const _FakeSnapshot(this.value);
 
   @override
   final Object? value;
@@ -748,6 +777,23 @@ void main() {
       expect(db.read('rooms/room-1/users/me/becameDemonAt'), isNull);
     });
 
+    test('取り消しは捕獲の削除の応答を待たずに役割の書き戻しまで出す', () async {
+      // 捕獲を消した後に通信が切れても「捕獲は無いのに鬼」で取り残されない
+      // よう、3つの書き込みがすべて手元に積まれていること。
+      final (:db, :roomCatch) = caughtState(agoMillis: 0, photoId: 'p1');
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+      final hold = db.holdWrites = Completer<void>();
+
+      final undo = _atFixedNow(() => repo.undoCatch('room-1', roomCatch));
+      await pumpEventQueue();
+
+      expect(db.read('rooms/room-1/catches/c1'), isNull);
+      expect(db.read('rooms/room-1/catchPhotos/p1'), isNull);
+      expect(db.read('rooms/room-1/users/me/role'), 'FUGITIVE');
+      hold.complete();
+      await undo;
+    });
+
     test('10秒を過ぎたら取り消せず、何も書き換えない', () async {
       final (:db, :roomCatch) = caughtState(agoMillis: 10000);
       final repo = RoomRepository(db: db, auth: _FakeAuth());
@@ -788,6 +834,42 @@ void main() {
       expect(db.read('rooms/room-1/catches/c1/fugitiveUserId'), 'me');
       expect(db.read('rooms/room-1/catchPhotos/p9/catchId'), 'c1');
       expect(db.read('rooms/room-1/catchPhotos/p9/demonUid'), 'me');
+    });
+
+    test('手元にキャッシュが無くても、捕獲があれば写真を付けられる', () async {
+      final (db: base, roomCatch: _) = caughtState(agoMillis: 0);
+      final db = _FakeDatabase(base.root, transactionCacheEmpty: true);
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await repo.attachCatchPhoto(
+        'room-1',
+        catchId: 'c1',
+        photoId: 'p9',
+        fugitiveUid: 'other',
+      );
+
+      expect(db.read('rooms/room-1/catches/c1/catchPhotoId'), 'p9');
+      expect(db.read('rooms/room-1/catchPhotos/p9/catchId'), 'c1');
+    });
+
+    test('手元にキャッシュが無く、捕獲も無ければ取り消し済みとして扱う', () async {
+      final db = _FakeDatabase(
+        _rtdbWith(status: 'PLAYING'),
+        transactionCacheEmpty: true,
+      );
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await expectLater(
+        repo.attachCatchPhoto(
+          'room-1',
+          catchId: 'gone',
+          photoId: 'p9',
+          fugitiveUid: 'other',
+        ),
+        throwsA(isA<CatchAlreadyUndoneException>()),
+      );
+      expect(db.read('rooms/room-1/catches/gone'), isNull);
+      expect(db.read('rooms/room-1/catchPhotos/p9'), isNull);
     });
 
     test('取り消し済みの捕獲には写真を付けず、メタデータも残さない', () async {

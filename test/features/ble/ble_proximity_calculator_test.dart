@@ -63,18 +63,18 @@ void main() {
     });
   });
 
-  group('isWithinBecomeDemonRange 境界値', () {
+  group('isWithinCatchRange 境界値', () {
     test('しきい値ちょうどなら範囲内', () {
       expect(
-        isWithinBecomeDemonRange(BleProximityThresholds.becomeDemonRangeMeters),
+        isWithinCatchRange(BleProximityThresholds.catchRangeMeters),
         isTrue,
       );
     });
 
     test('しきい値を少し超えたら範囲外', () {
       expect(
-        isWithinBecomeDemonRange(
-          BleProximityThresholds.becomeDemonRangeMeters + 0.01,
+        isWithinCatchRange(
+          BleProximityThresholds.catchRangeMeters + 0.01,
         ),
         isFalse,
       );
