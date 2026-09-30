@@ -55,6 +55,7 @@ import 'package:kakureru/features/room/view/game/map_photo_tab_bar.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
 import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
 import 'package:kakureru/features/room/view/game/photo_capture_banner.dart';
+import 'package:kakureru/features/room/view/game/sighting_photo_button.dart';
 import 'package:kakureru/features/room/view/photo_gallery_page.dart';
 import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/photo_capture_controller.dart';
@@ -231,6 +232,17 @@ class GamePage extends HookConsumerWidget {
         pageIndex.value != 1 &&
         seenPhotoCount.value != null &&
         galleryPhotoCount > seenPhotoCount.value!;
+
+    // 目撃写真(見つけた鬼の写真)の未読の数と、シートを開く操作。地図の
+    // ページは写真タブへ移ると破棄されるため、見た数はここ(GamePage本体)で
+    // 持つ。中身はsighting_photo_button.dartにある。
+    final sightingBadge = useSightingBadge(
+      context,
+      ref,
+      roomId: roomId,
+      startedAt: room?.startedAt,
+      myUid: myUid,
+    );
 
     // デバッグ用の偽プレイヤーを出しているかどうか(issue #67)。多人数での
     // 見え方は端末を人数分集めないと確認できないため、デバッグビルドでだけ
@@ -656,17 +668,36 @@ class GamePage extends HookConsumerWidget {
                     // 下のカードが押し出されて画面外へ消えるため
                     // (OutsideAreaAlertMapのコメント参照)。
                     Expanded(
-                      child: OutsideAreaAlertMap(
-                        alert: outsideAreaAlert,
-                        // 偽プレイヤーのピンにも名前と役割色を出すため、
-                        // 地図には表示用の一覧を渡す(issue #67)。
-                        map: GameLocationMap(
-                          locations: visibleLocations,
-                          users: displayUsers,
-                          myUid: myUid,
-                          cachedPosition: cachedPosition.value,
-                          gameArea: room.setting.gameArea,
-                        ),
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: OutsideAreaAlertMap(
+                              alert: outsideAreaAlert,
+                              // 偽プレイヤーのピンにも名前と役割色を出すため、
+                              // 地図には表示用の一覧を渡す(issue #67)。
+                              map: GameLocationMap(
+                                locations: visibleLocations,
+                                users: displayUsers,
+                                myUid: myUid,
+                                cachedPosition: cachedPosition.value,
+                                gameArea: room.setting.gameArea,
+                              ),
+                            ),
+                          ),
+                          // 目撃写真のボタン(地図の右下)。地図の帰属表示
+                          // (右下の「i」)を隠さないよう、その上に置く。
+                          // 写真機能が無効な環境では出さない。
+                          if (isPhotoFeatureConfigured)
+                            Positioned(
+                              right: 14,
+                              bottom: 60,
+                              child: SightingPhotoButton(
+                                unreadCount: sightingBadge.unreadCount,
+                                onPressed: () =>
+                                    unawaited(sightingBadge.openSheet()),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                     // マップの下は、対象役割の相手をタップで選べるチップ一覧と、

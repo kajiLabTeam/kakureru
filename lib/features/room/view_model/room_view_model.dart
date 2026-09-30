@@ -1,8 +1,10 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:hooks_riverpod/misc.dart' show StreamProviderFamily;
 import '../model/catch_photo.dart';
 import '../model/room.dart';
 import '../model/room_catch.dart';
 import '../model/room_photo.dart';
+import '../model/sighting.dart';
 import '../player_name_validation.dart';
 import '../repository/player_preferences_repository.dart';
 import '../repository/room_repository.dart';
@@ -88,4 +90,12 @@ final catchesStreamProvider = StreamProvider.family
 final catchPhotosStreamProvider = StreamProvider.family
     .autoDispose<List<CatchPhoto>, String>((ref, roomId) {
       return ref.watch(roomRepositoryProvider).watchCatchPhotos(roomId);
+    });
+
+/// 目撃写真(見つけた鬼の写真)のメタデータ一覧(`sightings`)。前のゲームの
+/// 分も含むので、画面で使うときは`sightingsOfCurrentGame`
+/// (sighting_rules.dart)で今のゲームに絞ること。
+final StreamProviderFamily<List<Sighting>, String> sightingsStreamProvider =
+    StreamProvider.family.autoDispose<List<Sighting>, String>((ref, roomId) {
+      return ref.watch(roomRepositoryProvider).watchSightings(roomId);
     });
