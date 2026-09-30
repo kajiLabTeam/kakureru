@@ -213,6 +213,34 @@ Future<void> showPhotoTakenNotification(String message) {
   );
 }
 
+/// 目撃写真の通知のID。足元の写真の通知([showPhotoTakenNotification])を
+/// 上書きしないよう別に取る。
+const _sightingTakenNotificationId = 7;
+
+/// 逃走者が目撃写真(見つけた鬼の写真)を撮ったとき、鬼全員の端末に出す通知。
+///
+/// 自分の写真を撮られたかもしれないことに、画面OFFやバックグラウンドでも
+/// 気づけるようにする。同じIDで出すので、続けて撮られたら最新の内容に
+/// 置き換わる。失敗してもログに残すだけ。
+Future<void> showSightingTakenNotification(String message) {
+  const androidDetails = AndroidNotificationDetails(
+    'kakureru_sighting_taken',
+    '目撃写真の通知',
+    channelDescription: '鬼のとき、逃走者が鬼の写真を撮ったら通知します',
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+  return _runOrLogFailure(
+    () => _plugin.show(
+      id: _sightingTakenNotificationId,
+      title: 'kakureru',
+      body: message,
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    ),
+    what: '目撃写真の通知',
+  );
+}
+
 /// 「AがBを捕まえた」通知のID。他の通知とは別に取る。
 const _catchNotificationId = 5;
 

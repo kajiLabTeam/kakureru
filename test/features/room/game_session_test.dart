@@ -74,6 +74,12 @@ class _RecordingWifiScanRepository extends WifiScanRepository {
 /// BLEの広告・スキャンへ触れる。
 class _RecordingBleViewModel extends BleViewModel {
   int stopCalls = 0;
+  int restartCalls = 0;
+
+  @override
+  void restart() {
+    restartCalls++;
+  }
 
   @override
   Map<String, BleDetection> build() => const {};
@@ -163,6 +169,28 @@ Future<_RecordingLocationViewModel> _pumpHarness(
     ProviderScope(
       overrides: [locationViewModelProvider.overrideWith(() => viewModel)],
       child: const _RetryHarness(roomId: 'room-1'),
+    ),
+  );
+  return viewModel;
+}
+
+/// [useBleRestartOnResume]だけを貼ったテスト用ウィジェット。
+class _BleRestartHarness extends HookConsumerWidget {
+  const _BleRestartHarness();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    useBleRestartOnResume(ref);
+    return const SizedBox.shrink();
+  }
+}
+
+Future<_RecordingBleViewModel> _pumpBleHarness(WidgetTester tester) async {
+  final viewModel = _RecordingBleViewModel();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [bleViewModelProvider.overrideWith(() => viewModel)],
+      child: const _BleRestartHarness(),
     ),
   );
   return viewModel;
@@ -378,6 +406,44 @@ void main() {
       await tester.pump();
 
       expect(viewModel.startedRooms, isEmpty);
+    });
+  });
+
+  group('useBleRestartOnResume', () {
+    testWidgets('撮影などで裏に回ってから戻ってきたら、BLEを張り直す', (tester) async {
+      final viewModel = await _pumpBleHarness(tester);
+
+      await _sendLifecycle(tester, AppLifecycleState.paused);
+      await tester.pump();
+      expect(viewModel.restartCalls, 0, reason: '裏に回っただけでは張り直さない');
+
+      await _sendLifecycle(tester, AppLifecycleState.resumed);
+      await tester.pump();
+      expect(viewModel.restartCalls, 1);
+    });
+
+    testWidgets('ゲーム画面(useGameSession)でも、裏から戻ったら張り直す', (
+      tester,
+    ) async {
+      final sensors = await _pumpGameSession(tester);
+
+      await _sendLifecycle(tester, AppLifecycleState.paused);
+      await _sendLifecycle(tester, AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(sensors.ble.restartCalls, 1);
+    });
+
+    testWidgets('ダイアログが手前に出ただけ(inactive→resumed)では張り直さない', (
+      tester,
+    ) async {
+      final viewModel = await _pumpBleHarness(tester);
+
+      await _sendLifecycle(tester, AppLifecycleState.inactive);
+      await _sendLifecycle(tester, AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(viewModel.restartCalls, 0);
     });
   });
 }
