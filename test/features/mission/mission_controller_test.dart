@@ -8,15 +8,13 @@ import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
+import 'package:kakureru/features/mission/model/mission_notice.dart';
 import 'package:kakureru/features/mission/repository/mission_repository.dart';
 import 'package:kakureru/features/mission/view_model/mission_view_model.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
-import 'package:kakureru/features/wifi/model/proximity_level.dart';
-import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
-import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
 /// [MissionController]のテスト。`GameAlerts`と同じく、画面(フレーム)が
 /// 無くても1秒ごとのタイマーだけで判定が進むことを`ProviderContainer`で見る。
@@ -24,6 +22,7 @@ void main() {
   const roomId = 'room1';
   const hostUid = 'host';
   const fugitiveUid = 'me';
+  const demonUid = 'demon';
 
   int nowMs() => DateTime.now().millisecondsSinceEpoch;
 
@@ -39,8 +38,26 @@ void main() {
     users: const [
       RoomUser(id: hostUid, displayName: 'ほすと'),
       RoomUser(id: fugitiveUid, displayName: 'わたし'),
-      RoomUser(id: 'demon', displayName: 'おに', role: UserRole.demon),
+      RoomUser(id: demonUid, displayName: 'おに', role: UserRole.demon),
     ],
+  );
+
+  Mission missionAt({
+    required int createdAt,
+    List<MissionSpot>? spots,
+    int? finishedAt,
+  }) => Mission(
+    id: 'm1',
+    round: 1,
+    createdAt: createdAt,
+    expiresAt: createdAt + 5 * 60 * 1000,
+    finishedAt: finishedAt,
+    spots:
+        spots ??
+        const [
+          MissionSpot(id: 's0', lat: 35, lng: 137, radiusM: 15),
+          MissionSpot(id: 's1', lat: 35.01, lng: 137, radiusM: 15),
+        ],
   );
 
   ProviderContainer containerWith({
@@ -48,8 +65,8 @@ void main() {
     required Room room,
     List<Mission> Function()? missions,
     UserLocation? Function()? location,
-    List<WifiProximityEntry> Function()? levels,
     _RecordingRepository? repository,
+    _RecordingSink? sink,
   }) {
     final container = ProviderContainer(
       overrides: [
@@ -65,12 +82,10 @@ void main() {
         locationViewModelProvider.overrideWith(
           () => _StubLocationViewModel(location ?? () => null),
         ),
-        wifiProximityLevelsProvider(roomId).overrideWith(
-          () => _StubLevels(roomId, levels ?? () => const []),
-        ),
         missionRepositoryProvider.overrideWithValue(
           repository ?? _RecordingRepository(),
         ),
+        missionAlertSinkProvider.overrideWithValue(sink ?? _RecordingSink()),
       ],
     );
     addTearDown(container.dispose);
@@ -78,19 +93,19 @@ void main() {
   }
 
   group('ミッションの生成', () {
-    test('ホストの端末だけが、放出から30秒で1件だけ書く', () {
+    test('ホストの端末だけが、放出から5分で1件だけ書く(地点は鬼の人数 + 1)', () {
       fakeAsync((async) {
         final repository = _RecordingRepository();
         final container = containerWith(
           myUid: hostUid,
-          room: roomWith(releasedAgoSec: 31),
+          room: roomWith(releasedAgoSec: 5 * 60 + 1),
           repository: repository,
         );
         container.read(missionControllerProvider.notifier).start(roomId);
         // 書いたミッションが購読に戻ってこない状態で毎秒判定が回っても、
         // 二重に書かないよう間隔を置く(5秒に1回まで)。
         async.elapse(const Duration(seconds: 3));
-        expect(repository.createCalls, 1);
+        expect(repository.calls, [(spotCount: 2, round: 1)]);
       });
     });
 
@@ -99,47 +114,38 @@ void main() {
         final repository = _RecordingRepository();
         final container = containerWith(
           myUid: fugitiveUid,
-          room: roomWith(releasedAgoSec: 31),
+          room: roomWith(releasedAgoSec: 5 * 60 + 1),
           repository: repository,
         );
         container.read(missionControllerProvider.notifier).start(roomId);
         async.elapse(const Duration(seconds: 10));
-        expect(repository.createCalls, 0);
+        expect(repository.calls, isEmpty);
       });
     });
 
-    test('放出から30秒たつまでは書かない', () {
+    test('放出から5分たつまでは書かない', () {
       fakeAsync((async) {
         final repository = _RecordingRepository();
         final container = containerWith(
           myUid: hostUid,
-          room: roomWith(releasedAgoSec: 10),
+          room: roomWith(releasedAgoSec: 4 * 60 + 50),
           repository: repository,
         );
         container.read(missionControllerProvider.notifier).start(roomId);
         async.elapse(const Duration(seconds: 5));
-        expect(repository.createCalls, 0);
+        expect(repository.calls, isEmpty);
       });
     });
   });
 
   group('自分の進み具合', () {
-    test('アクセスポイントの範囲内が2回続いたら、画面が無くても到着になる', () {
+    test('近い地点の範囲内が2回続いたら、画面が無くても到着になる', () {
       fakeAsync((async) {
-        final created = nowMs();
-        final mission = Mission(
-          id: 'm1',
-          type: MissionType.accessPoint,
-          createdAt: created,
-          expiresAt: created + 180000,
-          lat: 35,
-          lng: 137,
-          radiusM: 15,
-        );
+        final mission = missionAt(createdAt: nowMs());
         var sample = 0;
         final container = containerWith(
           myUid: fugitiveUid,
-          room: roomWith(releasedAgoSec: 60),
+          room: roomWith(releasedAgoSec: 6 * 60),
           missions: () => [mission],
           // 呼ばれるたびに新しい読み取り(updatedAtが進む)を返す。
           location: () => UserLocation(
@@ -155,62 +161,145 @@ void main() {
 
         final progress = container.read(missionControllerProvider);
         expect(progress.missionId, 'm1');
+        expect(progress.spotId, 's0');
         expect(progress.arrival.arrived, isTrue);
       });
     });
+  });
 
-    test('「鬼に近づけ」は反応なし → ありで達成になる', () {
+  group('お知らせ', () {
+    test('逃走者には、アプリを開いていればバナーと振動で1回だけ出す', () {
       fakeAsync((async) {
-        final created = nowMs();
-        final mission = Mission(
-          id: 'a1',
-          type: MissionType.approachDemon,
-          createdAt: created,
-          expiresAt: created + 120000,
-        );
-        var close = false;
+        final mission = missionAt(createdAt: nowMs());
+        final sink = _RecordingSink();
         final container = containerWith(
           myUid: fugitiveUid,
-          room: roomWith(releasedAgoSec: 60),
+          room: roomWith(releasedAgoSec: 6 * 60),
           missions: () => [mission],
-          levels: () => [
-            WifiProximityEntry(
-              uid: 'demon',
-              level: close ? ProximityLevel.close : ProximityLevel.far,
-            ),
-          ],
+          sink: sink,
         );
         container.read(missionControllerProvider.notifier).start(roomId);
         async.elapse(const Duration(seconds: 3));
-        expect(
-          container.read(missionControllerProvider).approach.achieved,
-          isFalse,
-        );
 
-        close = true;
-        async.elapse(const Duration(seconds: 3));
-        expect(
-          container.read(missionControllerProvider).approach.achieved,
-          isTrue,
+        final banner = container.read(missionBannerProvider);
+        expect(banner?.kind, MissionNoticeKind.created);
+        expect(banner?.message, startsWith('アクセスポイントへ行こう'));
+        expect(sink.vibrations, 1);
+        expect(sink.notified, isEmpty);
+      });
+    });
+
+    test('アプリを閉じていればOSの通知にする', () {
+      fakeAsync((async) {
+        final mission = missionAt(createdAt: nowMs());
+        final sink = _RecordingSink(foreground: false);
+        final container = containerWith(
+          myUid: fugitiveUid,
+          room: roomWith(releasedAgoSec: 6 * 60),
+          missions: () => [mission],
+          sink: sink,
         );
+        container.read(missionControllerProvider.notifier).start(roomId);
+        async.elapse(const Duration(seconds: 3));
+
+        expect(container.read(missionBannerProvider), isNull);
+        expect(sink.notified, hasLength(1));
+      });
+    });
+
+    test('鬼には出さない', () {
+      fakeAsync((async) {
+        final mission = missionAt(createdAt: nowMs());
+        final sink = _RecordingSink();
+        final container = containerWith(
+          myUid: demonUid,
+          room: roomWith(releasedAgoSec: 6 * 60),
+          missions: () => [mission],
+          sink: sink,
+        );
+        container.read(missionControllerProvider.notifier).start(roomId);
+        async.elapse(const Duration(seconds: 3));
+
+        expect(container.read(missionBannerProvider), isNull);
+        expect(sink.vibrations, 0);
+        expect(sink.notified, isEmpty);
+      });
+    });
+
+    test('地点がすべて取られたら「AとBがごほうびを引いた」を出す', () {
+      fakeAsync((async) {
+        final created = nowMs();
+        var mission = missionAt(createdAt: created);
+        final sink = _RecordingSink(foreground: false);
+        final container = containerWith(
+          myUid: fugitiveUid,
+          room: roomWith(releasedAgoSec: 6 * 60),
+          missions: () => [mission],
+          sink: sink,
+        );
+        container.read(missionControllerProvider.notifier).start(roomId);
+        async.elapse(const Duration(seconds: 2));
+
+        mission = missionAt(
+          createdAt: created,
+          finishedAt: nowMs(),
+          spots: const [
+            MissionSpot(
+              id: 's0',
+              lat: 35,
+              lng: 137,
+              radiusM: 15,
+              claimedBy: hostUid,
+            ),
+            MissionSpot(
+              id: 's1',
+              lat: 35.01,
+              lng: 137,
+              radiusM: 15,
+              claimedBy: demonUid,
+            ),
+          ],
+        );
+        async.elapse(const Duration(seconds: 2));
+
+        expect(sink.notified.last, 'ほすと と おに が ごほうび を引いた');
       });
     });
   });
 }
 
-/// `createMission`の呼び出し回数だけを記録するリポジトリ。
+/// `createMission`に渡された地点の数と回を記録するリポジトリ。
 class _RecordingRepository extends MissionRepository {
-  int createCalls = 0;
+  final calls = <({int spotCount, int round})>[];
 
   @override
   Future<void> createMission(
     String roomId, {
     required List<LatLng> area,
-    required LatLng? previousPoint,
+    required int spotCount,
+    required int round,
     required int nowMillis,
   }) async {
-    createCalls++;
+    calls.add((spotCount: spotCount, round: round));
   }
+}
+
+/// 出したお知らせを記録する出し先。
+class _RecordingSink extends MissionAlertSink {
+  _RecordingSink({this.foreground = true});
+
+  final bool foreground;
+  int vibrations = 0;
+  final notified = <String>[];
+
+  @override
+  bool get isForeground => foreground;
+
+  @override
+  Future<void> vibrate() async => vibrations++;
+
+  @override
+  Future<void> notify(String message) async => notified.add(message);
 }
 
 class _StubLocationViewModel extends LocationViewModel {
@@ -231,21 +320,5 @@ class _StubLocationViewModel extends LocationViewModel {
   LocationState _current() {
     final location = _read();
     return LocationState(locations: location == null ? const [] : [location]);
-  }
-}
-
-class _StubLevels extends WifiProximityLevelsNotifier {
-  _StubLevels(super.roomId, this._read);
-
-  final List<WifiProximityEntry> Function() _read;
-
-  @override
-  List<WifiProximityEntry> build() {
-    final timer = Timer.periodic(
-      const Duration(milliseconds: 500),
-      (_) => state = _read(),
-    );
-    ref.onDispose(timer.cancel);
-    return _read();
   }
 }

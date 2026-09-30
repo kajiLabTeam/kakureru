@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-/// ミッション・特典の配色(kakureru-mission-mock.html)。
+/// ミッション・ごほうびの配色(kakureru-mission-mock.html)。
 ///
 /// 白文字を載せる面は濃い方([missionDeep])を使う。演出(ガチャ)の暗い地と
 /// 金はこのファイルに置かない(ゲーム中の画面には持ち込まないため)。
 const missionAccent = Color(0xFFC98A1E);
 
-/// 白文字を載せるミッションの面(見出しのアイコン・「特典を引く」)。
+/// 白文字を載せるミッションの面(見出しのアイコン・「ごほうびガチャを引く」)。
 const missionDeep = Color(0xFF8A6A16);
 
 /// ミッションの淡い地(タグ・帯・「まだ誰も取っていない」)。
@@ -18,17 +18,17 @@ const missionInk = Color(0xFF6B5310);
 /// 判定範囲の円の塗り。
 const missionRangeFill = Color(0x1FC98A1E);
 
-/// 「鬼に効く」のタグの地と文字。
+/// 「鬼をジャマする」のタグの地と文字。
 const demonSoft = Color(0xFFFBEBEB);
 
-/// 「鬼に効く」の文字・アイコン、注意の赤字。
+/// 「鬼をジャマする」の文字・アイコン、注意の赤字。
 const demonDeep = Color(0xFFC0343A);
 
-/// 「自分に効く」のタグの地。
+/// 「自分がトクする」のタグの地。
 const selfSoft = Color(0xFFE8EEF9);
 
-/// 「全員が挑める」のタグの地。
+/// 逃走者の緑の淡い地。
 const fugitiveSoft = Color(0xFFE9F0EA);
 
-/// 「全員が挑める」のタグの文字。
+/// 逃走者の緑(白文字を載せてよい面。ごほうびの画面の「地図に戻る」)。
 const fugitiveDeep = Color(0xFF3A7F4A);

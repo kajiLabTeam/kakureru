@@ -8,12 +8,31 @@ part of 'mission.dart';
 
 _Mission _$MissionFromJson(Map<String, dynamic> json) => _Mission(
   id: json['id'] as String,
-  type: $enumDecode(_$MissionTypeEnumMap, json['type']),
+  round: (json['round'] as num).toInt(),
   createdAt: (json['createdAt'] as num).toInt(),
   expiresAt: (json['expiresAt'] as num).toInt(),
-  lat: (json['lat'] as num?)?.toDouble(),
-  lng: (json['lng'] as num?)?.toDouble(),
-  radiusM: (json['radiusM'] as num?)?.toDouble(),
+  finishedAt: (json['finishedAt'] as num?)?.toInt(),
+  spots:
+      (json['spots'] as List<dynamic>?)
+          ?.map((e) => MissionSpot.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const <MissionSpot>[],
+);
+
+Map<String, dynamic> _$MissionToJson(_Mission instance) => <String, dynamic>{
+  'id': instance.id,
+  'round': instance.round,
+  'createdAt': instance.createdAt,
+  'expiresAt': instance.expiresAt,
+  'finishedAt': instance.finishedAt,
+  'spots': instance.spots.map((e) => e.toJson()).toList(),
+};
+
+_MissionSpot _$MissionSpotFromJson(Map<String, dynamic> json) => _MissionSpot(
+  id: json['id'] as String,
+  lat: (json['lat'] as num).toDouble(),
+  lng: (json['lng'] as num).toDouble(),
+  radiusM: (json['radiusM'] as num).toDouble(),
   claimedBy: json['claimedBy'] as String?,
   claimedAt: (json['claimedAt'] as num?)?.toInt(),
   reward: $enumDecodeNullable(
@@ -23,23 +42,16 @@ _Mission _$MissionFromJson(Map<String, dynamic> json) => _Mission(
   ),
 );
 
-Map<String, dynamic> _$MissionToJson(_Mission instance) => <String, dynamic>{
-  'id': instance.id,
-  'type': _$MissionTypeEnumMap[instance.type]!,
-  'createdAt': instance.createdAt,
-  'expiresAt': instance.expiresAt,
-  'lat': instance.lat,
-  'lng': instance.lng,
-  'radiusM': instance.radiusM,
-  'claimedBy': instance.claimedBy,
-  'claimedAt': instance.claimedAt,
-  'reward': _$RewardTypeEnumMap[instance.reward],
-};
-
-const _$MissionTypeEnumMap = {
-  MissionType.accessPoint: 'access_point',
-  MissionType.approachDemon: 'approach_demon',
-};
+Map<String, dynamic> _$MissionSpotToJson(_MissionSpot instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'lat': instance.lat,
+      'lng': instance.lng,
+      'radiusM': instance.radiusM,
+      'claimedBy': instance.claimedBy,
+      'claimedAt': instance.claimedAt,
+      'reward': _$RewardTypeEnumMap[instance.reward],
+    };
 
 const _$RewardTypeEnumMap = {
   RewardType.blockClues: 'block_clues',

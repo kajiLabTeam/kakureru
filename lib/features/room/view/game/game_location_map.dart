@@ -27,7 +27,7 @@ Widget buildLocationMapForTest({
   required List<RoomUser> users,
   required String? myUid,
   List<LatLng> gameArea = const [],
-  MissionMapPoint? missionPoint,
+  List<MissionMapPoint> missionPoints = const [],
   bool enlargeDemonIcon = false,
 }) {
   return GameLocationMap(
@@ -36,7 +36,7 @@ Widget buildLocationMapForTest({
     myUid: myUid,
     cachedPosition: null,
     gameArea: gameArea,
-    missionPoint: missionPoint,
+    missionPoints: missionPoints,
     enlargeDemonIcon: enlargeDemonIcon,
   );
 }
@@ -66,7 +66,7 @@ class GameLocationMap extends HookWidget {
     required this.myUid,
     required this.cachedPosition,
     required this.gameArea,
-    this.missionPoint,
+    this.missionPoints = const [],
     this.enlargeDemonIcon = false,
   });
 
@@ -85,11 +85,11 @@ class GameLocationMap extends HookWidget {
   /// ルーム設定で指定されたプレイエリア。未設定なら空。
   final List<LatLng> gameArea;
 
-  /// いま受けているアクセスポイント。点と判定範囲の破線の円を描く。
-  /// 無ければnull。
-  final MissionMapPoint? missionPoint;
+  /// いま受けているミッションの、空いているアクセスポイント。それぞれに
+  /// 点と判定範囲の円を描く。無ければ空。
+  final List<MissionMapPoint> missionPoints;
 
-  /// 鬼のピンを[enlargedDemonIconScale]倍にするか(特典 `big_demon_icon`)。
+  /// 鬼のピンを[enlargedDemonIconScale]倍にするか(ごほうび `big_demon_icon`)。
   /// 自分のピンは大きくしない。
   final bool enlargeDemonIcon;
 
@@ -157,10 +157,15 @@ class GameLocationMap extends HookWidget {
 
     // 判定範囲の円は地点が変わらない限り同じなので、毎秒の再描画で
     // 作り直さない(円周の36点を測地線で計算するため)。
-    final point = missionPoint;
-    final missionRange = useMemoized(
-      () => point == null ? null : _missionRangePolygon(point),
-      [point?.lat, point?.lng, point?.radiusM],
+    final missionRanges = useMemoized(
+      () => [for (final point in missionPoints) _missionRangePolygon(point)],
+      [
+        for (final point in missionPoints) ...[
+          point.lat,
+          point.lng,
+          point.radiusM,
+        ],
+      ],
     );
 
     // マーカー(アイコン+ラベル)を位置ごとに組み立てる。
@@ -189,9 +194,13 @@ class GameLocationMap extends HookWidget {
                   _areaBorderPolygon(areaPoints),
                 ],
               ),
-            if (point != null && missionRange != null) ...[
-              PolygonLayer(polygons: [missionRange]),
-              MarkerLayer(markers: [_missionMarker(point)]),
+            if (missionPoints.isNotEmpty) ...[
+              PolygonLayer(polygons: missionRanges),
+              MarkerLayer(
+                markers: [
+                  for (final point in missionPoints) _missionMarker(point),
+                ],
+              ),
             ],
             AnimatedMarkerLayer(
               markers: [
@@ -375,7 +384,7 @@ class GameLocationMap extends HookWidget {
       role: displayRole,
     );
 
-    // 特典 `big_demon_icon` の間は、鬼のピンをアイコンの中心を起点に拡大する。
+    // ごほうび `big_demon_icon` の間は、鬼のピンをアイコンの中心を起点に拡大する。
     // Transformはレイアウトを変えないので、重なりの判定や座標合わせは
     // 元の大きさのまま動く。
     final enlarged =

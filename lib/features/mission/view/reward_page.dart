@@ -6,15 +6,15 @@ import 'package:kakureru/features/mission/view/mission_card.dart';
 import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/view/game/game_palette.dart';
 
-/// 特典を引いたあとに出す画面(モック4)。
+/// ごほうびを引いたあとに出す画面(モック4)。
 ///
 /// 引いた瞬間に効果は出ている(持ち歩かせない)。この画面は知らせるだけで、
 /// 閉じても効果は変わらない。
 class RewardPage extends StatelessWidget {
-  /// [reward]は引いた特典。
+  /// [reward]は引いたごほうび。
   const RewardPage({super.key, required this.reward});
 
-  /// 引いた特典。
+  /// 引いたごほうび。
   final RewardType reward;
 
   /// `GamePage`の上に重ねて開く。`GamePage`は破棄しないので、位置情報の
@@ -63,7 +63,7 @@ class RewardPage extends StatelessWidget {
                   ),
                   SizedBox(height: 10),
                   Text(
-                    '特典をひいた！',
+                    'ごほうびをひいた！',
                     style: TextStyle(
                       fontSize: 23,
                       fontWeight: FontWeight.w700,
@@ -80,7 +80,7 @@ class RewardPage extends StatelessWidget {
                   RewardCard(reward: reward),
                   const SizedBox(height: 16),
                   const Text(
-                    'ほかに入っている特典',
+                    'ほかに入っているごほうび',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -136,12 +136,12 @@ class RewardPage extends StatelessWidget {
   }
 }
 
-/// 引いた特典のカード。「鬼に効く／自分に効く」と効いている時間を書く。
+/// 引いたごほうびのカード。「鬼をジャマする／自分がトクする」と効いている時間を書く。
 class RewardCard extends StatelessWidget {
-  /// [reward]は引いた特典。
+  /// [reward]は引いたごほうび。
   const RewardCard({super.key, required this.reward});
 
-  /// 引いた特典。
+  /// 引いたごほうび。
   final RewardType reward;
 
   @override
@@ -264,7 +264,7 @@ class _OtherRewardRow extends StatelessWidget {
   }
 }
 
-/// 特典のアイコン。
+/// ごほうびのアイコン。
 IconData rewardIcon(RewardType reward) => switch (reward) {
   RewardType.blockClues => Icons.wifi_off,
   RewardType.bigDemonIcon => Icons.zoom_out_map,

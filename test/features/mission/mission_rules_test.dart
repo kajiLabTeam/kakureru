@@ -3,10 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/mission/mission_rules.dart';
+import 'package:kakureru/features/mission/mission_timing.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
-import 'package:kakureru/features/wifi/model/proximity_level.dart';
-import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
 
 /// 名古屋あたりの基準点。緯度1度 ≒ 111km、経度1度 ≒ 91km(北緯35度)。
 const _baseLat = 35.1830;
@@ -15,22 +14,34 @@ const _baseLng = 137.1130;
 /// 北へ[meters]進んだ緯度。
 double _north(double meters) => _baseLat + meters / 111320;
 
-Mission _accessPoint({
-  String id = 'm1',
-  int createdAt = 100000,
-  int? expiresAt,
+MissionSpot _spot({
+  String id = 's0',
+  double northM = 0,
   String? claimedBy,
   int? claimedAt,
-}) => Mission(
+}) => MissionSpot(
   id: id,
-  type: MissionType.accessPoint,
-  createdAt: createdAt,
-  expiresAt: expiresAt ?? createdAt + 180000,
-  lat: _baseLat,
+  lat: _north(northM),
   lng: _baseLng,
   radiusM: accessPointRadiusM,
   claimedBy: claimedBy,
   claimedAt: claimedAt,
+);
+
+Mission _mission({
+  String id = 'm1',
+  int round = 1,
+  int createdAt = 100000,
+  int? expiresAt,
+  int? finishedAt,
+  List<MissionSpot>? spots,
+}) => Mission(
+  id: id,
+  round: round,
+  createdAt: createdAt,
+  expiresAt: expiresAt ?? createdAt + missionTimeLimit.inMilliseconds,
+  finishedAt: finishedAt,
+  spots: spots ?? [_spot(), _spot(id: 's1', northM: 100)],
 );
 
 UserLocation _at(double lat, {double? accuracy = 5, int updatedAt = 1}) =>
@@ -43,13 +54,18 @@ UserLocation _at(double lat, {double? accuracy = 5, int updatedAt = 1}) =>
     );
 
 void main() {
+  test('地点の数は鬼の人数 + 1', () {
+    expect(missionSpotCount(demonCount: 1), 2);
+    expect(missionSpotCount(demonCount: 3), 4);
+  });
+
   group('missionsOfCurrentGame', () {
     test('開始前のミッション(前のゲームの残り)を除き、古い順に並べる', () {
       final result = missionsOfCurrentGame(
         [
-          _accessPoint(id: 'new', createdAt: 5000),
-          _accessPoint(id: 'old', createdAt: 500),
-          _accessPoint(id: 'mid', createdAt: 2000),
+          _mission(id: 'new', createdAt: 5000),
+          _mission(id: 'old', createdAt: 500),
+          _mission(id: 'mid', createdAt: 2000),
         ],
         startedAt: 1000,
       );
@@ -57,68 +73,79 @@ void main() {
     });
 
     test('開始前(startedAtがnull)なら空', () {
-      expect(
-        missionsOfCurrentGame([_accessPoint()], startedAt: null),
-        isEmpty,
-      );
+      expect(missionsOfCurrentGame([_mission()], startedAt: null), isEmpty);
     });
   });
 
-  group('期限切れの判定', () {
-    test('expiresAtの直前は切れていない、ちょうどから切れている', () {
-      final mission = _accessPoint(expiresAt: 10000);
-      expect(isMissionExpired(mission, nowMillis: 9999), isFalse);
-      expect(isMissionExpired(mission, nowMillis: 10000), isTrue);
+  group('期限と終わり', () {
+    test('制限時間は5分。expiresAtの直前は切れていない、ちょうどから切れている', () {
+      final mission = _mission(createdAt: 0);
+      expect(mission.expiresAt, 5 * 60 * 1000);
+      expect(isMissionExpired(mission, nowMillis: 299999), isFalse);
+      expect(isMissionExpired(mission, nowMillis: 300000), isTrue);
+      expect(isMissionActive(mission, nowMillis: 300000), isFalse);
     });
 
-    test('アクセスポイントは取られたら受けられない', () {
-      expect(
-        isMissionActive(
-          _accessPoint(claimedBy: 'a', claimedAt: 110000),
-          nowMillis: 120000,
-        ),
-        isFalse,
+    test('地点がすべて取られたら、期限前でもその場で終わる', () {
+      final partly = _mission(
+        spots: [
+          _spot(claimedBy: 'a', claimedAt: 110000),
+          _spot(id: 's1'),
+        ],
       );
+      expect(isMissionActive(partly, nowMillis: 120000), isTrue);
+      expect(openSpots(partly).map((s) => s.id), ['s1']);
+
+      final all = _mission(
+        finishedAt: 130000,
+        spots: [
+          _spot(claimedBy: 'a', claimedAt: 110000),
+          _spot(id: 's1', claimedBy: 'b', claimedAt: 130000),
+        ],
+      );
+      expect(areAllSpotsClaimed(all), isTrue);
+      expect(isMissionFinishedEarly(all), isTrue);
+      expect(isMissionActive(all, nowMillis: 130001), isFalse);
+      expect(missionEndedAt(all), 130000);
     });
 
-    test('「鬼に近づけ」は期限まで受けられる', () {
-      const mission = Mission(
-        id: 'a',
-        type: MissionType.approachDemon,
-        createdAt: 0,
-        expiresAt: 120000,
-      );
-      expect(isMissionActive(mission, nowMillis: 119999), isTrue);
-      expect(isMissionActive(mission, nowMillis: 120000), isFalse);
-    });
-
-    test('currentMissionは期限切れならnull、取られて15秒たったらnull', () {
-      final expired = _accessPoint(createdAt: 1000, expiresAt: 5000);
-      expect(
-        currentMission([expired], startedAt: 0, nowMillis: 5000),
-        isNull,
-      );
-      final claimed = _accessPoint(
+    test('currentMissionは期限切れならnull、全部取られて15秒たったらnull', () {
+      final expired = _mission(createdAt: 1000, expiresAt: 5000);
+      expect(currentMission([expired], startedAt: 0, nowMillis: 5000), isNull);
+      final finished = _mission(
         createdAt: 1000,
-        claimedBy: 'a',
-        claimedAt: 2000,
+        finishedAt: 2000,
+        spots: [_spot(claimedBy: 'a', claimedAt: 2000)],
       );
       expect(
-        currentMission([claimed], startedAt: 0, nowMillis: 16999),
+        currentMission([finished], startedAt: 0, nowMillis: 16999),
         isNotNull,
       );
       expect(
-        currentMission([claimed], startedAt: 0, nowMillis: 17000),
+        currentMission([finished], startedAt: 0, nowMillis: 17000),
         isNull,
       );
     });
+
+    test('spotClaimedByは自分が取った地点を返す', () {
+      final mission = _mission(
+        spots: [
+          _spot(),
+          _spot(id: 's1', claimedBy: 'me'),
+        ],
+      );
+      expect(spotClaimedBy(mission, 'me')?.id, 's1');
+      expect(spotClaimedBy(mission, 'other'), isNull);
+      expect(spotClaimedBy(mission, null), isNull);
+    });
   });
 
-  group('shouldCreateMission', () {
-    const releasedAt = 100000;
+  group('missionRoundToCreate(出すタイミング)', () {
+    const releasedAt = 1000000;
+    const min = 60 * 1000;
 
-    bool should(List<Mission> missions, int now, {int? endsAt}) =>
-        shouldCreateMission(
+    int? round(List<Mission> missions, int now, {int? endsAt}) =>
+        missionRoundToCreate(
           missions: missions,
           startedAt: 0,
           releasedAt: releasedAt,
@@ -126,48 +153,60 @@ void main() {
           nowMillis: now,
         );
 
-    test('放出前・放出から30秒未満は書かない、30秒で1件目を書く', () {
+    test('放出前・放出から5分未満は書かない、5分で1回目', () {
       expect(
-        shouldCreateMission(
+        missionRoundToCreate(
           missions: const [],
           startedAt: 0,
           releasedAt: null,
           endsAt: null,
-          nowMillis: 999999,
+          nowMillis: 99999999,
         ),
-        isFalse,
+        isNull,
       );
-      expect(should(const [], releasedAt + 29999), isFalse);
-      expect(should(const [], releasedAt + 30000), isTrue);
+      expect(round(const [], releasedAt + 5 * min - 1), isNull);
+      expect(round(const [], releasedAt + 5 * min), 1);
     });
 
-    test('受けられるミッションがあれば書かない(同時に1件だけ)', () {
-      final active = _accessPoint(createdAt: 130000);
-      expect(should([active], 200000), isFalse);
+    test('1回目が終わっていれば、15分で2回目', () {
+      final first = _mission(createdAt: releasedAt + 5 * min);
+      expect(round([first], releasedAt + 15 * min - 1), isNull);
+      expect(round([first], releasedAt + 15 * min), 2);
     });
 
-    test('期限が切れてから60秒あけて次を書く', () {
-      final mission = _accessPoint(createdAt: 130000, expiresAt: 310000);
-      expect(should([mission], 369999), isFalse);
-      expect(should([mission], 370000), isTrue);
-    });
-
-    test('取られたら、取られた時刻から60秒あけて次を書く', () {
-      final mission = _accessPoint(
-        createdAt: 130000,
-        claimedBy: 'a',
-        claimedAt: 150000,
+    test('3回目は無い', () {
+      final first = _mission(createdAt: releasedAt + 5 * min);
+      final second = _mission(
+        id: 'm2',
+        round: 2,
+        createdAt: releasedAt + 15 * min,
       );
-      expect(should([mission], 209999), isFalse);
-      expect(should([mission], 210000), isTrue);
+      expect(round([first, second], releasedAt + 60 * min), isNull);
     });
 
-    test('ゲームが終わっていたら書かない', () {
-      expect(should(const [], 200000, endsAt: 200000), isFalse);
+    test('受けられるミッションが残っていれば書かない(同時に1件だけ)', () {
+      final active = _mission(createdAt: releasedAt + 14 * min);
+      expect(round([active], releasedAt + 15 * min), isNull);
+    });
+
+    test('2回目の前にゲームが終われば2回目は出ない', () {
+      final first = _mission(createdAt: releasedAt + 5 * min);
+      expect(
+        round(
+          [first],
+          releasedAt + 15 * min,
+          endsAt: releasedAt + 12 * min,
+        ),
+        isNull,
+      );
+    });
+
+    test('書きそびれた1回目は飛ばし、2回目だけを書く', () {
+      expect(round(const [], releasedAt + 16 * min), 2);
     });
   });
 
-  group('pickMissionPoint', () {
+  group('pickAccessPoints', () {
     // 約220m四方のエリア。
     final area = [
       const LatLng(lat: _baseLat, lng: _baseLng),
@@ -176,51 +215,79 @@ void main() {
       const LatLng(lat: _baseLat + 0.002, lng: _baseLng),
     ];
 
-    test('エリアの中で、前回から50m以上離れた点を選ぶ', () {
-      final random = math.Random(1);
-      const previous = LatLng(lat: _baseLat + 0.001, lng: _baseLng + 0.0012);
-      for (var i = 0; i < 50; i++) {
-        final point = pickMissionPoint(
+    test('エリアの中に、互いに50m以上離れた地点を指定の数だけ選ぶ', () {
+      for (var seed = 0; seed < 20; seed++) {
+        final points = pickAccessPoints(
           area: area,
-          previous: previous,
-          random: random,
-        )!;
-        expect(point.lat, inInclusiveRange(_baseLat, _baseLat + 0.002));
-        expect(point.lng, inInclusiveRange(_baseLng, _baseLng + 0.0024));
-        expect(
-          distanceMeters(previous.lat, previous.lng, point.lat, point.lng),
-          greaterThanOrEqualTo(minMissionPointSeparationM),
+          count: 3,
+          random: math.Random(seed),
         );
+        expect(points, hasLength(3));
+        for (final p in points) {
+          expect(p.lat, inInclusiveRange(_baseLat, _baseLat + 0.002));
+          expect(p.lng, inInclusiveRange(_baseLng, _baseLng + 0.0024));
+        }
+        for (var i = 0; i < points.length; i++) {
+          for (var j = i + 1; j < points.length; j++) {
+            expect(
+              distanceMeters(
+                points[i].lat,
+                points[i].lng,
+                points[j].lat,
+                points[j].lng,
+              ),
+              greaterThanOrEqualTo(minSpotSeparationM),
+            );
+          }
+        }
       }
     });
 
-    test('エリアが3点未満ならnull(地点を置けない)', () {
+    test('エリアが3点未満なら空(ミッションは出ない)', () {
       expect(
-        pickMissionPoint(
+        pickAccessPoints(
           area: area.take(2).toList(),
-          previous: null,
+          count: 2,
           random: math.Random(1),
+        ),
+        isEmpty,
+      );
+    });
+  });
+
+  group('nearestOpenSpot', () {
+    final mission = _mission(
+      spots: [
+        _spot(),
+        _spot(id: 's1', northM: 100),
+        _spot(id: 's2', northM: 200, claimedBy: 'x'),
+      ],
+    );
+
+    test('空いている地点のうち一番近いもの(取られた地点は除く)', () {
+      expect(nearestOpenSpot(mission, _at(_north(90)))?.id, 's1');
+      expect(nearestOpenSpot(mission, _at(_north(190)))?.id, 's1');
+      expect(nearestOpenSpot(mission, _at(_north(-10)))?.id, 's0');
+    });
+
+    test('位置が無ければ最初の空き、空きが無ければnull', () {
+      expect(nearestOpenSpot(mission, null)?.id, 's0');
+      expect(
+        nearestOpenSpot(
+          _mission(spots: [_spot(claimedBy: 'a')]),
+          _at(_baseLat),
         ),
         isNull,
       );
     });
-
-    test('エリアが無ければ種類は「鬼に近づけ」だけ', () {
-      for (var seed = 0; seed < 10; seed++) {
-        expect(
-          chooseMissionType(area: const [], random: math.Random(seed)),
-          MissionType.approachDemon,
-        );
-      }
-    });
   });
 
   group('GPSの到着判定', () {
-    final mission = _accessPoint();
+    final spot = _spot();
 
     test('半径15m以内は範囲内、外は範囲外。距離と精度も返す', () {
       final inside = readAccessPoint(
-        mission: mission,
+        spot: spot,
         location: _at(_north(10)),
       );
       expect(inside.fix, AccessPointFix.inside);
@@ -228,7 +295,7 @@ void main() {
       expect(inside.accuracyM, 5);
 
       final outside = readAccessPoint(
-        mission: mission,
+        spot: spot,
         location: _at(_north(20)),
       );
       expect(outside.fix, AccessPointFix.outside);
@@ -236,21 +303,21 @@ void main() {
 
     test('精度が30mより悪い・不明なときは判定しない(距離は出す)', () {
       final weak = readAccessPoint(
-        mission: mission,
+        spot: spot,
         location: _at(_north(5), accuracy: 31),
       );
       expect(weak.fix, AccessPointFix.weakGps);
       expect(weak.distanceM, isNotNull);
       expect(
         readAccessPoint(
-          mission: mission,
+          spot: spot,
           location: _at(_north(5), accuracy: 30),
         ).fix,
         AccessPointFix.inside,
       );
       expect(
         readAccessPoint(
-          mission: mission,
+          spot: spot,
           location: _at(_north(5), accuracy: null),
         ).fix,
         AccessPointFix.weakGps,
@@ -259,14 +326,14 @@ void main() {
 
     test('位置が無ければnoFix', () {
       expect(
-        readAccessPoint(mission: mission, location: null).fix,
+        readAccessPoint(spot: spot, location: null).fix,
         AccessPointFix.noFix,
       );
     });
 
     AccessPointReading reading(double meters, int at, {double accuracy = 5}) =>
         readAccessPoint(
-          mission: mission,
+          spot: spot,
           location: _at(_north(meters), accuracy: accuracy, updatedAt: at),
         );
 
@@ -343,7 +410,7 @@ void main() {
       expect(
         canClaimAccessPoint(
           arrival: arrived,
-          reading: readAccessPoint(mission: mission, location: null),
+          reading: readAccessPoint(spot: spot, location: null),
         ),
         isFalse,
       );
@@ -357,91 +424,119 @@ void main() {
     });
   });
 
-  group('先着1名のトランザクション(claimMissionUpdate)', () {
-    Map<String, Object?> unclaimed() => {
-      'type': 'access_point',
+  group('先着のトランザクション(claimSpotUpdate)', () {
+    Map<String, Object?> fresh() => {
+      'round': 1,
       'createdAt': 1000,
-      'expiresAt': 181000,
+      'expiresAt': 301000,
+      'spots': {
+        's0': {'lat': 1.0, 'lng': 1.0, 'radiusM': 15.0},
+        's1': {'lat': 2.0, 'lng': 2.0, 'radiusM': 15.0},
+      },
     };
 
-    test('未取得なら自分のuidと時刻を入れる', () {
-      final tx = claimMissionUpdate(unclaimed(), uid: 'a', nowMillis: 5000);
+    Map<dynamic, dynamic> spotOf(Object? mission, String id) =>
+        ((mission! as Map)['spots'] as Map)[id] as Map;
+
+    test('空いていれば自分のuidと時刻を入れる', () {
+      final tx = claimSpotUpdate(
+        fresh(),
+        spotId: 's0',
+        uid: 'a',
+        nowMillis: 5000,
+      );
       expect(tx.aborted, isFalse);
-      expect(tx.value, containsPair('claimedBy', 'a'));
-      expect(tx.value, containsPair('claimedAt', 5000));
+      expect(spotOf(tx.value, 's0'), containsPair('claimedBy', 'a'));
+      expect(spotOf(tx.value, 's0'), containsPair('claimedAt', 5000));
+      expect((tx.value! as Map)['finishedAt'], isNull);
     });
 
-    test('2人が同じ値から取り合っても、確定するのは先に通った1人だけ', () {
+    test('2人が同じ地点を取り合っても、確定するのは先に通った1人だけ', () {
       // サーバーはトランザクションを1件ずつ適用する。Aが確定した後、
       // Bのハンドラはサーバーの最新値(Aが取った後)で呼び直される。
-      final afterA = claimMissionUpdate(unclaimed(), uid: 'a', nowMillis: 5000);
-      expect(afterA.aborted, isFalse);
-      final b = claimMissionUpdate(afterA.value, uid: 'b', nowMillis: 5001);
+      final afterA = claimSpotUpdate(
+        fresh(),
+        spotId: 's0',
+        uid: 'a',
+        nowMillis: 5000,
+      );
+      final b = claimSpotUpdate(
+        afterA.value,
+        spotId: 's0',
+        uid: 'b',
+        nowMillis: 5001,
+      );
       expect(b.aborted, isTrue);
+    });
+
+    test('ちがう地点なら2人とも取れて、埋まったらfinishedAtが入る', () {
+      final afterA = claimSpotUpdate(
+        fresh(),
+        spotId: 's0',
+        uid: 'a',
+        nowMillis: 5000,
+      );
+      final afterB = claimSpotUpdate(
+        afterA.value,
+        spotId: 's1',
+        uid: 'b',
+        nowMillis: 6000,
+      );
+      expect(afterB.aborted, isFalse);
+      expect((afterB.value! as Map)['finishedAt'], 6000);
+    });
+
+    test('1人で2つの地点は取れない', () {
+      final afterA = claimSpotUpdate(
+        fresh(),
+        spotId: 's0',
+        uid: 'a',
+        nowMillis: 5000,
+      );
+      expect(
+        claimSpotUpdate(
+          afterA.value,
+          spotId: 's1',
+          uid: 'a',
+          nowMillis: 6000,
+        ).aborted,
+        isTrue,
+      );
     });
 
     test('期限が切れていたら中止', () {
       expect(
-        claimMissionUpdate(unclaimed(), uid: 'a', nowMillis: 181000).aborted,
+        claimSpotUpdate(
+          fresh(),
+          spotId: 's0',
+          uid: 'a',
+          nowMillis: 301000,
+        ).aborted,
+        isTrue,
+      );
+    });
+
+    test('無い地点は中止', () {
+      expect(
+        claimSpotUpdate(
+          fresh(),
+          spotId: 's9',
+          uid: 'a',
+          nowMillis: 5000,
+        ).aborted,
         isTrue,
       );
     });
 
     test('手元にキャッシュが無い(null)ときは、nullのまま成功を返して呼び直しを待つ', () {
-      final tx = claimMissionUpdate(null, uid: 'a', nowMillis: 5000);
+      final tx = claimSpotUpdate(
+        null,
+        spotId: 's0',
+        uid: 'a',
+        nowMillis: 5000,
+      );
       expect(tx.aborted, isFalse);
       expect(tx.value, isNull);
     });
-  });
-
-  group('「鬼に近づけ」の達成', () {
-    test('反応なし → 反応あり で達成', () {
-      var progress = advanceApproach(initialApproach, anyDemonClose: false);
-      expect(progress.achieved, isFalse);
-      progress = advanceApproach(progress, anyDemonClose: true);
-      expect(progress.achieved, isTrue);
-    });
-
-    test('最初から反応ありのときは、一度なしを経るまで達成しない', () {
-      var progress = advanceApproach(initialApproach, anyDemonClose: true);
-      expect(progress.achieved, isFalse);
-      progress = advanceApproach(progress, anyDemonClose: true);
-      expect(progress.achieved, isFalse);
-      progress = advanceApproach(progress, anyDemonClose: false);
-      progress = advanceApproach(progress, anyDemonClose: true);
-      expect(progress.achieved, isTrue);
-    });
-
-    test('達成した後に反応がなくなっても達成のまま', () {
-      var progress = advanceApproach(initialApproach, anyDemonClose: false);
-      progress = advanceApproach(progress, anyDemonClose: true);
-      progress = advanceApproach(progress, anyDemonClose: false);
-      expect(progress.achieved, isTrue);
-    });
-  });
-
-  test('wifiOverlapMetrics: 判定と同じ前処理(集約・弱い電波の除外)で数える', () {
-    final metrics = wifiOverlapMetrics(
-      {
-        'aa:aa:aa:aa:aa:a1': -50,
-        'aa:aa:aa:aa:aa:a2': -55, // 同じ物理AP(末尾だけ違う)
-        'bb:bb:bb:bb:bb:b1': -60,
-        'cc:cc:cc:cc:cc:c1': -95, // 弱すぎるので除外
-      },
-      {'aa:aa:aa:aa:aa:a1': -54, 'dd:dd:dd:dd:dd:d1': -70},
-    );
-    expect(metrics.selfCount, 2);
-    expect(metrics.commonCount, 1);
-    expect(metrics.medianDiffDbm, 4);
-  });
-
-  test('firstCloseUid: 候補の順に見て、最初に「反応あり」の相手を返す', () {
-    const entries = [
-      WifiProximityEntry(uid: 'a', level: ProximityLevel.far),
-      WifiProximityEntry(uid: 'b', level: ProximityLevel.close),
-      WifiProximityEntry(uid: 'c', level: ProximityLevel.close),
-    ];
-    expect(firstCloseUid(entries, ['a', 'c', 'b']), 'c');
-    expect(firstCloseUid(entries, ['a']), isNull);
   });
 }

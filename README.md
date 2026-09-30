@@ -93,6 +93,8 @@ flutter analyze
    flutter build apk --release --dart-define-from-file=dart_defines.json
    ```
 
+   ミッションを家の中で試すときは `--dart-define=DEBUG_MISSION=true` を足すと、カードの下に「着いたことにする」が出る（距離の判定だけ飛ばす。リリースビルドでは出ない）。
+
    VS Codeから実行する場合は `.vscode/launch.json` の "kakureru" 構成を使えば、F5でも同じフラグが自動で付く。
 
 キー未設定でもビルド・テスト自体は失敗しない（地図に透かしが出るだけ）。CI・夜間実行など `dart_defines.json` を置いていない環境ではこの状態で動く。

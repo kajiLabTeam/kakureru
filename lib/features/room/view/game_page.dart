@@ -17,8 +17,8 @@ import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/repository/mission_repository.dart';
 import 'package:kakureru/features/mission/view/effect_band.dart';
 import 'package:kakureru/features/mission/view/mission_card.dart';
+import 'package:kakureru/features/mission/view/mission_notice_banner.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
-import 'package:kakureru/features/mission/view/wifi_overlap_panel.dart';
 import 'package:kakureru/features/mission/view_model/mission_view_model.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
@@ -383,8 +383,9 @@ class GamePage extends HookConsumerWidget {
     final bleDetections = ref.watch(bleViewModelProvider);
 
     // ミッション(逃走者だけが受ける)。いま出ている1件と、自分の進み具合
-    // (到着・達成。MissionControllerが画面と無関係に1秒ごとに更新する)。
+    // (到着。MissionControllerが画面と無関係に1秒ごとに更新する)。
     final missionProgress = ref.watch(missionControllerProvider);
+    final missionBanner = ref.watch(missionBannerProvider);
     final mission = roleOf(room?.users ?? const [], myUid) == UserRole.fugitive
         ? currentMission(
             ref.watch(missionsStreamProvider(roomId)).value ?? const [],
@@ -392,9 +393,13 @@ class GamePage extends HookConsumerWidget {
             nowMillis: now,
           )
         : null;
+    // 向かう先は、いちばん近い空いている地点(取られたら次に近い地点へ移る)。
+    final missionTargetSpot = mission == null
+        ? null
+        : nearestOpenSpot(mission, myLocation);
     final missionReading = mission == null
         ? null
-        : readAccessPoint(mission: mission, location: myLocation);
+        : readAccessPoint(spot: missionTargetSpot, location: myLocation);
 
     // 特典が「足元写真を1回まぬがれる」だったときに飛ばすスロット。押した
     // 瞬間の撮影バナーの状態で決め、効果に書いておく(後から撮り直しても
@@ -419,7 +424,10 @@ class GamePage extends HookConsumerWidget {
 
     // 取れたのに特典の書き込みが済んでいないとき(取った直後に通信が切れた
     // 等)の「特典を受け取る」。書き込みは何度やっても1つにまとまる。
-    Future<void> handleCompleteClaimPressed(Mission target) async {
+    Future<void> handleCompleteClaimPressed(
+      Mission target,
+      MissionSpot spot,
+    ) async {
       RewardType? reward;
       final result = await claimAction.run(() async {
         reward = await ref
@@ -427,6 +435,7 @@ class GamePage extends HookConsumerWidget {
             .completeClaim(
               roomId,
               target.id,
+              spot.id,
               footPhotoSkipSlot: footPhotoSkipSlotNow(),
             );
       });
@@ -438,7 +447,7 @@ class GamePage extends HookConsumerWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '特典を受け取れませんでした。'
+                'ごほうびを受け取れませんでした。'
                 '${userFacingErrorMessage(result.error!)}',
               ),
             ),
@@ -448,25 +457,39 @@ class GamePage extends HookConsumerWidget {
       }
     }
 
-    // 「特典を引く」。先着1名はリポジトリのトランザクションで決まる。
-    Future<void> handleClaimPressed(Mission target) async {
+    // 「ごほうびガチャを引く」。先着はリポジトリのトランザクションで決まる。
+    // [skipRangeCheck]はデバッグ用の「着いたことにする」からだけtrue
+    // (距離とGPSの精度の判定だけを飛ばし、トランザクションはふつうに走る)。
+    Future<void> handleClaimPressed(
+      Mission target,
+      MissionSpot spot, {
+      bool skipRangeCheck = false,
+    }) async {
       // 押した瞬間にも範囲の中にいるかを確かめ直す。一度通っただけで、
       // 離れた場所から引けてしまわないように(canClaimAccessPoint)。
       // ボタンは範囲の外では出ないが、描画から押すまでの間に位置が
       // 更新されていることがあるため、最新の位置でもう一度見る。
       final latest = readAccessPoint(
-        mission: target,
+        spot: spot,
         location: _findLocation(
           ref.read(locationViewModelProvider).locations,
           myUid,
         ),
       );
-      if (!canClaimAccessPoint(
-        arrival: ref.read(missionControllerProvider).arrival,
-        reading: latest,
-      )) {
+      final progress = ref.read(missionControllerProvider);
+      if (!skipRangeCheck &&
+          (progress.spotId != spot.id ||
+              !canClaimAccessPoint(
+                arrival: progress.arrival,
+                reading: latest,
+              ))) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('判定範囲の外に出ています。半径15mに戻ってから引いてください')),
+          SnackBar(
+            content: Text(
+              '判定範囲の外に出ています。'
+              '半径${formatMeters(spot.radiusM)}に戻ってから引いてください',
+            ),
+          ),
         );
         return;
       }
@@ -477,6 +500,7 @@ class GamePage extends HookConsumerWidget {
             .claimMission(
               roomId,
               target.id,
+              spot.id,
               footPhotoSkipSlot: footPhotoSkipSlotNow(),
             );
       });
@@ -494,18 +518,18 @@ class GamePage extends HookConsumerWidget {
               // カードも「ほかの人に取られた」に変わるが、押した直後の
               // 結果なので知らせておく。
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('ほかの人に先に取られました')),
+                const SnackBar(content: Text('ほかの人に取られた')),
               );
             case ClaimOutcome.unavailable:
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('ミッションの時間が過ぎていました')),
+                const SnackBar(content: Text('このアクセスポイントはもう取れません')),
               );
           }
         case AsyncActionStatus.failed:
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '特典を引けませんでした。'
+                'ごほうびを引けませんでした。'
                 '${userFacingErrorMessage(result.error!)}',
               ),
             ),
@@ -788,14 +812,6 @@ class GamePage extends HookConsumerWidget {
                           (opponentRoster.isEmpty
                               ? null
                               : opponentRoster.first.id);
-                // 「鬼に近づけ」のパネルに出す鬼。達成は「どれかの鬼と反応あり」
-                // で判定している(MissionController)ので、反応ありの鬼がいれば
-                // その鬼を出す。いなければ選んでいる鬼。カードが「達成した」
-                // なのにパネルが「反応なし」、という食い違いを出さないため。
-                final approachCloseUid = firstCloseUid(
-                  visibleWifiEntries,
-                  opponentRoster.map((u) => u.id),
-                );
                 final selectedComparisons = effectiveSelectedUid != null
                     ? ref.watch(
                         wifiComparisonsForProvider((
@@ -824,11 +840,11 @@ class GamePage extends HookConsumerWidget {
                         locationFailure: locationState.failure,
                         reading: missionReading,
                         progress: missionProgress,
+                        targetSpotId: missionTargetSpot?.id,
                       );
-                final missionLat = mission?.lat;
-                final missionLng = mission?.lng;
-                final isApproachMission =
-                    mission?.type == MissionType.approachDemon;
+                final myMissionSpot = mission == null
+                    ? null
+                    : spotClaimedBy(mission, myUid);
 
                 final mapPageContent = Column(
                   children: [
@@ -900,16 +916,17 @@ class GamePage extends HookConsumerWidget {
                                 myUid: myUid,
                                 cachedPosition: cachedPosition.value,
                                 gameArea: room.setting.gameArea,
-                                missionPoint:
-                                    missionLat != null && missionLng != null
-                                    ? (
-                                        lat: missionLat,
-                                        lng: missionLng,
-                                        radiusM:
-                                            mission?.radiusM ??
-                                            accessPointRadiusM,
-                                      )
-                                    : null,
+                                // 空いている地点だけを出す(取られた地点へ
+                                // 向かわせない)。
+                                missionPoints: [
+                                  if (mission != null)
+                                    for (final spot in openSpots(mission))
+                                      (
+                                        lat: spot.lat,
+                                        lng: spot.lng,
+                                        radiusM: spot.radiusM,
+                                      ),
+                                ],
                                 enlargeDemonIcon: enlargeDemonIcon,
                               ),
                             ),
@@ -925,16 +942,11 @@ class GamePage extends HookConsumerWidget {
                                   status: missionStatus,
                                   reading: missionReading,
                                   remainingMillis: mission.expiresAt - now,
-                                  claimedByName: switch (mission.claimedBy) {
-                                    final uid? => findUser(
-                                      room.users,
-                                      uid,
-                                    )?.displayName,
-                                    null => null,
-                                  },
+                                  myReward: myMissionSpot?.reward,
                                 ),
                               ),
-                              if (missionStatus == MissionCardStatus.arrived)
+                              if (missionStatus == MissionCardStatus.arrived &&
+                                  missionTargetSpot != null)
                                 Positioned(
                                   left: 12,
                                   right: 12,
@@ -942,25 +954,58 @@ class GamePage extends HookConsumerWidget {
                                   child: MissionClaimButton(
                                     isClaiming: claimAction.isRunning,
                                     onPressed: () => unawaited(
-                                      handleClaimPressed(mission),
+                                      handleClaimPressed(
+                                        mission,
+                                        missionTargetSpot,
+                                      ),
                                     ),
                                   ),
                                 ),
                               if (missionStatus ==
                                       MissionCardStatus.claimedWithoutReward &&
+                                  myMissionSpot != null &&
                                   !claimAction.isRunning)
                                 Positioned(
                                   left: 12,
                                   right: 12,
                                   bottom: 14,
                                   child: MissionClaimButton(
-                                    label: '特典を受け取る',
+                                    label: 'ごほうびを受け取る',
                                     isClaiming: false,
                                     onPressed: () => unawaited(
-                                      handleCompleteClaimPressed(mission),
+                                      handleCompleteClaimPressed(
+                                        mission,
+                                        myMissionSpot,
+                                      ),
                                     ),
                                   ),
                                 ),
+                              // デバッグ用(DEBUG_MISSION=trueのときだけ)。
+                              // 距離の判定を飛ばして、いちばん近い空いている
+                              // 地点(位置が無ければ最初の空き)を取りに行く。
+                              if (debugMissionArrivalEnabled &&
+                                  missionStatus !=
+                                      MissionCardStatus.takenByOther &&
+                                  myMissionSpot == null)
+                                if (missionTargetSpot ??
+                                        openSpots(mission).firstOrNull
+                                    case final debugSpot?)
+                                  Positioned(
+                                    left: 12,
+                                    right: 12,
+                                    bottom: 80,
+                                    child: MissionDebugArrivalButton(
+                                      onPressed: claimAction.isRunning
+                                          ? null
+                                          : () => unawaited(
+                                              handleClaimPressed(
+                                                mission,
+                                                debugSpot,
+                                                skipRangeCheck: true,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
                             ],
                           ],
                         ),
@@ -1051,32 +1096,6 @@ class GamePage extends HookConsumerWidget {
                                       ),
                                     )
                                   else ...[
-                                    // 「鬼に近づけ」の間だけ、Wi-Fiの重なりを
-                                    // 大きく出す(モック5)。
-                                    if (isApproachMission) ...[
-                                      WifiOverlapPanel(
-                                        demonName:
-                                            findUser(
-                                              displayUsers,
-                                              approachCloseUid ??
-                                                  effectiveSelectedUid,
-                                            )?.displayName ??
-                                            '',
-                                        level: levelFor(
-                                          visibleWifiEntries,
-                                          approachCloseUid ??
-                                              effectiveSelectedUid,
-                                        ),
-                                        metrics: ref.watch(
-                                          wifiOverlapMetricsProvider((
-                                            roomId,
-                                            approachCloseUid ??
-                                                effectiveSelectedUid,
-                                          )),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                    ],
                                     _SelectedClueCard(
                                       roomId: roomId,
                                       room: room,
@@ -1149,6 +1168,28 @@ class GamePage extends HookConsumerWidget {
                               ),
                             ],
                           ),
+                          // ミッションのお知らせ(逃走者だけ・アプリを開いて
+                          // いるとき)。タップで地図のミッションのカードへ。
+                          if (missionBanner case final notice?)
+                            Positioned(
+                              left: 12,
+                              right: 12,
+                              top: 8,
+                              child: MissionNoticeBanner(
+                                notice: notice,
+                                onTap: () {
+                                  ref
+                                      .read(missionBannerProvider.notifier)
+                                      .dismiss();
+                                  pageIndex.value = 0;
+                                  pageController.animateToPage(
+                                    0,
+                                    duration: const Duration(milliseconds: 200),
+                                    curve: Curves.easeInOut,
+                                  );
+                                },
+                              ),
+                            ),
                           // 取り消しの期限を過ぎた捕獲の全員への知らせ
                           // (issue #140)。地図の上に重ね、タップで写真タブを開く。
                           if (announcement.announced case final announced?)
