@@ -68,6 +68,7 @@ night-run/state/*
 
 # kakureru-photo-api (Cloudflare Workers)
 kakureru-photo-api/node_modules/
+rules-test/node_modules/
 kakureru-photo-api/.wrangler/
 .dev.vars
 # Widget Preview related
