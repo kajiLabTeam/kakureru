@@ -17,7 +17,7 @@ import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/repository/mission_repository.dart';
 import 'package:kakureru/features/mission/view/effect_band.dart';
 import 'package:kakureru/features/mission/view/mission_card.dart';
-import 'package:kakureru/features/mission/view/reward_page.dart';
+import 'package:kakureru/features/mission/view/gacha/gacha_page.dart';
 import 'package:kakureru/features/mission/view/wifi_overlap_panel.dart';
 import 'package:kakureru/features/mission/view_model/mission_view_model.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
@@ -168,7 +168,7 @@ class GamePage extends HookConsumerWidget {
     final captureOpen = useState(false);
 
     // ミッションの「特典を引く」。送信中はボタンをローディング表示にし、
-    // 取れたら特典の画面(RewardPage)を開く。開いている間はゲーム終了の
+    // 取れたら確定演出(GachaPage)を開く。開いている間はゲーム終了の
     // 自動遷移を止める(captureOpenと同じ)。
     final claimAction = useAsyncAction(context);
     final rewardOpen = useState(false);
@@ -414,8 +414,9 @@ class GamePage extends HookConsumerWidget {
             case ClaimOutcome.claimed:
               final reward = outcome.reward;
               if (reward == null) return;
+              // 確定演出(GachaPage)→ 特典の画面(RewardPage)の順に出す。
               rewardOpen.value = true;
-              await RewardPage.show(context, reward);
+              await GachaPage.show(context, reward);
               if (context.mounted) rewardOpen.value = false;
             case ClaimOutcome.takenByOther:
               // カードも「ほかの人に取られた」に変わるが、押した直後の

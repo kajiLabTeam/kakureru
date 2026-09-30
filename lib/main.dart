@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart'
+    show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -17,6 +20,14 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 同梱した書体(Dela Gothic One)のライセンス(SIL OFL 1.1)。配布物に
+  // 著作権表示とライセンス文を含める必要があるため、ライセンス表示に載せる。
+  LicenseRegistry.addLicense(() async* {
+    final text = await rootBundle.loadString(
+      'assets/fonts/DelaGothicOne-OFL.txt',
+    );
+    yield LicenseEntryWithLineBreaks(const ['Dela Gothic One'], text);
+  });
   // Foreground Service(位置情報送信用)のisolate間通信ポートを初期化する。
   // main()のできるだけ早い段階で呼ぶ必要がある。
   FlutterForegroundTask.initCommunicationPort();
