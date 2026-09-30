@@ -286,5 +286,32 @@ void main() {
 
       expect(db.read(wifiScanPath), isNull);
     });
+
+    test('止める前の読み取りが後から終わっても、次のスキャンの値を書き換えない', () async {
+      // 古いスキャンの読み取り中に止めて(ゲーム画面を離れて)入り直し、
+      // 新しいスキャンではBSSIDが一瞬取れなかった、という順番。
+      final db = rtdbWith(usesTethering: true);
+      final held = Completer<String?>();
+      var calls = 0;
+      final repo = WifiScanRepository(
+        db: db,
+        auth: FakeAuth(),
+        readConnectedBssid: () {
+          calls++;
+          return calls == 1 ? held.future : Future.value();
+        },
+      );
+
+      final stale = repo.sendScan(roomId, scan);
+      await Future<void>.delayed(Duration.zero);
+      repo.stopScanning();
+      held.complete(hotspot);
+      await stale;
+      await repo.sendScan(roomId, scan);
+
+      // 止める前のホットスポットを「直前に取れた値」として使い回さない。
+      expect(sent(db)['hotspotBssid'], isNull);
+      expect(sent(db)['bssidRssi'], scan);
+    });
   });
 }

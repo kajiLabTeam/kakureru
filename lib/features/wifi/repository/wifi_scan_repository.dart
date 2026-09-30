@@ -133,7 +133,7 @@ class WifiScanRepository {
   /// 残り続ける。
   Future<void> sendScan(String roomId, Map<String, int> bssidRssi) async {
     final session = _session;
-    final hotspotBssid = await _currentHotspotBssid(roomId);
+    final hotspotBssid = await _currentHotspotBssid(roomId, session);
     if (session != _session) return;
     await writeOrLogFailure(
       () => _db.ref('rooms/$roomId/locations/$_uid/wifiScan').set({
@@ -151,24 +151,34 @@ class WifiScanRepository {
   }
 
   /// いま送るべき自分のホットスポットのBSSID。自己申告がOFFならnull。
-  Future<String?> _currentHotspotBssid(String roomId) async {
-    if (!await _readUsesTethering(roomId)) {
+  ///
+  /// 直前の値の覚え直し(`_lastUsesTethering`/`_lastHotspotBssid`)は、
+  /// [session]が今のものであるときだけ行う。止める前に始まった読み取りが
+  /// 後から終わって書き換えると、入り直した後のスキャンで一瞬取れなかった
+  /// ときに、止める前のホットスポットを送ってしまうため。
+  Future<String?> _currentHotspotBssid(String roomId, int session) async {
+    final usesTethering = await _readUsesTethering(roomId, session);
+    if (session != _session) return null;
+    if (!usesTethering) {
       _lastHotspotBssid = null;
       return null;
     }
     final bssid = await readHotspotBssid();
+    if (session != _session) return null;
     if (bssid != null) _lastHotspotBssid = bssid;
     return _lastHotspotBssid;
   }
 
   /// 自分の`usesTethering`を読む。読めなければ(オフライン等)直前の値。
-  Future<bool> _readUsesTethering(String roomId) async {
+  Future<bool> _readUsesTethering(String roomId, int session) async {
     try {
       final snapshot = await _db
           .ref('rooms/$roomId/users/$_uid/usesTethering')
           .get()
           .timeout(_usesTetheringReadTimeout);
-      return _lastUsesTethering = snapshot.value == true;
+      final usesTethering = snapshot.value == true;
+      if (session == _session) _lastUsesTethering = usesTethering;
+      return usesTethering;
     } on Object catch (e) {
       debugPrint('[WifiScanRepository] usesTetheringを読めない: $e');
       return _lastUsesTethering;
