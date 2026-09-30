@@ -48,6 +48,9 @@ String missionFinishedMessage(
 /// - 終わった: 終わってから[missionFinishedNoticeGrace]の間だけ
 ///   (入り直したときに、ずっと前に終わったものを今さら知らせない)
 ///
+/// 3種類は時間帯が重ならない(「出た」「のこり1分」は受けられる間の前半と
+/// 後半、「終わった」は受けられなくなってから)ので、返すのは高々1件。
+///
 /// [mission]は今のゲームの最新1件(`missionsOfCurrentGame(...).last`)。
 List<MissionNotice> dueMissionNotices({
   required Mission? mission,

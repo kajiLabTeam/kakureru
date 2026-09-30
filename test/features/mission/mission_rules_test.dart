@@ -201,6 +201,13 @@ void main() {
       );
     });
 
+    test('1回目が遅れて書かれたら、2回目はその期限が切れるまで待つ', () {
+      // 放出から14:59に1回目。期限は19:59なので15分では2回目を書かない。
+      final late = _mission(createdAt: releasedAt + 14 * min + 59 * 1000);
+      expect(round([late], releasedAt + 15 * min), isNull);
+      expect(round([late], late.expiresAt), 2);
+    });
+
     test('書きそびれた1回目は飛ばし、2回目だけを書く', () {
       expect(round(const [], releasedAt + 16 * min), 2);
     });

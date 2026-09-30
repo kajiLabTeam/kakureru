@@ -148,6 +148,16 @@ void main() {
       expect(notices.single.message, 'こうき と みお が ごほうび を引いた');
     });
 
+    test('どの時刻でも、出すお知らせは高々1件(取りこぼしが起きない)', () {
+      for (
+        var now = _created - 1000;
+        now < _expires + missionFinishedNoticeGrace.inMilliseconds + 1000;
+        now += 1000
+      ) {
+        expect(_due(_mission(), now).length, lessThanOrEqualTo(1));
+      }
+    });
+
     test('一度出したお知らせは二度出さない', () {
       final first = _due(_mission(), _created + 1000).single;
       expect(

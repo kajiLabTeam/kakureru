@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
@@ -165,6 +166,15 @@ void main() {
         expect(progress.arrival.arrived, isTrue);
       });
     });
+  });
+
+  test('前面の判定: 起動直後(null)と一時的な非アクティブも前面、それ以外は裏', () {
+    expect(isForegroundLifecycle(null), isTrue);
+    expect(isForegroundLifecycle(AppLifecycleState.resumed), isTrue);
+    expect(isForegroundLifecycle(AppLifecycleState.inactive), isTrue);
+    expect(isForegroundLifecycle(AppLifecycleState.hidden), isFalse);
+    expect(isForegroundLifecycle(AppLifecycleState.paused), isFalse);
+    expect(isForegroundLifecycle(AppLifecycleState.detached), isFalse);
   });
 
   group('お知らせ', () {

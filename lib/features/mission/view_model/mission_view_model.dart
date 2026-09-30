@@ -40,15 +40,28 @@ final effectsStreamProvider = StreamProvider.family
       return ref.watch(missionRepositoryProvider).watchEffects(roomId);
     });
 
+/// [state]のときアプリが前面(画面に出ている)とみなすか。
+///
+/// 起動直後は`lifecycleState`がまだnullのことがあり、そのときも前面と
+/// みなす(前面なのにOSの通知へ回さないため)。`inactive`(通知シェードを
+/// 下ろした等)も画面には出ているので前面。`hidden`/`paused`/`detached`
+/// だけを裏とみなす。
+bool isForegroundLifecycle(AppLifecycleState? state) => switch (state) {
+  null || AppLifecycleState.resumed || AppLifecycleState.inactive => true,
+  AppLifecycleState.hidden ||
+  AppLifecycleState.paused ||
+  AppLifecycleState.detached => false,
+};
+
 /// ミッションのお知らせの出し先。テストでは差し替えて、何を出したかを
 /// 記録する。
 class MissionAlertSink {
   const MissionAlertSink();
 
   /// アプリを開いて画面に出ているか。開いていればバナー、閉じていれば
-  /// OSの通知にする。
+  /// OSの通知にする。判定は[isForegroundLifecycle]。
   bool get isForeground =>
-      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+      isForegroundLifecycle(WidgetsBinding.instance.lifecycleState);
 
   /// 1回だけ振動させる(音は鳴らさない)。振動できない端末では何もしない。
   Future<void> vibrate() async {
@@ -322,7 +335,8 @@ class MissionController extends Notifier<MissionProgress> {
           'だれか',
     );
     if (notices.isEmpty) return;
-    // 1回の判定で複数出るのは、入り直したときなど。最後の1件だけ出す。
+    // dueMissionNoticesは1回に高々1件しか返さない(3種類は時間帯が
+    // 重ならない)。念のため複数でも全部を出した扱いにし、最後の1件だけ出す。
     _notified.addAll(notices.map((n) => n.key));
     final notice = notices.last;
     final sink = ref.read(missionAlertSinkProvider);
