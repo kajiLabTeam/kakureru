@@ -683,6 +683,47 @@ void main() {
     });
   });
 
+  group('RoomRepository.setUsesTethering(issue #142)', () {
+    test('自分のusesTetheringだけを書き、他のフィールドは消さない', () async {
+      final db = _FakeDatabase(
+        _rtdbWith(
+          users: {
+            ..._usersWith(),
+            'me': <String, Object?>{
+              'displayName': 'たろう',
+              'pressureOffset': 0.4,
+            },
+          },
+        ),
+      );
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await repo.setUsesTethering('room-1', value: true);
+
+      final me = _usersOf(db)!['me']! as Map<String, Object?>;
+      expect(me['usesTethering'], true);
+      expect(me['displayName'], 'たろう');
+      expect(me['pressureOffset'], 0.4);
+    });
+
+    test('OFFに戻すとfalseを書く', () async {
+      final db = _FakeDatabase(
+        _rtdbWith(
+          users: {
+            ..._usersWith(),
+            'me': <String, Object?>{'usesTethering': true},
+          },
+        ),
+      );
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await repo.setUsesTethering('room-1', value: false);
+
+      final me = _usersOf(db)!['me']! as Map<String, Object?>;
+      expect(me['usesTethering'], false);
+    });
+  });
+
   group('Room.fromMap', () {
     test('退出済み(online: false)の人は参加者に含めない', () {
       final room = Room.fromMap('room-1', {

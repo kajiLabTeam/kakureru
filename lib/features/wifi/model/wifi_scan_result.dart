@@ -9,6 +9,11 @@ abstract class WifiScanResult with _$WifiScanResult {
   const factory WifiScanResult({
     @Default({}) Map<String, int> bssidRssi,
     @Default(0) int scannedAt,
+
+    /// 送信者がテザリングでつないでいる自分のホットスポットのBSSID。
+    /// 待機画面で「テザリングで接続している」をONにした人だけが書く
+    /// (issue #142)。人と一緒に動くAPなので、全員の近接判定から除く。
+    String? hotspotBssid,
   }) = _WifiScanResult;
 
   const WifiScanResult._();

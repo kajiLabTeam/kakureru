@@ -73,6 +73,15 @@ void main() {
   });
 
   group('RoomUser', () {
+    test('isTetheringは未設定ならON、明示した値ならその値(issue #142)', () {
+      expect(const RoomUser(id: 'a').isTethering, isTrue);
+      expect(
+        const RoomUser(id: 'a', usesTethering: false).isTethering,
+        isFalse,
+      );
+      expect(const RoomUser(id: 'a', usesTethering: true).isTethering, isTrue);
+    });
+
     test('fromMap injects id from the map key, not from the value', () {
       final Map<dynamic, dynamic> raw = {
         'displayName': 'host',

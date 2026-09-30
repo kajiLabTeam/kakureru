@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
+import 'package:kakureru/features/wifi/model/wifi_scan_result.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 
 import 'fixtures/ait_building14_scans.dart';
@@ -462,6 +463,82 @@ void main() {
 
     test('候補が空ならnull', () {
       expect(findNearestUid(self, {}), isNull);
+    });
+  });
+
+  group('ホットスポットの除外(issue #142)', () {
+    // テザリングの親機(スマホ)のBSSID。固定APとは物理APのキーが被らない値。
+    const myHotspot = '6a:11:22:33:44:50';
+    const theirHotspot = '7e:55:66:77:88:90';
+    // 近くを通りかかった別の参加者のホットスポット。
+    const passingHotspot = '8a:99:aa:bb:cc:d0';
+
+    test('hotspotBssidsOfは共有された分だけを小文字で集める', () {
+      final hotspots = hotspotBssidsOf([
+        const WifiScanResult(hotspotBssid: '6A:11:22:33:44:50'),
+        const WifiScanResult(),
+        const WifiScanResult(hotspotBssid: ''),
+        null,
+        const WifiScanResult(hotspotBssid: theirHotspot),
+      ]);
+
+      expect(hotspots, {myHotspot, theirHotspot});
+    });
+
+    test('excludeAccessPointsは大文字小文字を問わず完全一致で除く', () {
+      final result = excludeAccessPoints(
+        {'6A:11:22:33:44:50': -25, bssid(1): -60},
+        {myHotspot},
+      );
+
+      expect(result, {bssid(1): -60});
+    });
+
+    test('物理APのキーが同じでも、BSSIDが違う固定APは巻き込まない', () {
+      // 末尾1文字を落とすと同じキーになるが、別のBSSID。
+      final result = excludeAccessPoints(
+        {bssid(1): -60, bssid(1, 1): -58},
+        {bssid(1)},
+      );
+
+      expect(result, {bssid(1, 1): -58});
+    });
+
+    test('除外するものが無ければ、渡したマップをそのまま返す', () {
+      final scan = {bssid(1): -60, bssid(2): -65};
+
+      expect(excludeAccessPoints(scan, {}), same(scan));
+    });
+
+    test('ホットスポットが混ざると遠いになるが、除けば近いになる', () {
+      // 屋外で固定APが3台しか見えない、すぐ隣の2人。互いのホットスポットは
+      // 自分側では最強、相手側では弱く見え、RSSI差の中央値を押し上げる。
+      final self = {
+        bssid(1): -70,
+        bssid(2): -75,
+        bssid(3): -80,
+        myHotspot: -25,
+        theirHotspot: -55,
+        passingHotspot: -40,
+      };
+      final target = {
+        bssid(1): -71,
+        bssid(2): -74,
+        bssid(3): -82,
+        myHotspot: -55,
+        theirHotspot: -25,
+        passingHotspot: -75,
+      };
+      final hotspots = {myHotspot, theirHotspot, passingHotspot};
+
+      expect(calculateProximity(self, target), ProximityLevel.far);
+      expect(
+        calculateProximity(
+          excludeAccessPoints(self, hotspots),
+          excludeAccessPoints(target, hotspots),
+        ),
+        ProximityLevel.close,
+      );
     });
   });
 }

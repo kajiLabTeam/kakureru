@@ -212,6 +212,15 @@ class RoomRepository {
     });
   }
 
+  /// 待機画面の「テザリングで接続している」の自己申告を書く(issue #142)。
+  ///
+  /// ONの間、ゲーム中のWi-Fiスキャンが接続中のWi-Fi(=自分のホットスポット)の
+  /// BSSIDを共有し、全員の手がかりの計算から除かれる。`restartRoom`は
+  /// `users/`を書き換えないので、再戦しても値は残る。
+  Future<void> setUsesTethering(String roomId, {required bool value}) async {
+    await _db.ref('rooms/$roomId/users/$_uid').update({'usesTethering': value});
+  }
+
   /// ルーム設定画面から呼ばれる。ルール上は誰でも書ける状態のままなので
   /// (docs/rtdb-schema.md「ルーム設定画面」参照)、host以外が呼ばないよう
   /// 画面側(RoomWaitingPage/RoomSettingPage)でホスト限定のガードをかけている。

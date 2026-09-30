@@ -14,10 +14,12 @@ _WifiScanResult _$WifiScanResultFromJson(Map<String, dynamic> json) =>
           ) ??
           const {},
       scannedAt: (json['scannedAt'] as num?)?.toInt() ?? 0,
+      hotspotBssid: json['hotspotBssid'] as String?,
     );
 
 Map<String, dynamic> _$WifiScanResultToJson(_WifiScanResult instance) =>
     <String, dynamic>{
       'bssidRssi': instance.bssidRssi,
       'scannedAt': instance.scannedAt,
+      'hotspotBssid': instance.hotspotBssid,
     };

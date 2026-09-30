@@ -4,8 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/core/utils/rtdb_write.dart';
+import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
+import 'package:network_info_plus/network_info_plus.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
 class WifiScanRepository {
@@ -14,12 +16,35 @@ class WifiScanRepository {
 
   /// 引数を省略すると実際のFirebase(`FirebaseDatabase.instance` /
   /// `FirebaseAuth.instance`)を使う。テストからのみ差し替える。
-  WifiScanRepository({FirebaseDatabase? db, FirebaseAuth? auth})
-    : _dbOverride = db,
-      _authOverride = auth;
+  ///
+  /// [readConnectedBssid]は接続中のWi-FiのBSSIDを返す関数(既定は
+  /// `network_info_plus`)。これもテストからのみ差し替える。
+  WifiScanRepository({
+    FirebaseDatabase? db,
+    FirebaseAuth? auth,
+    Future<String?> Function()? readConnectedBssid,
+  }) : _dbOverride = db,
+       _authOverride = auth,
+       _readConnectedBssid =
+           readConnectedBssid ?? (() => NetworkInfo().getWifiBSSID());
 
   final FirebaseDatabase? _dbOverride;
   final FirebaseAuth? _authOverride;
+  final Future<String?> Function() _readConnectedBssid;
+
+  /// [startScanning]/[stopScanning]のたびに増える番号。[sendScan]の途中で
+  /// 画面を離れたかどうかの判定に使う。
+  int _session = 0;
+
+  /// 直近に読めた自分の`users/{uid}/usesTethering`(待機画面の自己申告。
+  /// issue #142)。値の持ち主はRTDBで、ここは読めなかったときの代わりに
+  /// 覚えておくだけ。
+  bool _lastUsesTethering = defaultUsesTethering;
+
+  /// 直近に取れた自分のホットスポットのBSSID。1回取れなかっただけ(一瞬の
+  /// 切断・構内Wi-Fiへのつなぎ替え等)で自分のホットスポットが`bssidRssi`に
+  /// 戻らないよう、次に取れるまではこれを送る。
+  String? _lastHotspotBssid;
 
   // `.instance` の解決を遅延させる理由は RoomRepository・PressureRepository
   // と同じ(メソッドを丸ごとoverrideするテスト用のサブクラスが、暗黙の
@@ -51,25 +76,20 @@ class WifiScanRepository {
   static const _maxApCount = 40;
 
   /// 自分のスキャンの実行とRTDBへの書き込みだけを行う
+  ///
+  /// テザリングを自己申告している間は、接続中のWi-Fi(=自分のホットスポット)の
+  /// BSSIDを`hotspotBssid`として一緒に送り、`bssidRssi`からは除く(issue #142)。
   void startScanning(String roomId) {
     stopScanning();
 
     _resultsSub = WiFiScan.instance.onScannedResultsAvailable.listen((
       results,
-    ) async {
+    ) {
       final bssidRssi = <String, int>{};
       for (final ap in results) {
         bssidRssi[ap.bssid] = ap.level;
       }
-      final topBssidRssi = selectTopAccessPoints(bssidRssi, count: _maxApCount);
-      await writeOrLogFailure(
-        () => _db.ref('rooms/$roomId/locations/$_uid/wifiScan').set({
-          'bssidRssi': topBssidRssi,
-          'scannedAt': ServerValue.timestamp,
-        }),
-        tag: 'WifiScanRepository',
-        field: 'wifiScan',
-      );
+      unawaited(sendScan(roomId, bssidRssi));
     });
 
     unawaited(triggerScan());
@@ -103,11 +123,145 @@ class WifiScanRepository {
     return WifiScanStatus.ok;
   }
 
+  /// 1回分のスキャン結果をRTDBへ書く。
+  ///
+  /// 自己申告(`usesTethering`)は**スキャンのたびに読み直す**。購読して
+  /// 覚えておく形だと、ゲーム開始直後の最初のスキャンが最初の値より先に
+  /// 届いたときに、自分のホットスポット入りのまま送ってしまうため。
+  ///
+  /// 読み取りを待っている間に[stopScanning]が呼ばれた(ゲーム画面を離れた)
+  /// ら書かない。書くと、退出した人のスキャンが新しい`scannedAt`付きで
+  /// 残り続ける。
+  Future<void> sendScan(String roomId, Map<String, int> bssidRssi) async {
+    final session = _session;
+    final hotspotBssid = await _currentHotspotBssid(roomId, session);
+    if (session != _session) return;
+    await writeOrLogFailure(
+      () => _db.ref('rooms/$roomId/locations/$_uid/wifiScan').set({
+        'bssidRssi': accessPointsToSend(
+          bssidRssi,
+          hotspotBssid: hotspotBssid,
+          count: _maxApCount,
+        ),
+        'hotspotBssid': hotspotBssid,
+        'scannedAt': ServerValue.timestamp,
+      }),
+      tag: 'WifiScanRepository',
+      field: 'wifiScan',
+    );
+  }
+
+  /// いま送るべき自分のホットスポットのBSSID。自己申告がOFFならnull。
+  ///
+  /// 直前の値の覚え直し(`_lastUsesTethering`/`_lastHotspotBssid`)は、
+  /// [session]が今のものであるときだけ行う。止める前に始まった読み取りが
+  /// 後から終わって書き換えると、入り直した後のスキャンで一瞬取れなかった
+  /// ときに、止める前のホットスポットを送ってしまうため。
+  Future<String?> _currentHotspotBssid(String roomId, int session) async {
+    final usesTethering = await _readUsesTethering(roomId, session);
+    if (session != _session) return null;
+    if (!usesTethering) {
+      _lastHotspotBssid = null;
+      return null;
+    }
+    final bssid = await readHotspotBssid();
+    if (session != _session) return null;
+    if (bssid != null) _lastHotspotBssid = bssid;
+    return _lastHotspotBssid;
+  }
+
+  /// 自分の`usesTethering`を読む。読めなければ(オフライン等)直前の値。
+  Future<bool> _readUsesTethering(String roomId, int session) async {
+    try {
+      final snapshot = await _db
+          .ref('rooms/$roomId/users/$_uid/usesTethering')
+          .get()
+          .timeout(_usesTetheringReadTimeout);
+      final value = snapshot.value;
+      final usesTethering = value is bool ? value : defaultUsesTethering;
+      if (session == _session) _lastUsesTethering = usesTethering;
+      return usesTethering;
+    } on Object catch (e) {
+      debugPrint('[WifiScanRepository] usesTetheringを読めない: $e');
+      // [session]が古くても直前の値をそのまま返してよい。呼び出し側
+      // ([_currentHotspotBssid])が直後に`session != _session`で捨てるため。
+      return _lastUsesTethering;
+    }
+  }
+
+  /// `usesTethering`の読み取りを待つ上限。スキャン間隔(10秒)より十分短く
+  /// して、電波が悪いときに送信が詰まらないようにする。
+  static const _usesTetheringReadTimeout = Duration(seconds: 3);
+
+  /// 接続中のWi-FiのBSSID(小文字)。未接続・取得できないときはnull。
+  ///
+  /// テザリングの子機として使っているなら、これが自分のホットスポット。
+  /// 位置情報の権限が無い・位置情報がOFFのときは、プラグインが例外を投げる
+  /// のではなく[normalizeConnectedBssid]で弾く値が返ることがある。
+  ///
+  /// ランダムMAC([isLocallyAdministeredBssid])でなければnull。自己申告が
+  /// ONのままテザリングが切れて構内Wi-Fiにつなぎ直った、わざとONにした、
+  /// といった場合に、固定APを「ホットスポット」として全員の計算から消して
+  /// しまわないため。スマホのホットスポットはAndroid(10以降)もiPhoneも
+  /// ランダムMACを使う。
+  Future<String?> readHotspotBssid() async {
+    final String? bssid;
+    try {
+      bssid = normalizeConnectedBssid(await _readConnectedBssid());
+    } on Object catch (e) {
+      debugPrint('[WifiScanRepository] 接続中のBSSIDを取得できない: $e');
+      return null;
+    }
+    if (bssid == null) return null;
+    if (!isLocallyAdministeredBssid(bssid)) {
+      debugPrint('[WifiScanRepository] 接続先が固定APのため共有しない: $bssid');
+      return null;
+    }
+    return bssid;
+  }
+
   /// ゲーム画面を離れる時に呼ぶこと。
   void stopScanning() {
     _scanTimer?.cancel();
     _scanTimer = null;
+    _session++;
+    _lastUsesTethering = defaultUsesTethering;
+    _lastHotspotBssid = null;
     _resultsSub?.cancel();
     _resultsSub = null;
   }
 }
+
+/// Androidが「BSSIDを渡せない」ときに返すダミーのMACアドレス
+/// (位置情報の権限が無い・位置情報がOFFのとき等)。
+const _redactedBssid = '02:00:00:00:00:00';
+
+/// 接続中のBSSIDとしてプラグインから返った値を、共有してよい形(小文字)に
+/// そろえる。未接続・ダミー値・空文字はnull。
+String? normalizeConnectedBssid(String? raw) {
+  final bssid = raw?.trim().toLowerCase();
+  if (bssid == null || bssid.isEmpty || bssid == _redactedBssid) return null;
+  return bssid;
+}
+
+/// ローカル管理ビット(先頭オクテットの下から2ビット目)が立った、ランダム
+/// MACのBSSIDか。スマホのホットスポットはこれで、メーカーが割り当てた
+/// 固定APのMACは通常立っていない。
+bool isLocallyAdministeredBssid(String bssid) {
+  final firstOctet = int.tryParse(bssid.split(':').first, radix: 16);
+  return firstOctet != null && firstOctet & 0x02 != 0;
+}
+
+/// RTDBへ送るAP。自分のホットスポット([hotspotBssid])を除いたうえで、
+/// RSSIの強い上位[count]件に絞る。
+///
+/// 除外を先にするのは、端末のすぐ横にある自分のホットスポットが常に最強の
+/// APになり、上位の枠を1つ奪ってしまうため。
+Map<String, int> accessPointsToSend(
+  Map<String, int> bssidRssi, {
+  required String? hotspotBssid,
+  required int count,
+}) => selectTopAccessPoints(
+  excludeAccessPoints(bssidRssi, {?hotspotBssid}),
+  count: count,
+);

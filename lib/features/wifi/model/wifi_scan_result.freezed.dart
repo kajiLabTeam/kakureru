@@ -15,7 +15,10 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$WifiScanResult {
 
- Map<String, int> get bssidRssi; int get scannedAt;
+ Map<String, int> get bssidRssi; int get scannedAt;/// 送信者がテザリングでつないでいる自分のホットスポットのBSSID。
+/// 待機画面で「テザリングで接続している」をONにした人だけが書く
+/// (issue #142)。人と一緒に動くAPなので、全員の近接判定から除く。
+ String? get hotspotBssid;
 /// Create a copy of WifiScanResult
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +31,16 @@ $WifiScanResultCopyWith<WifiScanResult> get copyWith => _$WifiScanResultCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is WifiScanResult&&const DeepCollectionEquality().equals(other.bssidRssi, bssidRssi)&&(identical(other.scannedAt, scannedAt) || other.scannedAt == scannedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is WifiScanResult&&const DeepCollectionEquality().equals(other.bssidRssi, bssidRssi)&&(identical(other.scannedAt, scannedAt) || other.scannedAt == scannedAt)&&(identical(other.hotspotBssid, hotspotBssid) || other.hotspotBssid == hotspotBssid));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(bssidRssi),scannedAt);
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(bssidRssi),scannedAt,hotspotBssid);
 
 @override
 String toString() {
-  return 'WifiScanResult(bssidRssi: $bssidRssi, scannedAt: $scannedAt)';
+  return 'WifiScanResult(bssidRssi: $bssidRssi, scannedAt: $scannedAt, hotspotBssid: $hotspotBssid)';
 }
 
 
@@ -48,7 +51,7 @@ abstract mixin class $WifiScanResultCopyWith<$Res>  {
   factory $WifiScanResultCopyWith(WifiScanResult value, $Res Function(WifiScanResult) _then) = _$WifiScanResultCopyWithImpl;
 @useResult
 $Res call({
- Map<String, int> bssidRssi, int scannedAt
+ Map<String, int> bssidRssi, int scannedAt, String? hotspotBssid
 });
 
 
@@ -65,11 +68,12 @@ class _$WifiScanResultCopyWithImpl<$Res>
 
 /// Create a copy of WifiScanResult
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? bssidRssi = null,Object? scannedAt = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? bssidRssi = null,Object? scannedAt = null,Object? hotspotBssid = freezed,}) {
   return _then(_self.copyWith(
 bssidRssi: null == bssidRssi ? _self.bssidRssi : bssidRssi // ignore: cast_nullable_to_non_nullable
 as Map<String, int>,scannedAt: null == scannedAt ? _self.scannedAt : scannedAt // ignore: cast_nullable_to_non_nullable
-as int,
+as int,hotspotBssid: freezed == hotspotBssid ? _self.hotspotBssid : hotspotBssid // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
@@ -154,10 +158,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( Map<String, int> bssidRssi,  int scannedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( Map<String, int> bssidRssi,  int scannedAt,  String? hotspotBssid)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _WifiScanResult() when $default != null:
-return $default(_that.bssidRssi,_that.scannedAt);case _:
+return $default(_that.bssidRssi,_that.scannedAt,_that.hotspotBssid);case _:
   return orElse();
 
 }
@@ -175,10 +179,10 @@ return $default(_that.bssidRssi,_that.scannedAt);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( Map<String, int> bssidRssi,  int scannedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( Map<String, int> bssidRssi,  int scannedAt,  String? hotspotBssid)  $default,) {final _that = this;
 switch (_that) {
 case _WifiScanResult():
-return $default(_that.bssidRssi,_that.scannedAt);case _:
+return $default(_that.bssidRssi,_that.scannedAt,_that.hotspotBssid);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -195,10 +199,10 @@ return $default(_that.bssidRssi,_that.scannedAt);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( Map<String, int> bssidRssi,  int scannedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( Map<String, int> bssidRssi,  int scannedAt,  String? hotspotBssid)?  $default,) {final _that = this;
 switch (_that) {
 case _WifiScanResult() when $default != null:
-return $default(_that.bssidRssi,_that.scannedAt);case _:
+return $default(_that.bssidRssi,_that.scannedAt,_that.hotspotBssid);case _:
   return null;
 
 }
@@ -210,7 +214,7 @@ return $default(_that.bssidRssi,_that.scannedAt);case _:
 @JsonSerializable()
 
 class _WifiScanResult extends WifiScanResult {
-  const _WifiScanResult({final  Map<String, int> bssidRssi = const {}, this.scannedAt = 0}): _bssidRssi = bssidRssi,super._();
+  const _WifiScanResult({final  Map<String, int> bssidRssi = const {}, this.scannedAt = 0, this.hotspotBssid}): _bssidRssi = bssidRssi,super._();
   factory _WifiScanResult.fromJson(Map<String, dynamic> json) => _$WifiScanResultFromJson(json);
 
  final  Map<String, int> _bssidRssi;
@@ -221,6 +225,10 @@ class _WifiScanResult extends WifiScanResult {
 }
 
 @override@JsonKey() final  int scannedAt;
+/// 送信者がテザリングでつないでいる自分のホットスポットのBSSID。
+/// 待機画面で「テザリングで接続している」をONにした人だけが書く
+/// (issue #142)。人と一緒に動くAPなので、全員の近接判定から除く。
+@override final  String? hotspotBssid;
 
 /// Create a copy of WifiScanResult
 /// with the given fields replaced by the non-null parameter values.
@@ -235,16 +243,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WifiScanResult&&const DeepCollectionEquality().equals(other._bssidRssi, _bssidRssi)&&(identical(other.scannedAt, scannedAt) || other.scannedAt == scannedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WifiScanResult&&const DeepCollectionEquality().equals(other._bssidRssi, _bssidRssi)&&(identical(other.scannedAt, scannedAt) || other.scannedAt == scannedAt)&&(identical(other.hotspotBssid, hotspotBssid) || other.hotspotBssid == hotspotBssid));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_bssidRssi),scannedAt);
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_bssidRssi),scannedAt,hotspotBssid);
 
 @override
 String toString() {
-  return 'WifiScanResult(bssidRssi: $bssidRssi, scannedAt: $scannedAt)';
+  return 'WifiScanResult(bssidRssi: $bssidRssi, scannedAt: $scannedAt, hotspotBssid: $hotspotBssid)';
 }
 
 
@@ -255,7 +263,7 @@ abstract mixin class _$WifiScanResultCopyWith<$Res> implements $WifiScanResultCo
   factory _$WifiScanResultCopyWith(_WifiScanResult value, $Res Function(_WifiScanResult) _then) = __$WifiScanResultCopyWithImpl;
 @override @useResult
 $Res call({
- Map<String, int> bssidRssi, int scannedAt
+ Map<String, int> bssidRssi, int scannedAt, String? hotspotBssid
 });
 
 
@@ -272,11 +280,12 @@ class __$WifiScanResultCopyWithImpl<$Res>
 
 /// Create a copy of WifiScanResult
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? bssidRssi = null,Object? scannedAt = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? bssidRssi = null,Object? scannedAt = null,Object? hotspotBssid = freezed,}) {
   return _then(_WifiScanResult(
 bssidRssi: null == bssidRssi ? _self._bssidRssi : bssidRssi // ignore: cast_nullable_to_non_nullable
 as Map<String, int>,scannedAt: null == scannedAt ? _self.scannedAt : scannedAt // ignore: cast_nullable_to_non_nullable
-as int,
+as int,hotspotBssid: freezed == hotspotBssid ? _self.hotspotBssid : hotspotBssid // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 

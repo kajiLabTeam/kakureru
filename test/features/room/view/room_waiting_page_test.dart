@@ -37,6 +37,17 @@ class _FakeRoomRepository extends RoomRepository {
   final List<String> revokedUids = [];
   int cancelCalls = 0;
   int leaveRoomCalls = 0;
+  final List<bool> usesTetheringWrites = [];
+
+  /// nullでなければ、`setUsesTethering`をこれが完了するまで終わらせない
+  /// (電波が弱くてサーバーの応答が来ない状態)。
+  Completer<void>? holdUsesTethering;
+
+  @override
+  Future<void> setUsesTethering(String roomId, {required bool value}) async {
+    usesTetheringWrites.add(value);
+    await holdUsesTethering?.future;
+  }
 
   @override
   Future<void> nominateDemon(String roomId, String uid) {
@@ -572,6 +583,130 @@ void main() {
       expect(wifi.refreshCalls, 2);
       expect(find.text('Wi-Fiスキャン: OK'), findsOneWidget);
       expect(find.text('再確認'), findsNothing);
+    });
+  });
+
+  group('テザリングの自己申告(issue #142)', () {
+    Switch tetheringSwitch(WidgetTester tester) => tester.widget<Switch>(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('テザリングで接続している'),
+          matching: find.byType(Row),
+        ),
+        matching: find.byType(Switch),
+      ),
+    );
+
+    testWidgets('未設定ならONで出る(テザリング前提の人が多いため)', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+      );
+
+      expect(find.text('テザリングで接続している'), findsOneWidget);
+      expect(tetheringSwitch(tester).value, isTrue);
+    });
+
+    testWidgets('自分がOFFにしていればOFFで出る', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        initialRoom: _room(
+          users: const [
+            RoomUser(
+              id: _myUid,
+              displayName: 'ホスト',
+              isHost: true,
+              pressureSensorAvailable: true,
+              usesTethering: false,
+            ),
+          ],
+        ),
+      );
+
+      expect(tetheringSwitch(tester).value, isFalse);
+    });
+
+    testWidgets('他の人がOFFにしても、自分のトグルは変わらない', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        initialRoom: _room(
+          users: const [
+            RoomUser(
+              id: _myUid,
+              displayName: 'ホスト',
+              isHost: true,
+              pressureSensorAvailable: true,
+            ),
+            RoomUser(id: 'other', displayName: '参加者', usesTethering: false),
+          ],
+        ),
+      );
+
+      expect(tetheringSwitch(tester).value, isTrue);
+    });
+
+    testWidgets('押すとOFFを書き込む', (tester) async {
+      final repo = _FakeRoomRepository();
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: repo,
+        pressureViewModel: _FakePressureViewModel(),
+      );
+
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('テザリングで接続している'),
+            matching: find.byType(Row),
+          ),
+          matching: find.byType(Switch),
+        ),
+      );
+      await tester.pump();
+
+      expect(repo.usesTetheringWrites, [false]);
+    });
+
+    testWidgets('送信が終わらない間もスイッチは押せ、押し直せる', (tester) async {
+      final repo = _FakeRoomRepository()..holdUsesTethering = Completer<void>();
+      final controller = await _pumpWaitingPage(
+        tester,
+        roomRepo: repo,
+        pressureViewModel: _FakePressureViewModel(),
+      );
+      addTearDown(() => repo.holdUsesTethering!.complete());
+
+      await tester.tap(find.byWidget(tetheringSwitch(tester)));
+      await tester.pump();
+      // 手元のRTDBにはすぐ反映される(サーバーの応答はまだ)。
+      controller.add(
+        _room(
+          users: const [
+            RoomUser(
+              id: _myUid,
+              displayName: 'ホスト',
+              isHost: true,
+              pressureSensorAvailable: true,
+              usesTethering: false,
+            ),
+          ],
+        ),
+      );
+      // ストリームの配信と、それを受けた再描画の2フレーム分進める。
+      await tester.pump();
+      await tester.pump();
+
+      expect(tetheringSwitch(tester).value, isFalse);
+      expect(tetheringSwitch(tester).onChanged, isNotNull);
+      await tester.tap(find.byWidget(tetheringSwitch(tester)));
+      await tester.pump();
+
+      expect(repo.usesTetheringWrites, [false, true]);
     });
   });
 

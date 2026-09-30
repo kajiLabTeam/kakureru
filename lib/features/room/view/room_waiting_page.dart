@@ -350,6 +350,18 @@ class RoomWaitingPage extends HookConsumerWidget {
                   padding: EdgeInsets.symmetric(horizontal: 24, vertical: 2),
                   child: _WifiScanStatusRow(),
                 ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 2,
+                  ),
+                  child: _TetheringRow(
+                    roomId: roomId,
+                    usesTethering: room.users.any(
+                      (u) => u.id == myUid && u.isTethering,
+                    ),
+                  ),
+                ),
                 if (isHost)
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -909,6 +921,83 @@ class _WifiScanStatusRow extends ConsumerWidget {
             onPressed: () =>
                 unawaited(ref.read(wifiScanStatusProvider.notifier).refresh()),
             child: const Text('再確認'),
+          ),
+      ],
+    );
+  }
+}
+
+/// 待機画面の「テザリングで接続している」の自己申告(issue #142)。
+///
+/// スマホのテザリングでこの端末をつないでいると、そのホットスポットが
+/// 常に最強のAPとしてスキャンに入り、Wi-Fiの手がかりがブレる。ONにした
+/// 人だけが接続先のBSSIDを共有し、全員の計算から除かれる。構内Wi-Fiに
+/// つないでいる人の接続先は固定APなので、自動では除かずに本人に選んでもらう。
+///
+/// 値の持ち主はRTDB(`users/{uid}/usesTethering`)で、ここは表示と書き込み
+/// だけを行う。
+///
+/// 送信中もスイッチは押せるままにする(useAsyncActionを使わない)。RTDBの
+/// `update()`はサーバーが受け取るまで完了しないが、値自体は手元へすぐ
+/// 反映される。電波が弱い場所で押し間違えたとき、完了を待たせると戻せない
+/// ため。書き込みは後勝ちで順番どおりに届くので、連打しても最後の値が残る。
+class _TetheringRow extends HookConsumerWidget {
+  const _TetheringRow({required this.roomId, required this.usesTethering});
+
+  final String roomId;
+  final bool usesTethering;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final error = useState<Object?>(null);
+
+    Future<void> save({required bool value}) async {
+      error.value = null;
+      try {
+        await ref
+            .read(roomRepositoryProvider)
+            .setUsesTethering(roomId, value: value);
+      } on Object catch (e) {
+        debugPrint('[RoomWaitingPage] テザリングの自己申告の保存に失敗: $e');
+        if (context.mounted) error.value = e;
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.wifi_tethering, size: 14, color: gameMuted),
+            const SizedBox(width: 6),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'テザリングで接続している',
+                    style: TextStyle(color: gameMuted, fontSize: 12),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'スマホのテザリングでこの端末をつないでいるならON',
+                      style: TextStyle(color: gameMuted, fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: usesTethering,
+              onChanged: (value) => unawaited(save(value: value)),
+            ),
+          ],
+        ),
+        if (error.value != null)
+          Text(
+            userFacingErrorMessage(error.value!),
+            style: const TextStyle(color: gameNewBadge, fontSize: 11),
           ),
       ],
     );
