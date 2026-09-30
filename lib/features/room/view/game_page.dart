@@ -10,6 +10,16 @@ import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
+import 'package:kakureru/features/mission/effect_rules.dart';
+import 'package:kakureru/features/mission/mission_rules.dart';
+import 'package:kakureru/features/mission/model/mission.dart';
+import 'package:kakureru/features/mission/model/reward_type.dart';
+import 'package:kakureru/features/mission/repository/mission_repository.dart';
+import 'package:kakureru/features/mission/view/effect_band.dart';
+import 'package:kakureru/features/mission/view/mission_card.dart';
+import 'package:kakureru/features/mission/view/reward_page.dart';
+import 'package:kakureru/features/mission/view/wifi_overlap_panel.dart';
+import 'package:kakureru/features/mission/view_model/mission_view_model.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
@@ -25,6 +35,7 @@ import 'package:kakureru/features/room/game_notifications.dart';
 import 'package:kakureru/features/room/game_over_navigation.dart';
 import 'package:kakureru/features/room/game_session.dart';
 import 'package:kakureru/features/room/model/clue_floor_math.dart';
+import 'package:kakureru/features/room/model/photo_slot.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/new_photo_badge.dart';
@@ -157,6 +168,12 @@ class GamePage extends HookConsumerWidget {
     final catchAction = useAsyncAction(context);
     final captureOpen = useState(false);
 
+    // ミッションの「特典を引く」。送信中はボタンをローディング表示にし、
+    // 取れたら特典の画面(RewardPage)を開く。開いている間はゲーム終了の
+    // 自動遷移を止める(captureOpenと同じ)。
+    final claimAction = useAsyncAction(context);
+    final rewardOpen = useState(false);
+
     // 詳細カードで選択中の相手(UI改修モック2a-03「逃走者を選んで詳細を見る」)。
     // nullの間は既定で最も近い相手を選ぶ(下のeffectiveSelectedUid参照)。
     // ウィジェット内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
@@ -260,18 +277,37 @@ class GamePage extends HookConsumerWidget {
     // タイマー自体は動かしたままにしても実害は無いためフックは常に呼ぶ
     // (呼び出しを条件分岐するとhooksの呼び出し順が崩れるため)。
     warnIfPhotoFeatureNotConfigured();
+
+    // ミッションの特典の効果(effects)。前のゲームの分は除く。残り時間は
+    // サーバー時刻(now)で数える。
+    final roomEffects = effectsOfCurrentGame(
+      ref.watch(effectsStreamProvider(roomId)).value ?? const [],
+      startedAt: room?.startedAt,
+    );
+    final photoIntervalSec = room?.setting.photoIntervalSec ?? 300;
+    final myLastPhotoAt = myUid == null
+        ? null
+        : findUser(room?.users ?? const [], myUid)?.lastPhotoAt;
     final photoCapture = usePhotoCaptureController(
       context,
       roomId: roomId,
       myUid: myUid,
-      intervalSec: room?.setting.photoIntervalSec ?? 300,
+      intervalSec: photoIntervalSec,
       releasedAt: room?.releasedAt,
       serverTimeOffsetMillis: offset,
-      lastPhotoAt: myUid == null
-          ? null
-          : findUser(room?.users ?? const [], myUid)?.lastPhotoAt,
+      lastPhotoAt: myLastPhotoAt,
       // 鬼も逃走者も撮る(issue #140)。
       notifyWhenDue: takesFootPhotos(roleOf(room?.users ?? const [], myUid)),
+      // 特典「足元写真を1回まぬがれる」で飛ばすスロット。
+      skippedSlots: skippedFootPhotoSlots(
+        effects: roomEffects,
+        myUid: myUid,
+        scheduleStartMillis: photoScheduleStartMillis(
+          releasedAt: room?.releasedAt,
+          intervalSec: photoIntervalSec,
+        ),
+        intervalSec: photoIntervalSec,
+      ),
     );
 
     // GPSの実測(getPositionStream)は初回の測位に時間がかかる(コールドスタート)。
@@ -311,7 +347,8 @@ class GamePage extends HookConsumerWidget {
       ref,
       context,
       roomId: roomId,
-      isNavigationBlocked: caught.shownCatch != null || captureOpen.value,
+      isNavigationBlocked:
+          caught.shownCatch != null || captureOpen.value || rewardOpen.value,
     );
 
     // 「同じメンバーでもう一回」による巻き戻しの検知。ホストが結果画面
@@ -356,6 +393,139 @@ class GamePage extends HookConsumerWidget {
 
     final pressureState = ref.watch(pressureViewModelProvider);
     final bleDetections = ref.watch(bleViewModelProvider);
+
+    // ミッション(逃走者だけが受ける)。いま出ている1件と、自分の進み具合
+    // (到着・達成。MissionControllerが画面と無関係に1秒ごとに更新する)。
+    final missionProgress = ref.watch(missionControllerProvider);
+    final mission = roleOf(room?.users ?? const [], myUid) == UserRole.fugitive
+        ? currentMission(
+            ref.watch(missionsStreamProvider(roomId)).value ?? const [],
+            startedAt: room?.startedAt,
+            nowMillis: now,
+          )
+        : null;
+    final missionReading = mission == null
+        ? null
+        : readAccessPoint(mission: mission, location: myLocation);
+
+    // 特典が「足元写真を1回まぬがれる」だったときに飛ばすスロット。押した
+    // 瞬間の撮影バナーの状態で決め、効果に書いておく(後から撮り直しても
+    // ずれないように)。
+    int? footPhotoSkipSlotNow() => footPhotoSlotToSkip(
+      scheduleStartMillis: photoScheduleStartMillis(
+        releasedAt: room?.releasedAt,
+        intervalSec: photoIntervalSec,
+      ),
+      intervalSec: photoIntervalSec,
+      nowMillis: serverNowMillis(offset),
+      isDue: photoCapture.state.isDue,
+    );
+
+    // 特典を引けたら、確定演出の代わりに特典の画面を出す。開いている間は
+    // ゲーム終了の自動遷移を止める。
+    Future<void> showReward(RewardType reward) async {
+      rewardOpen.value = true;
+      await RewardPage.show(context, reward);
+      if (context.mounted) rewardOpen.value = false;
+    }
+
+    // 取れたのに特典の書き込みが済んでいないとき(取った直後に通信が切れた
+    // 等)の「特典を受け取る」。書き込みは何度やっても1つにまとまる。
+    Future<void> handleCompleteClaimPressed(Mission target) async {
+      RewardType? reward;
+      final result = await claimAction.run(() async {
+        reward = await ref
+            .read(missionRepositoryProvider)
+            .completeClaim(
+              roomId,
+              target.id,
+              footPhotoSkipSlot: footPhotoSkipSlotNow(),
+            );
+      });
+      if (!context.mounted) return;
+      switch (result.status) {
+        case AsyncActionStatus.succeeded:
+          if (reward case final granted?) await showReward(granted);
+        case AsyncActionStatus.failed:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '特典を受け取れませんでした。'
+                '${userFacingErrorMessage(result.error!)}',
+              ),
+            ),
+          );
+        case AsyncActionStatus.skipped:
+          break;
+      }
+    }
+
+    // 「特典を引く」。先着1名はリポジトリのトランザクションで決まる。
+    Future<void> handleClaimPressed(Mission target) async {
+      // 押した瞬間にも範囲の中にいるかを確かめ直す。一度通っただけで、
+      // 離れた場所から引けてしまわないように(canClaimAccessPoint)。
+      // ボタンは範囲の外では出ないが、描画から押すまでの間に位置が
+      // 更新されていることがあるため、最新の位置でもう一度見る。
+      final latest = readAccessPoint(
+        mission: target,
+        location: _findLocation(
+          ref.read(locationViewModelProvider).locations,
+          myUid,
+        ),
+      );
+      if (!canClaimAccessPoint(
+        arrival: ref.read(missionControllerProvider).arrival,
+        reading: latest,
+      )) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('判定範囲の外に出ています。半径15mに戻ってから引いてください')),
+        );
+        return;
+      }
+      ClaimResult? claim;
+      final result = await claimAction.run(() async {
+        claim = await ref
+            .read(missionRepositoryProvider)
+            .claimMission(
+              roomId,
+              target.id,
+              footPhotoSkipSlot: footPhotoSkipSlotNow(),
+            );
+      });
+      if (!context.mounted) return;
+      switch (result.status) {
+        case AsyncActionStatus.succeeded:
+          final outcome = claim;
+          if (outcome == null) return;
+          switch (outcome.outcome) {
+            case ClaimOutcome.claimed:
+              final reward = outcome.reward;
+              if (reward == null) return;
+              await showReward(reward);
+            case ClaimOutcome.takenByOther:
+              // カードも「ほかの人に取られた」に変わるが、押した直後の
+              // 結果なので知らせておく。
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('ほかの人に先に取られました')),
+              );
+            case ClaimOutcome.unavailable:
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('ミッションの時間が過ぎていました')),
+              );
+          }
+        case AsyncActionStatus.failed:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '特典を引けませんでした。'
+                '${userFacingErrorMessage(result.error!)}',
+              ),
+            ),
+          );
+        case AsyncActionStatus.skipped:
+          break;
+      }
+    }
 
     // 「捕まえた」の処理(issue #140)。相手と場所を選ぶ→捕獲を書く→
     // 撮影画面を開く。onPressed直下に書くとネストが深くなりすぎるため
@@ -606,17 +776,38 @@ class GamePage extends HookConsumerWidget {
                         ),
                         ...mockUsers,
                       ];
+                // 特典「鬼の手がかりを止める」。効いている間、鬼の端末では
+                // Wi-Fi・気圧の表示を隠す。
+                final clueBlockedEffect = myRole == UserRole.demon
+                    ? activeEffectOf(
+                        roomEffects,
+                        RewardType.blockClues,
+                        serverNowMillis: now,
+                      )
+                    : null;
                 final rosterUids = opponentRoster.map((u) => u.id).toSet();
                 // 選択中のuidがまだ一覧に残っていればそれを使い、無ければ
                 // (未選択・退室・可視性が外れた等)既定で最も近い相手に戻す。
+                // 手がかりを止められている間は「Wi-Fiで最も近い相手」を既定に
+                // しない(選ばれるチップで、誰が近いかが漏れるため)。
                 final effectiveSelectedUid =
                     selectedOpponentUid.value != null &&
                         rosterUids.contains(selectedOpponentUid.value)
                     ? selectedOpponentUid.value
-                    : visibleNearestOpponentUid ??
+                    : (clueBlockedEffect == null
+                              ? visibleNearestOpponentUid
+                              : null) ??
                           (opponentRoster.isEmpty
                               ? null
                               : opponentRoster.first.id);
+                // 「鬼に近づけ」のパネルに出す鬼。達成は「どれかの鬼と反応あり」
+                // で判定している(MissionController)ので、反応ありの鬼がいれば
+                // その鬼を出す。いなければ選んでいる鬼。カードが「達成した」
+                // なのにパネルが「反応なし」、という食い違いを出さないため。
+                final approachCloseUid = firstCloseUid(
+                  visibleWifiEntries,
+                  opponentRoster.map((u) => u.id),
+                );
                 final selectedComparisons = effectiveSelectedUid != null
                     ? ref.watch(
                         wifiComparisonsForProvider((
@@ -626,8 +817,51 @@ class GamePage extends HookConsumerWidget {
                       )
                     : const <WifiApComparison>[];
 
+                // 特典の効果(ミッション)。鬼のアイコンを大きくする効果は
+                // 逃走者の地図で鬼のピンを2倍にする(鬼の手がかりを止める
+                // 効果は、相手選びの前で見ている)。
+                final enlargeDemonIcon =
+                    myRole == UserRole.fugitive &&
+                    activeEffectOf(
+                          roomEffects,
+                          RewardType.bigDemonIcon,
+                          serverNowMillis: now,
+                        ) !=
+                        null;
+                final missionStatus = mission == null || missionReading == null
+                    ? null
+                    : missionCardStatusOf(
+                        mission: mission,
+                        myUid: myUid,
+                        locationFailure: locationState.failure,
+                        reading: missionReading,
+                        progress: missionProgress,
+                      );
+                // 地図の下寄せに「特典を引く/受け取る」が出ているか。
+                final showsMissionButton =
+                    missionStatus == MissionCardStatus.arrived ||
+                    (missionStatus == MissionCardStatus.claimedWithoutReward &&
+                        !claimAction.isRunning);
+                final missionLat = mission?.lat;
+                final missionLng = mission?.lng;
+                final isApproachMission =
+                    mission?.type == MissionType.approachDemon;
+
                 final mapPageContent = Column(
                   children: [
+                    // 効果が効いているあいだの細い帯(残り時間はサーバー時刻で数える)。
+                    for (final effect in activeTimedEffects(
+                      roomEffects,
+                      serverNowMillis: now,
+                    ))
+                      EffectBand(
+                        type: effect.type,
+                        viewerRole: myRole,
+                        remainingMillis: effectRemainingMillis(
+                          effect,
+                          serverNowMillis: now,
+                        ),
+                      ),
                     // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
                     // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
                     // なので逃走者のみに出す。
@@ -675,22 +909,98 @@ class GamePage extends HookConsumerWidget {
                               alert: outsideAreaAlert,
                               // 偽プレイヤーのピンにも名前と役割色を出すため、
                               // 地図には表示用の一覧を渡す(issue #67)。
-                              map: GameLocationMap(
-                                locations: visibleLocations,
-                                users: displayUsers,
-                                myUid: myUid,
-                                cachedPosition: cachedPosition.value,
-                                gameArea: room.setting.gameArea,
+                              // ミッションのカードと「特典を引く」は地図の上に
+                              // 重ねる。エリア外アラートはさらにその上に出る
+                              // (戻る方が優先)。
+                              map: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: GameLocationMap(
+                                      locations: visibleLocations,
+                                      users: displayUsers,
+                                      myUid: myUid,
+                                      cachedPosition: cachedPosition.value,
+                                      gameArea: room.setting.gameArea,
+                                      missionPoint:
+                                          missionLat != null &&
+                                              missionLng != null
+                                          ? (
+                                              lat: missionLat,
+                                              lng: missionLng,
+                                              radiusM:
+                                                  mission?.radiusM ??
+                                                  accessPointRadiusM,
+                                            )
+                                          : null,
+                                      enlargeDemonIcon: enlargeDemonIcon,
+                                    ),
+                                  ),
+                                  if (mission != null &&
+                                      missionReading != null &&
+                                      missionStatus != null) ...[
+                                    Positioned(
+                                      left: 12,
+                                      right: 12,
+                                      top: 12,
+                                      child: MissionCard(
+                                        mission: mission,
+                                        status: missionStatus,
+                                        reading: missionReading,
+                                        remainingMillis:
+                                            mission.expiresAt - now,
+                                        claimedByName:
+                                            switch (mission.claimedBy) {
+                                              final uid? => findUser(
+                                                room.users,
+                                                uid,
+                                              )?.displayName,
+                                              null => null,
+                                            },
+                                      ),
+                                    ),
+                                    if (missionStatus ==
+                                        MissionCardStatus.arrived)
+                                      Positioned(
+                                        left: 12,
+                                        right: 12,
+                                        bottom: 14,
+                                        child: MissionClaimButton(
+                                          isClaiming: claimAction.isRunning,
+                                          onPressed: () => unawaited(
+                                            handleClaimPressed(mission),
+                                          ),
+                                        ),
+                                      ),
+                                    if (missionStatus ==
+                                            MissionCardStatus
+                                                .claimedWithoutReward &&
+                                        !claimAction.isRunning)
+                                      Positioned(
+                                        left: 12,
+                                        right: 12,
+                                        bottom: 14,
+                                        child: MissionClaimButton(
+                                          label: '特典を受け取る',
+                                          isClaiming: false,
+                                          onPressed: () => unawaited(
+                                            handleCompleteClaimPressed(mission),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ],
                               ),
                             ),
                           ),
                           // 目撃写真のボタン(地図の右下)。地図の帰属表示
                           // (右下の「i」)を隠さないよう、その上に置く。
+                          // 「特典を引く」が出ている間は、そのボタンに
+                          // 重ならないようさらに上へずらす。
                           // 写真機能が無効な環境では出さない。
                           if (isPhotoFeatureConfigured)
                             Positioned(
                               right: 14,
-                              bottom: 60,
+                              bottom: showsMissionButton ? 120 : 60,
                               child: SightingPhotoButton(
                                 unreadCount: sightingBadge.unreadCount,
                                 onPressed: () =>
@@ -763,7 +1073,11 @@ class GamePage extends HookConsumerWidget {
                                 children: [
                                   OpponentSelectorChips(
                                     roster: opponentRoster,
-                                    entries: visibleWifiEntries,
+                                    // 手がかりを止められている鬼には、Wi-Fiの
+                                    // 判定もチップに出さない。
+                                    entries: clueBlockedEffect != null
+                                        ? const []
+                                        : visibleWifiEntries,
                                     selectedUid: effectiveSelectedUid,
                                     onSelect: (uid) =>
                                         selectedOpponentUid.value = uid,
@@ -773,17 +1087,53 @@ class GamePage extends HookConsumerWidget {
                                         : '鬼を選ぶ',
                                   ),
                                   const SizedBox(height: 8),
-                                  _SelectedClueCard(
-                                    roomId: roomId,
-                                    room: room,
-                                    myUid: myUid,
-                                    uid: effectiveSelectedUid,
-                                    users: displayUsers,
-                                    wifiEntries: visibleWifiEntries,
-                                    verticalPositions: visibleVerticalPositions,
-                                    comparisons: selectedComparisons,
-                                    pressureState: pressureState,
-                                  ),
+                                  if (clueBlockedEffect != null)
+                                    ClueBlockedCard(
+                                      remainingMillis: effectRemainingMillis(
+                                        clueBlockedEffect,
+                                        serverNowMillis: now,
+                                      ),
+                                    )
+                                  else ...[
+                                    // 「鬼に近づけ」の間だけ、Wi-Fiの重なりを
+                                    // 大きく出す(モック5)。
+                                    if (isApproachMission) ...[
+                                      WifiOverlapPanel(
+                                        demonName:
+                                            findUser(
+                                              displayUsers,
+                                              approachCloseUid ??
+                                                  effectiveSelectedUid,
+                                            )?.displayName ??
+                                            '',
+                                        level: levelFor(
+                                          visibleWifiEntries,
+                                          approachCloseUid ??
+                                              effectiveSelectedUid,
+                                        ),
+                                        metrics: ref.watch(
+                                          wifiOverlapMetricsProvider((
+                                            roomId,
+                                            approachCloseUid ??
+                                                effectiveSelectedUid,
+                                          )),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    _SelectedClueCard(
+                                      roomId: roomId,
+                                      room: room,
+                                      myUid: myUid,
+                                      uid: effectiveSelectedUid,
+                                      users: displayUsers,
+                                      wifiEntries: visibleWifiEntries,
+                                      verticalPositions:
+                                          visibleVerticalPositions,
+                                      comparisons: selectedComparisons,
+                                      pressureState: pressureState,
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

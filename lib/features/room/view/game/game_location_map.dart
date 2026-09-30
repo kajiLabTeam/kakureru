@@ -6,6 +6,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -26,6 +27,8 @@ Widget buildLocationMapForTest({
   required List<RoomUser> users,
   required String? myUid,
   List<LatLng> gameArea = const [],
+  MissionMapPoint? missionPoint,
+  bool enlargeDemonIcon = false,
 }) {
   return GameLocationMap(
     locations: locations,
@@ -33,8 +36,16 @@ Widget buildLocationMapForTest({
     myUid: myUid,
     cachedPosition: null,
     gameArea: gameArea,
+    missionPoint: missionPoint,
+    enlargeDemonIcon: enlargeDemonIcon,
   );
 }
+
+/// 地図に出すミッションの地点(アクセスポイント)と判定の半径(m)。
+typedef MissionMapPoint = ({double lat, double lng, double radiusM});
+
+/// `big_demon_icon` が効いているあいだの、鬼のピンの倍率。
+const enlargedDemonIconScale = 2.0;
 
 /// ゲーム中の地図。参加者のGPSピン、プレイエリアの境界と外側のマスクを描く。
 ///
@@ -55,6 +66,8 @@ class GameLocationMap extends HookWidget {
     required this.myUid,
     required this.cachedPosition,
     required this.gameArea,
+    this.missionPoint,
+    this.enlargeDemonIcon = false,
   });
 
   /// 地図に出す位置。自分から見えていい相手の分だけが渡ってくる。
@@ -71,6 +84,14 @@ class GameLocationMap extends HookWidget {
 
   /// ルーム設定で指定されたプレイエリア。未設定なら空。
   final List<LatLng> gameArea;
+
+  /// いま受けているアクセスポイント。点と判定範囲の破線の円を描く。
+  /// 無ければnull。
+  final MissionMapPoint? missionPoint;
+
+  /// 鬼のピンを[enlargedDemonIconScale]倍にするか(特典 `big_demon_icon`)。
+  /// 自分のピンは大きくしない。
+  final bool enlargeDemonIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -134,6 +155,14 @@ class GameLocationMap extends HookWidget {
       return null;
     }, [positionTier, currentCenter.latitude, currentCenter.longitude]);
 
+    // 判定範囲の円は地点が変わらない限り同じなので、毎秒の再描画で
+    // 作り直さない(円周の36点を測地線で計算するため)。
+    final point = missionPoint;
+    final missionRange = useMemoized(
+      () => point == null ? null : _missionRangePolygon(point),
+      [point?.lat, point?.lng, point?.radiusM],
+    );
+
     // マーカー(アイコン+ラベル)を位置ごとに組み立てる。
     final locationVisuals = locations
         .map((location) => _buildLocationVisual(location, myRole))
@@ -160,6 +189,10 @@ class GameLocationMap extends HookWidget {
                   _areaBorderPolygon(areaPoints),
                 ],
               ),
+            if (point != null && missionRange != null) ...[
+              PolygonLayer(polygons: [missionRange]),
+              MarkerLayer(markers: [_missionMarker(point)]),
+            ],
             AnimatedMarkerLayer(
               markers: [
                 for (final visual in locationVisuals)
@@ -228,6 +261,67 @@ class GameLocationMap extends HookWidget {
     );
   }
 
+  /// アクセスポイントの判定範囲(半径 `radiusM`)の破線の円。
+  /// flutter_mapのCircleMarkerは破線にできないため、円周を多角形で描く。
+  Polygon<Object> _missionRangePolygon(MissionMapPoint point) {
+    const distance = latlong.Distance();
+    final center = latlong.LatLng(point.lat, point.lng);
+    return Polygon(
+      points: [
+        for (var deg = 0; deg < 360; deg += 10)
+          distance.offset(center, point.radiusM, deg),
+      ],
+      color: missionRangeFill,
+      borderStrokeWidth: 2,
+      borderColor: missionAccent,
+      pattern: StrokePattern.dashed(segments: const [6, 4]),
+    );
+  }
+
+  /// アクセスポイントの点とラベル。
+  Marker _missionMarker(MissionMapPoint point) {
+    return Marker(
+      point: latlong.LatLng(point.lat, point.lng),
+      width: 110,
+      height: 58,
+      alignment: const Alignment(0, (58 / 2 - 34 / 2) / (58 / 2)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: missionAccent,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: const [
+                BoxShadow(color: Color(0x4D1B1B19), blurRadius: 6),
+              ],
+            ),
+            child: const Icon(Icons.flag, size: 16, color: Colors.white),
+          ),
+          const SizedBox(height: 3),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: missionDeep,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Text(
+              'アクセスポイント',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// プレイエリアの境界線。ルーム設定画面と同じ青い破線で揃えている。
   Polygon<Object> _areaBorderPolygon(List<latlong.LatLng> areaPoints) {
     return Polygon(
@@ -281,6 +375,11 @@ class GameLocationMap extends HookWidget {
       role: displayRole,
     );
 
+    // 特典 `big_demon_icon` の間は、鬼のピンをアイコンの中心を起点に拡大する。
+    // Transformはレイアウトを変えないので、重なりの判定や座標合わせは
+    // 元の大きさのまま動く。
+    final enlarged =
+        enlargeDemonIcon && !isSelf && targetRole == UserRole.demon;
     final marker = Marker(
       // どの役割から見ても実座標に置く(issue #118でグリッドを廃止)。
       point: latlong.LatLng(location.latitude, location.longitude),
@@ -295,29 +394,33 @@ class GameLocationMap extends HookWidget {
       alignment: usesRoleIcon
           ? markerIconCenterAlignment
           : markerIconTipAlignment,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          MarkerIcon(icon: icon, color: color),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                height: 1.1,
+      child: Transform.scale(
+        scale: enlarged ? enlargedDemonIconScale : 1,
+        alignment: enlargedMarkerScaleAlignment,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MarkerIcon(icon: icon, color: color),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(4),
               ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  height: 1.1,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
 
@@ -332,6 +435,17 @@ class GameLocationMap extends HookWidget {
     return null;
   }
 }
+
+/// 鬼のピンを拡大するときの起点(アイコンの中心)。
+///
+/// `Transform.scale`の`alignment`は、子(幅[markerWidth]×高さ[markerHeight])の
+/// 中で動かない点を指す。アイコンは上詰めなので、中心は上端から
+/// [markerIconSize]/2 にある。ここを起点にしないと、拡大したアイコンが
+/// 実際の位置からずれて描かれる。
+const enlargedMarkerScaleAlignment = Alignment(
+  0,
+  (markerIconSize / 2) / markerHeight * 2 - 1,
+);
 
 /// GPSマーカーの幅。ラベル(名前)が入る幅。
 const markerWidth = 72.0;

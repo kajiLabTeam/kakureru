@@ -7,6 +7,8 @@ import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/room/game_alerts.dart';
+import 'package:kakureru/features/mission/model/mission_progress.dart';
+import 'package:kakureru/features/mission/view_model/mission_view_model.dart';
 import 'package:kakureru/features/room/game_session.dart';
 import 'package:kakureru/features/wifi/repository/wifi_scan_repository.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
@@ -106,6 +108,24 @@ class _RecordingGameAlerts extends GameAlerts {
   }
 }
 
+/// [MissionController]の開始/停止の呼び出し回数だけを記録する差し替え。
+/// 本物はRTDB(部屋・ミッション・サーバー時刻)を購読し、1秒ごとの
+/// タイマーを張る。
+class _RecordingMissionController extends MissionController {
+  int stopCalls = 0;
+
+  @override
+  MissionProgress build() => const MissionProgress();
+
+  @override
+  void start(String roomId) {}
+
+  @override
+  void stop() {
+    stopCalls++;
+  }
+}
+
 /// [useLocationRetryOnResume]だけを貼ったテスト用ウィジェット。
 /// useGameSession 全体を貼ると復帰時の再試行以外の配線まで動くため、
 /// ここだけを切り出して確認する。
@@ -161,13 +181,15 @@ class _GameSessionHarness extends HookConsumerWidget {
   }
 }
 
-/// [useGameSession]が動かすもの(センサー4種 + [GameAlerts])の差し替え一式。
+/// [useGameSession]が動かすもの(センサー4種 + [GameAlerts] +
+/// [MissionController])の差し替え一式。
 typedef _Sensors = ({
   _RecordingLocationViewModel location,
   _RecordingPressureViewModel pressure,
   _RecordingWifiScanRepository wifi,
   _RecordingBleViewModel ble,
   _RecordingGameAlerts alerts,
+  _RecordingMissionController missions,
 });
 
 /// [_GameSessionHarness]をマウントし、差し替えたものを返す。
@@ -178,6 +200,7 @@ Future<_Sensors> _pumpGameSession(WidgetTester tester) async {
     wifi: _RecordingWifiScanRepository(),
     ble: _RecordingBleViewModel(),
     alerts: _RecordingGameAlerts(),
+    missions: _RecordingMissionController(),
   );
   await _pumpUnderScope(tester, sensors, const _GameSessionHarness());
   return sensors;
@@ -207,6 +230,7 @@ Future<void> _pumpUnderScope(
         wifiScanRepositoryProvider.overrideWithValue(sensors.wifi),
         bleViewModelProvider.overrideWith(() => sensors.ble),
         gameAlertsProvider.overrideWith(() => sensors.alerts),
+        missionControllerProvider.overrideWith(() => sensors.missions),
       ],
       child: child,
     ),
@@ -268,6 +292,15 @@ void main() {
       await _leaveGameScreen(tester, sensors);
 
       expect(sensors.alerts.stopCalls, 1);
+    });
+
+    testWidgets('ミッションの生成と判定(MissionController)を止める', (tester) async {
+      final sensors = await _pumpGameSession(tester);
+      expect(sensors.missions.stopCalls, 0);
+
+      await _leaveGameScreen(tester, sensors);
+
+      expect(sensors.missions.stopCalls, 1);
     });
   });
 

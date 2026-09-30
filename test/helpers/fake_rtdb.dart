@@ -3,7 +3,8 @@ import 'package:firebase_database/firebase_database.dart';
 
 /// RTDBの代わりに、パス→値のツリーをメモリ上に持つだけの最小のfake。
 ///
-/// `ref()` / `get()` / `set()` / `update()` / `push()` だけを実装する。
+/// `ref()` / `get()` / `set()` / `update()` / `push()` / `child()` /
+/// `runTransaction()` だけを実装する。
 /// 未実装のメンバを呼ぶとNoSuchMethodErrorで落ちるので、テストが黙って
 /// 通ることはない(room_repository_test.dartのfakeと同じ方針)。
 class FakeRtdb implements FirebaseDatabase {
@@ -71,6 +72,63 @@ class _FakeRef implements DatabaseReference {
 
   @override
   DatabaseReference push() => _FakeRef(_db, '$_path/${_db._pushCounter++}');
+
+  @override
+  DatabaseReference child(String path) => _FakeRef(_db, '$_path/$path');
+
+  /// 本物のRTDBの振る舞いを最小限まねる:
+  ///
+  /// 1. まず手元のキャッシュが無い状態(`null`)でハンドラを呼ぶ
+  ///    (本物も、キャッシュが無ければサーバーの値に関係なくnullで呼ぶ)
+  /// 2. サーバーの値と食い違っていれば、サーバーの値で呼び直す
+  /// 3. 読んでから書くまでを同期的に行う(=サーバーでの直列化)
+  ///
+  /// `await`を挟まないので、`Future.wait`で同時に呼んでも1件ずつ確定する。
+  @override
+  Future<TransactionResult> runTransaction(
+    TransactionHandler transactionHandler, {
+    bool applyLocally = true,
+  }) async {
+    final server = _db.read(_path);
+    var transaction = transactionHandler(null);
+    if (server != null && !transaction.aborted) {
+      transaction = transactionHandler(_deepCopy(server));
+    }
+    if (transaction.aborted) {
+      return _FakeTransactionResult(
+        committed: false,
+        snapshot: _FakeSnapshot(server),
+      );
+    }
+    _db.write(_path, transaction.value);
+    return _FakeTransactionResult(
+      committed: true,
+      snapshot: _FakeSnapshot(_db.read(_path)),
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Object? _deepCopy(Object? value) {
+  if (value is Map) {
+    return {
+      for (final entry in value.entries)
+        entry.key.toString(): _deepCopy(entry.value),
+    };
+  }
+  return value;
+}
+
+class _FakeTransactionResult implements TransactionResult {
+  _FakeTransactionResult({required this.committed, required this.snapshot});
+
+  @override
+  final bool committed;
+
+  @override
+  final DataSnapshot snapshot;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

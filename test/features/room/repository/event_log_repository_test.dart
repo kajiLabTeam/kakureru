@@ -82,6 +82,7 @@ void main() {
       'became_demon',
       'game_ended',
       'photo_taken',
+      'mission_claimed',
     ]);
   });
 
