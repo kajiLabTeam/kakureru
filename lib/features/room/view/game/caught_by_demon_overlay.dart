@@ -6,7 +6,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/room/async_action.dart';
 import 'package:kakureru/features/room/catch_rules.dart';
+import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/model/room_catch.dart';
+import 'package:kakureru/features/room/repository/room_repository.dart';
 import 'package:kakureru/features/room/view/game/catch_button_strip.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
@@ -82,7 +84,9 @@ class CaughtByDemonOverlay extends HookConsumerWidget {
       if (result.status == AsyncActionStatus.failed) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('${result.error}')));
+        ).showSnackBar(
+          SnackBar(content: Text(undoCatchErrorMessage(result.error!))),
+        );
       }
     }
 
@@ -213,3 +217,14 @@ class CaughtByDemonOverlay extends HookConsumerWidget {
     );
   }
 }
+
+/// 「取り消す」に失敗したときにSnackBarへ出す文言。
+///
+/// 例外の文字列をそのまま出すと、Firebaseの英語のエラー文などが見えてしまう
+/// ため[userFacingErrorMessage]を通す。ただし取り消しの前に自前で判定して
+/// 投げる2つ(期限切れ・通信できない)は、それ自体が利用者向けの文言なので
+/// そのまま出す(汎用の「うまくいきませんでした」にすると理由が分からない)。
+String undoCatchErrorMessage(Object error) => switch (error) {
+  CatchUndoExpiredException() || CatchUndoUnavailableException() => '$error',
+  _ => userFacingErrorMessage(error),
+};

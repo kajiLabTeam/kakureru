@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kakureru/features/room/repository/room_repository.dart';
 import 'package:kakureru/features/room/view/catch_capture_page.dart';
 
 Future<({List<String> calls})> _pump(
   WidgetTester tester, {
   bool isPicking = false,
-  bool isSending = false,
 }) async {
   final calls = <String>[];
   await tester.pumpWidget(
@@ -14,7 +14,6 @@ Future<({List<String> calls})> _pump(
         fugitiveName: 'たろう',
         remainingFugitives: 2,
         isPicking: isPicking,
-        isSending: isSending,
         canTakePhoto: true,
         onTakePhoto: () => calls.add('take'),
       ),
@@ -35,10 +34,11 @@ void main() {
       expect(result.calls, ['take']);
     });
 
-    testWidgets('送信中は「送信中…」と出し、撮影ボタンを押せない', (tester) async {
-      final result = await _pump(tester, isSending: true);
+    // 送信は画面を閉じた後に裏で行うので、この画面に「送信中」は無い。
+    testWidgets('カメラを開いている間は、撮影ボタンを押せない', (tester) async {
+      final result = await _pump(tester, isPicking: true);
 
-      expect(find.text('送信中…'), findsOneWidget);
+      expect(find.text('送信中…'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       await tester.tap(find.byType(InkWell).first);
       expect(result.calls, isEmpty);
@@ -65,6 +65,40 @@ void main() {
       expect(find.text('みんなに送る'), findsNothing);
       expect(find.text('撮り直す'), findsNothing);
       expect(find.text('送らない'), findsNothing);
+    });
+  });
+
+  group('sendCatchPhoto', () {
+    test('アップロードしてから捕獲に付け、成功を伝える', () async {
+      final calls = <String>[];
+      final message = await sendCatchPhoto(
+        upload: () async => calls.add('upload'),
+        attach: () async => calls.add('attach'),
+      );
+
+      expect(calls, ['upload', 'attach']);
+      expect(message, '写真をみんなに送りました');
+    });
+
+    test('捕獲が取り消されていたら、その理由を伝える', () async {
+      final message = await sendCatchPhoto(
+        upload: () async {},
+        attach: () async => throw const CatchAlreadyUndoneException(),
+      );
+
+      expect(message, '捕獲が取り消されたため、写真は送りませんでした');
+    });
+
+    // 画面は閉じた後なので、撮り直しは促さない。例外も外へ投げない。
+    test('アップロードに失敗したら、付けずに送れなかったことを伝える', () async {
+      final calls = <String>[];
+      final message = await sendCatchPhoto(
+        upload: () async => throw Exception('network'),
+        attach: () async => calls.add('attach'),
+      );
+
+      expect(calls, isEmpty);
+      expect(message, '捕まえた瞬間の写真を送れませんでした');
     });
   });
 }

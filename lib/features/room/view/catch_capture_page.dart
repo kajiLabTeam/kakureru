@@ -55,51 +55,9 @@ class CatchCapturePage extends HookConsumerWidget {
 
     // 画面内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
     final isPicking = useState(false);
-    final isSending = useState(false);
 
-    Future<void> send(Uint8List data) async {
-      isSending.value = true;
-      try {
-        // 撮り直して送るたびに新しいIDにする。写真APIは同じIDへの
-        // 2回目のPUTを409で断るため、R2へ上げた後にRTDBへの書き込みだけが
-        // 失敗した場合、同じIDでは二度と送れなくなる(docs/photo-storage.md)。
-        final id = FirebaseDatabase.instance.ref().push().key!;
-        await PhotoRepository().upload(
-          roomId: roomId,
-          photoId: id,
-          bytes: data,
-        );
-        await ref
-            .read(roomRepositoryProvider)
-            .attachCatchPhoto(
-              roomId,
-              catchId: catchId,
-              photoId: id,
-              fugitiveUid: fugitiveUid,
-            );
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('写真をみんなに送りました')));
-        Navigator.of(context).pop();
-      } on CatchAlreadyUndoneException catch (e) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$e')));
-        Navigator.of(context).pop();
-      } on Object catch (e) {
-        debugPrint('[CatchCapture] 送信に失敗: $e');
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('写真を送れませんでした。もう一度撮ってください')),
-        );
-      } finally {
-        if (context.mounted) isSending.value = false;
-      }
-    }
-
-    // 撮ったら確認画面を挟まずにそのまま送る。
+    // 撮ったら確認画面を挟まずに、画面を閉じてから裏で送る
+    // ([sendCatchPhoto]の説明参照)。
     Future<void> takeAndSend() async {
       isPicking.value = true;
       Uint8List? picked;
@@ -114,20 +72,65 @@ class CatchCapturePage extends HookConsumerWidget {
         if (context.mounted) isPicking.value = false;
       }
       if (picked == null || !context.mounted) return;
-      await send(picked);
+      final bytes = picked;
+      // 閉じた後に結果を出すため、ゲーム画面にも出せるアプリ全体の
+      // ScaffoldMessengerとリポジトリを、閉じる前に取っておく。
+      final messenger = ScaffoldMessenger.of(context);
+      final roomRepository = ref.read(roomRepositoryProvider);
+      // 撮り直して送るたびに新しいIDにする。写真APIは同じIDへの
+      // 2回目のPUTを409で断るため(docs/photo-storage.md)。
+      final photoId = FirebaseDatabase.instance.ref().push().key!;
+      unawaited(
+        sendCatchPhoto(
+          upload: () => PhotoRepository().upload(
+            roomId: roomId,
+            photoId: photoId,
+            bytes: bytes,
+          ),
+          attach: () => roomRepository.attachCatchPhoto(
+            roomId,
+            catchId: catchId,
+            photoId: photoId,
+            fugitiveUid: fugitiveUid,
+          ),
+        ).then(
+          (message) => messenger.showSnackBar(SnackBar(content: Text(message))),
+        ),
+      );
+      Navigator.of(context).pop();
     }
 
-    return PopScope(
-      canPop: !isSending.value,
-      child: CatchCaptureView(
-        fugitiveName: fugitiveName,
-        remainingFugitives: remaining,
-        isPicking: isPicking.value,
-        isSending: isSending.value,
-        canTakePhoto: isPhotoFeatureConfigured,
-        onTakePhoto: () => unawaited(takeAndSend()),
-      ),
+    return CatchCaptureView(
+      fugitiveName: fugitiveName,
+      remainingFugitives: remaining,
+      isPicking: isPicking.value,
+      canTakePhoto: isPhotoFeatureConfigured,
+      onTakePhoto: () => unawaited(takeAndSend()),
     );
+  }
+}
+
+/// 捕まえた瞬間の写真を送り、結果としてSnackBarに出す1文を返す。
+///
+/// 撮影画面を閉じた後に裏で呼ぶ(ゲーム中の鬼を送信完了まで待たせないため)。
+/// そのため**時間制限は付けない**: [attach]のトランザクションは圏外だと
+/// つながるまで終わらないが、端末に積まれてつながった時点で送られるので、
+/// 途中で打ち切って「送れませんでした」と出すと、実際には後で届くのに
+/// 失敗と伝えることになる。例外は投げずに文言へ変換する(裏で呼ぶので
+/// 受け取る画面が無い)。
+Future<String> sendCatchPhoto({
+  required Future<void> Function() upload,
+  required Future<void> Function() attach,
+}) async {
+  try {
+    await upload();
+    await attach();
+    return '写真をみんなに送りました';
+  } on CatchAlreadyUndoneException catch (e) {
+    return '$e';
+  } on Object catch (e) {
+    debugPrint('[CatchCapture] 送信に失敗: $e');
+    return '捕まえた瞬間の写真を送れませんでした';
   }
 }
 
@@ -139,7 +142,6 @@ class CatchCaptureView extends StatelessWidget {
     required this.fugitiveName,
     required this.remainingFugitives,
     required this.isPicking,
-    required this.isSending,
     required this.canTakePhoto,
     required this.onTakePhoto,
   });
@@ -153,9 +155,6 @@ class CatchCaptureView extends StatelessWidget {
   /// カメラを開いている最中か。
   final bool isPicking;
 
-  /// 撮った写真を送っている最中か。
-  final bool isSending;
-
   /// 写真機能が使える環境か。
   final bool canTakePhoto;
 
@@ -164,7 +163,7 @@ class CatchCaptureView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final busy = isPicking || isSending;
+    final busy = isPicking;
     return Scaffold(
       backgroundColor: catchSurfaceColor,
       body: SafeArea(
@@ -237,9 +236,9 @@ class CatchCaptureView extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Text(
-                      isSending ? '送信中…' : '写真を撮る',
-                      style: const TextStyle(
+                    const Text(
+                      '写真を撮る',
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
