@@ -77,7 +77,7 @@ rooms/
         takenAt             撮影時刻(ServerValue.timestamp)。画像本体はR2([docs/photo-storage.md](photo-storage.md)参照)
     events/
       {pushKey}/          分析用のイベントログ。追記のみで上書きしない(下の「events」参照)
-        type                "game_started" | "released" | "catch" | "catch_undone" | "became_demon" | "game_ended" | "photo_taken"
+        type                "game_started" | "released" | "catch" | "catch_undone" | "became_demon" | "game_ended" | "photo_taken" | "mission_claimed"
         at                  ServerValue.timestamp
         uid                 出来事の主体のuid
         displayName         記録した時点の uid の表示名。users/{uid} が後から欠けても誰だったか辿れるようにする
@@ -86,6 +86,23 @@ rooms/
         accuracy            GPSの精度(m、あれば)
         pressure            気圧(hPa、あれば)
         indoor              屋内ならtrue(catchのみ)
+    missions/
+      {missionId}/          逃走者だけが受けるお題。ホストの端末が書く(下の「ミッションと特典」参照)
+        type                "access_point" | "approach_demon"
+        createdAt           ServerValue.timestamp
+        expiresAt           createdAt + 制限時間(access_point 180秒 / approach_demon 120秒)。ホストのサーバー時刻の補正値から計算する
+        lat / lng           地点(access_pointのみ)
+        radiusM             判定の半径(access_pointのみ。15)
+        claimedBy           先に取った人のuid。未取得は無し(access_pointのみ)
+        claimedAt           取った時刻(サーバー時刻のミリ秒)
+        reward              取った人が引いた特典("block_clues" | "big_demon_icon" | "skip_foot_photo")。引く前は無し
+    effects/
+      {effectId}/           特典の効果。引いた瞬間に1件足す(ルーム単位。キーはその特典を引いたミッションのID。下の「ミッションと特典」参照)
+        type                "block_clues" | "big_demon_icon" | "skip_foot_photo"
+        byUid               引いた人のuid
+        startedAt           発動した時刻(サーバー時刻のミリ秒)
+        durationMs          効いている時間(30000)。skip_foot_photo は 0(回数もの)
+        skipSlot            skip_foot_photo で飛ばす撮影スロットの番号(skip_foot_photo のみ)
 
 roomCodes/
   {code}/                 4桁コード → roomId の逆引き
@@ -312,8 +329,37 @@ npm test
 | `became_demon` | 指名された本人 | `acceptDemonNomination` で鬼になった時(開始前の初期鬼) | 鬼になった人 |
 | `game_ended` | ホストのみ | `GameAlerts` がゲーム終了を検知した時 | ホスト |
 | `photo_taken` | 撮影者 | 足元写真のアップロード成功時 | 撮影者 |
+| `mission_claimed` | 取った逃走者 | アクセスポイントを先着で取れた時(`claimMission`) | 取った逃走者(引いた特典は `missions/{missionId}/reward`) |
 
 - `released` / `game_ended` は全端末で同じ判定が回るため、重複を避けてホスト端末だけが書く。`at` は「ホスト端末が検知した時刻」で、バックグラウンド等で遅れうる。正確な予定時刻は `meta/releasedAt` / `meta/endsAt` を使うこと。ホストのアプリが閉じていると記録されない
 - `catch` の `lat`/`lng`/`accuracy` は、その時点で鬼が最後に送った `locations/{uid}` の値。`pressure` は端末の最新の気圧(取れなければ `locations/{uid}/pressure`)
 - 各イベントには記録時点の `displayName` を入れる。呼び出し側が渡さなければ `users/{uid}/displayName` を読んで補い、読めなければ省く(イベント自体は記録する)
 - `meta/endedAt` は `finishRoom` がどこからも呼ばれていないため現状書かれない。終了時刻は `game_ended` イベントか `meta/endsAt`(全員捕獲で早期終了した場合は最後の `catch`)から求める
+
+### ミッションと特典(`missions` / `effects`)
+
+逃走者だけが受けるお題と、達成したときに引ける特典(鬼への妨害など)。
+
+**ミッションはホストの端末が作る**(サーバーが無いため)。`MissionController`(`lib/features/mission/view_model/mission_view_model.dart`)が `GameAlerts` と同じく画面と無関係に1秒ごとに回り、ホスト(`meta/hostUserId`)の端末だけが `shouldCreateMission`(`lib/features/mission/mission_rules.dart`)を見て書く。
+
+- 鬼の放出(`releasedAt`)から30秒で1件目。期限が切れたか誰かが取ったら、60秒あけて次
+- 同時に出すのは1件だけ。種類はランダム(エリアが無いルームでは `approach_demon` だけ)
+- アクセスポイントの地点はエリアの中からランダムに選び、前回の地点から50m以上離す
+- ホストのアプリが落ちている間はミッションが出ない(ゲームは続く)
+- 書いた直後に購読へ戻ってくるまでの二重書き込みは、端末側で5秒の間隔を置いて防いでいる。ホストが2台に増えることはない(`hostUserId` は1人)ので、ルールでの排他はしていない
+
+**先着1名は `missions/{missionId}` への `runTransaction` で決める**(`MissionRepository.claimMission`)。`claimedBy` が無く期限内のときだけ自分のuidを入れる。RTDBはトランザクションをサーバーで直列にするため、2台が同時に押しても確定するのは1台だけで、遅れた方はサーバーの値で呼び直されて中止する。取れた人だけが特典を抽選して `missions/{missionId}/reward` と `effects/{missionId}` を書く(`rooms/{roomId}` への一括書き込みはルール上できないので2回に分ける)。`claimedAt` と効果の `startedAt` は `ServerValue.timestamp` ではなくサーバー時刻の補正値で書く(トランザクションの中で使うと仮の値と確定値が食い違うため)。
+
+- **特典の書き込みは何度やり直しても1つにまとまる**: `reward` は「まだ無いときだけ書く」トランザクションで、既にあればそれを使う。効果はキーをミッションIDにして、同じく「まだ無いときだけ書く」。取り合いに勝った後、特典を書く前に通信が切れたりアプリが落ちたりすると「取ったのに効果が出ない」状態になるが、カードに「特典を受け取る」が出て(`claimedBy` が自分で `reward` が無いとき)、`MissionRepository.completeClaim` で受け取り直せる
+- **押す瞬間にも範囲内かを確かめる**: 範囲内が2回続いたら「着いた」になるが、それだけでは引けない。いまの読み取りで範囲の外に出ていたら引けない(`canClaimAccessPoint`)。一度通っただけで、離れた場所から期限まで引けてしまうのを防ぐため。GPSの精度が悪くなっただけなら引ける(ブレでボタンが消えないように)。戻ってきたら2回待たずにすぐ引ける
+
+**効果はuidごとではなくルーム単位**に持つ。鬼に効く効果(`block_clues` / `big_demon_icon`)は全員の端末で同じ見え方にする必要があるため。`skip_foot_photo` だけは `byUid` の本人に効く。
+
+- 残り時間は `startedAt + durationMs` から**サーバー時刻**で数える(端末の時計がずれていても全員の帯が揃う)
+- `skip_foot_photo` は、引いた時点で撮影タイムが来ていてまだ撮っていなければ(撮影バナーが出ていれば)そのスロット、そうでなければ次のスロットを1回だけ飛ばす。**引いた瞬間に決めて `skipSlot` に書く**(`footPhotoSlotToSkip`)。読む側で `lastPhotoAt` から計算し直すと、引いた後に撮り直したときに飛ばす回が撮影済みのスロットへずれるため。飛ばしたスロットの写真一覧は、撮っていない扱いのままぼかしになる
+- `block_clues` が効いている間、鬼の端末では手がかりカードとチップのWi-Fiの判定を隠し、最初に選ぶ相手も「Wi-Fiで最も近い相手」にしない(選ばれるチップで誰が近いかが分かってしまうため)
+- `restartRoom` は `missions` / `effects` を消さないので、読む側は `meta/startedAt` 以降のものだけに絞る
+
+「鬼に近づけ」(`approach_demon`)の達成(Wi-Fiの判定が「反応なし」から「反応あり」に変わる)は各端末の中だけで判定し、RTDBには書かない。報酬はまだ決めていない。
+
+**ルールは暫定**: `missions` / `effects` は `photos` / `events` と同じく認証済みなら誰でも読み書きできる。締め直し(`claimedBy` を一度しか書けなくする、`effects` を取った本人しか書けなくする等)は別のissueで行う。
