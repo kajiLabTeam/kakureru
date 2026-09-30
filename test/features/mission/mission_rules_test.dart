@@ -5,6 +5,8 @@ import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/mission/mission_rules.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
+import 'package:kakureru/features/wifi/model/proximity_level.dart';
+import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
 
 /// 名古屋あたりの基準点。緯度1度 ≒ 111km、経度1度 ≒ 91km(北緯35度)。
 const _baseLat = 35.1830;
@@ -298,7 +300,56 @@ void main() {
       expect(progress.streak, 1);
     });
 
-    test('一度到着したら、範囲外になっても到着のまま', () {
+    test('到着した後に範囲の外へ出たら引けない。戻れば引ける(押す瞬間に確かめる)', () {
+      var progress = advanceArrival(initialArrival, reading(5, 1));
+      progress = advanceArrival(progress, reading(5, 2));
+      expect(
+        canClaimAccessPoint(arrival: progress, reading: reading(5, 3)),
+        isTrue,
+      );
+
+      // 300m離れて隠れた。一度通っただけでは、離れた場所から引けない。
+      expect(
+        canClaimAccessPoint(arrival: progress, reading: reading(300, 4)),
+        isFalse,
+      );
+      // 戻ってきたら、2回待たずにすぐ引ける。
+      expect(
+        canClaimAccessPoint(arrival: progress, reading: reading(8, 5)),
+        isTrue,
+      );
+    });
+
+    test('到着した後にGPSが弱くなっただけなら引ける(ブレでボタンを消さない)', () {
+      var progress = advanceArrival(initialArrival, reading(5, 1));
+      progress = advanceArrival(progress, reading(5, 2));
+      expect(
+        canClaimAccessPoint(
+          arrival: progress,
+          reading: reading(5, 3, accuracy: 45),
+        ),
+        isTrue,
+      );
+    });
+
+    test('まだ到着していない・位置が無いときは引けない', () {
+      final once = advanceArrival(initialArrival, reading(5, 1));
+      expect(
+        canClaimAccessPoint(arrival: once, reading: reading(5, 2)),
+        isFalse,
+      );
+      var arrived = advanceArrival(once, reading(5, 2));
+      arrived = advanceArrival(arrived, reading(5, 3));
+      expect(
+        canClaimAccessPoint(
+          arrival: arrived,
+          reading: readAccessPoint(mission: mission, location: null),
+        ),
+        isFalse,
+      );
+    });
+
+    test('一度到着したら、範囲外になっても到着の記録は残る', () {
       var progress = advanceArrival(initialArrival, reading(5, 1));
       progress = advanceArrival(progress, reading(5, 2));
       progress = advanceArrival(progress, reading(80, 3));
@@ -382,5 +433,15 @@ void main() {
     expect(metrics.selfCount, 2);
     expect(metrics.commonCount, 1);
     expect(metrics.medianDiffDbm, 4);
+  });
+
+  test('firstCloseUid: 候補の順に見て、最初に「反応あり」の相手を返す', () {
+    const entries = [
+      WifiProximityEntry(uid: 'a', level: ProximityLevel.far),
+      WifiProximityEntry(uid: 'b', level: ProximityLevel.close),
+      WifiProximityEntry(uid: 'c', level: ProximityLevel.close),
+    ];
+    expect(firstCloseUid(entries, ['a', 'c', 'b']), 'c');
+    expect(firstCloseUid(entries, ['a']), isNull);
   });
 }

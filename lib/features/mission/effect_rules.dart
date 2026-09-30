@@ -6,6 +6,8 @@
 /// 渡すこと(端末ごとに時計がずれていても、全員の帯の残り時間が揃う)。
 library;
 
+import 'dart:math' as math;
+
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/model/room_effect.dart';
 import 'package:kakureru/features/room/model/photo_slot.dart';
@@ -67,21 +69,47 @@ List<RoomEffect> activeTimedEffects(
     ?activeEffectOf(effects, type, serverNowMillis: serverNowMillis),
 ];
 
+/// `skip_foot_photo` を引いた瞬間に、どの撮影スロットを飛ばすかを決める。
+///
+/// 撮影タイムが来ていてまだ撮っていなければ([isDue]。撮影バナーが出て
+/// いる状態)**そのスロット**、そうでなければ**次のスロット**。撮影が
+/// まだ始まっていなければ最初のスロット(0)。
+///
+/// 引いた瞬間に1回だけ決めて `effects/{id}/skipSlot` に書く。後から
+/// `lastPhotoAt` を見て計算し直すと、引いた後に撮り直したときに飛ばす回が
+/// 撮影済みのスロットへずれて、特典が無駄になるため。[isDue]はアップロード
+/// 中の撮影も含めた撮影バナーの判定(`PhotoCaptureState.isDue`)を渡す。
+/// 撮影スケジュールが未確定([scheduleStartMillis]がnull)ならnull。
+int? footPhotoSlotToSkip({
+  required int? scheduleStartMillis,
+  required int intervalSec,
+  required int nowMillis,
+  required bool isDue,
+}) {
+  final start = scheduleStartMillis;
+  if (start == null) return null;
+  final current = currentPhotoSlotIndex(
+    startedAt: start,
+    nowMillis: nowMillis,
+    intervalSec: intervalSec,
+  );
+  if (current < 0) return 0;
+  return isDue ? current : current + 1;
+}
+
 /// `skip_foot_photo` で飛ばす撮影スロットの番号(自分のぶん)。
 ///
-/// 引いた時点で撮影タイムが来ていて、まだ撮っていなければ**そのスロット**、
-/// 来ていない・もう撮った後なら**次のスロット**を1回だけ飛ばす。2回引いた
-/// ときに同じスロットへ重なったら、後のものはその次へずらす(1回引くごとに
-/// 1回ぶん飛ばせるように)。
+/// 引いた瞬間に決めた `skipSlot` を使う。2回引いて同じスロットに重なったら、
+/// 後のものはその次へずらす(1回引くごとに1回ぶん飛ばせるように)。
+/// `skipSlot` が無い古いデータは、引いた時刻のスロット(撮影前なら0)にする。
 ///
 /// [scheduleStartMillis]は撮影スケジュールの基準([photoScheduleStartMillis])。
-/// 未確定(null)なら空。[lastPhotoAt]は自分の直近の撮影時刻。
+/// 未確定(null)なら空。
 Set<int> skippedFootPhotoSlots({
   required List<RoomEffect> effects,
   required String? myUid,
   required int? scheduleStartMillis,
   required int intervalSec,
-  required int? lastPhotoAt,
 }) {
   final start = scheduleStartMillis;
   if (start == null || myUid == null) return const {};
@@ -93,28 +121,16 @@ Set<int> skippedFootPhotoSlots({
 
   final skipped = <int>{};
   for (final effect in mine) {
-    final slotAtDraw = currentPhotoSlotIndex(
-      startedAt: start,
-      nowMillis: effect.startedAt,
-      intervalSec: intervalSec,
-    );
-    int slot;
-    if (slotAtDraw < 0) {
-      // 撮影がまだ始まっていない(放出待ち・最初の1間隔)なら、最初の撮影タイム。
-      slot = 0;
-    } else {
-      final photoAt = lastPhotoAt;
-      final takenBeforeDraw =
-          photoAt != null &&
-          photoAt <= effect.startedAt &&
-          photoSlotIndexOf(
-                takenAt: photoAt,
-                startedAt: start,
-                intervalSec: intervalSec,
-              ) >=
-              slotAtDraw;
-      slot = takenBeforeDraw ? slotAtDraw + 1 : slotAtDraw;
-    }
+    var slot =
+        effect.skipSlot ??
+        math.max(
+          0,
+          currentPhotoSlotIndex(
+            startedAt: start,
+            nowMillis: effect.startedAt,
+            intervalSec: intervalSec,
+          ),
+        );
     while (skipped.contains(slot)) {
       slot++;
     }

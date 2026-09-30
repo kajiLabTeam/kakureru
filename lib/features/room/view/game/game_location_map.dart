@@ -6,6 +6,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
@@ -154,6 +155,14 @@ class GameLocationMap extends HookWidget {
       return null;
     }, [positionTier, currentCenter.latitude, currentCenter.longitude]);
 
+    // 判定範囲の円は地点が変わらない限り同じなので、毎秒の再描画で
+    // 作り直さない(円周の36点を測地線で計算するため)。
+    final point = missionPoint;
+    final missionRange = useMemoized(
+      () => point == null ? null : _missionRangePolygon(point),
+      [point?.lat, point?.lng, point?.radiusM],
+    );
+
     // マーカー(アイコン+ラベル)を位置ごとに組み立てる。
     final locationVisuals = locations
         .map((location) => _buildLocationVisual(location, myRole))
@@ -180,8 +189,8 @@ class GameLocationMap extends HookWidget {
                   _areaBorderPolygon(areaPoints),
                 ],
               ),
-            if (missionPoint case final point?) ...[
-              PolygonLayer(polygons: [_missionRangePolygon(point)]),
+            if (point != null && missionRange != null) ...[
+              PolygonLayer(polygons: [missionRange]),
               MarkerLayer(markers: [_missionMarker(point)]),
             ],
             AnimatedMarkerLayer(
@@ -262,9 +271,9 @@ class GameLocationMap extends HookWidget {
         for (var deg = 0; deg < 360; deg += 10)
           distance.offset(center, point.radiusM, deg),
       ],
-      color: missionRangeFillColor,
+      color: missionRangeFill,
       borderStrokeWidth: 2,
-      borderColor: missionPointColor,
+      borderColor: missionAccent,
       pattern: StrokePattern.dashed(segments: const [6, 4]),
     );
   }
@@ -283,7 +292,7 @@ class GameLocationMap extends HookWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: missionPointColor,
+              color: missionAccent,
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 3),
               boxShadow: const [
@@ -296,7 +305,7 @@ class GameLocationMap extends HookWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: missionLabelColor,
+              color: missionDeep,
               borderRadius: BorderRadius.circular(999),
             ),
             child: const Text(
@@ -387,7 +396,7 @@ class GameLocationMap extends HookWidget {
           : markerIconTipAlignment,
       child: Transform.scale(
         scale: enlarged ? enlargedDemonIconScale : 1,
-        alignment: const Alignment(0, markerIconSize / markerHeight * 2 - 1),
+        alignment: enlargedMarkerScaleAlignment,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -427,14 +436,16 @@ class GameLocationMap extends HookWidget {
   }
 }
 
-/// アクセスポイントの点と判定範囲の円の色(ミッションの色)。
-const missionPointColor = Color(0xFFC98A1E);
-
-/// アクセスポイントのラベルの地(白文字を載せる濃い方のミッションの色)。
-const missionLabelColor = Color(0xFF8A6A16);
-
-/// 判定範囲の円の塗り。
-const missionRangeFillColor = Color(0x1FC98A1E);
+/// 鬼のピンを拡大するときの起点(アイコンの中心)。
+///
+/// `Transform.scale`の`alignment`は、子(幅[markerWidth]×高さ[markerHeight])の
+/// 中で動かない点を指す。アイコンは上詰めなので、中心は上端から
+/// [markerIconSize]/2 にある。ここを起点にしないと、拡大したアイコンが
+/// 実際の位置からずれて描かれる。
+const enlargedMarkerScaleAlignment = Alignment(
+  0,
+  (markerIconSize / 2) / markerHeight * 2 - 1,
+);
 
 /// GPSマーカーの幅。ラベル(名前)が入る幅。
 const markerWidth = 72.0;

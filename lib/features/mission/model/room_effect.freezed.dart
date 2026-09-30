@@ -18,7 +18,10 @@ mixin _$RoomEffect {
  String get id; RewardType get type;/// 引いた人のuid。
  String get byUid;/// 発動した時刻(ServerValue.timestamp)。
  int get startedAt;/// 効いている時間(ミリ秒)。回数もの(skip_foot_photo)は0。
- int get durationMs;
+ int get durationMs;/// skip_foot_photo で飛ばす撮影スロットの番号。引いた瞬間の状態(撮影
+/// タイムが来ていたか)で決めて書く。後から撮り直しても変わらないように、
+/// 読む側で計算し直さない。古いデータには無い。
+ int? get skipSlot;
 /// Create a copy of RoomEffect
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -31,16 +34,16 @@ $RoomEffectCopyWith<RoomEffect> get copyWith => _$RoomEffectCopyWithImpl<RoomEff
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomEffect&&(identical(other.id, id) || other.id == id)&&(identical(other.type, type) || other.type == type)&&(identical(other.byUid, byUid) || other.byUid == byUid)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.durationMs, durationMs) || other.durationMs == durationMs));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomEffect&&(identical(other.id, id) || other.id == id)&&(identical(other.type, type) || other.type == type)&&(identical(other.byUid, byUid) || other.byUid == byUid)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.durationMs, durationMs) || other.durationMs == durationMs)&&(identical(other.skipSlot, skipSlot) || other.skipSlot == skipSlot));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,type,byUid,startedAt,durationMs);
+int get hashCode => Object.hash(runtimeType,id,type,byUid,startedAt,durationMs,skipSlot);
 
 @override
 String toString() {
-  return 'RoomEffect(id: $id, type: $type, byUid: $byUid, startedAt: $startedAt, durationMs: $durationMs)';
+  return 'RoomEffect(id: $id, type: $type, byUid: $byUid, startedAt: $startedAt, durationMs: $durationMs, skipSlot: $skipSlot)';
 }
 
 
@@ -51,7 +54,7 @@ abstract mixin class $RoomEffectCopyWith<$Res>  {
   factory $RoomEffectCopyWith(RoomEffect value, $Res Function(RoomEffect) _then) = _$RoomEffectCopyWithImpl;
 @useResult
 $Res call({
- String id, RewardType type, String byUid, int startedAt, int durationMs
+ String id, RewardType type, String byUid, int startedAt, int durationMs, int? skipSlot
 });
 
 
@@ -68,14 +71,15 @@ class _$RoomEffectCopyWithImpl<$Res>
 
 /// Create a copy of RoomEffect
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? type = null,Object? byUid = null,Object? startedAt = null,Object? durationMs = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? type = null,Object? byUid = null,Object? startedAt = null,Object? durationMs = null,Object? skipSlot = freezed,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,type: null == type ? _self.type : type // ignore: cast_nullable_to_non_nullable
 as RewardType,byUid: null == byUid ? _self.byUid : byUid // ignore: cast_nullable_to_non_nullable
 as String,startedAt: null == startedAt ? _self.startedAt : startedAt // ignore: cast_nullable_to_non_nullable
 as int,durationMs: null == durationMs ? _self.durationMs : durationMs // ignore: cast_nullable_to_non_nullable
-as int,
+as int,skipSlot: freezed == skipSlot ? _self.skipSlot : skipSlot // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
@@ -160,10 +164,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  RewardType type,  String byUid,  int startedAt,  int durationMs)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  RewardType type,  String byUid,  int startedAt,  int durationMs,  int? skipSlot)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _RoomEffect() when $default != null:
-return $default(_that.id,_that.type,_that.byUid,_that.startedAt,_that.durationMs);case _:
+return $default(_that.id,_that.type,_that.byUid,_that.startedAt,_that.durationMs,_that.skipSlot);case _:
   return orElse();
 
 }
@@ -181,10 +185,10 @@ return $default(_that.id,_that.type,_that.byUid,_that.startedAt,_that.durationMs
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  RewardType type,  String byUid,  int startedAt,  int durationMs)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  RewardType type,  String byUid,  int startedAt,  int durationMs,  int? skipSlot)  $default,) {final _that = this;
 switch (_that) {
 case _RoomEffect():
-return $default(_that.id,_that.type,_that.byUid,_that.startedAt,_that.durationMs);case _:
+return $default(_that.id,_that.type,_that.byUid,_that.startedAt,_that.durationMs,_that.skipSlot);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -201,10 +205,10 @@ return $default(_that.id,_that.type,_that.byUid,_that.startedAt,_that.durationMs
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  RewardType type,  String byUid,  int startedAt,  int durationMs)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  RewardType type,  String byUid,  int startedAt,  int durationMs,  int? skipSlot)?  $default,) {final _that = this;
 switch (_that) {
 case _RoomEffect() when $default != null:
-return $default(_that.id,_that.type,_that.byUid,_that.startedAt,_that.durationMs);case _:
+return $default(_that.id,_that.type,_that.byUid,_that.startedAt,_that.durationMs,_that.skipSlot);case _:
   return null;
 
 }
@@ -216,7 +220,7 @@ return $default(_that.id,_that.type,_that.byUid,_that.startedAt,_that.durationMs
 @JsonSerializable()
 
 class _RoomEffect implements RoomEffect {
-  const _RoomEffect({required this.id, required this.type, required this.byUid, required this.startedAt, required this.durationMs});
+  const _RoomEffect({required this.id, required this.type, required this.byUid, required this.startedAt, required this.durationMs, this.skipSlot});
   factory _RoomEffect.fromJson(Map<String, dynamic> json) => _$RoomEffectFromJson(json);
 
 @override final  String id;
@@ -227,6 +231,10 @@ class _RoomEffect implements RoomEffect {
 @override final  int startedAt;
 /// 効いている時間(ミリ秒)。回数もの(skip_foot_photo)は0。
 @override final  int durationMs;
+/// skip_foot_photo で飛ばす撮影スロットの番号。引いた瞬間の状態(撮影
+/// タイムが来ていたか)で決めて書く。後から撮り直しても変わらないように、
+/// 読む側で計算し直さない。古いデータには無い。
+@override final  int? skipSlot;
 
 /// Create a copy of RoomEffect
 /// with the given fields replaced by the non-null parameter values.
@@ -241,16 +249,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomEffect&&(identical(other.id, id) || other.id == id)&&(identical(other.type, type) || other.type == type)&&(identical(other.byUid, byUid) || other.byUid == byUid)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.durationMs, durationMs) || other.durationMs == durationMs));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomEffect&&(identical(other.id, id) || other.id == id)&&(identical(other.type, type) || other.type == type)&&(identical(other.byUid, byUid) || other.byUid == byUid)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.durationMs, durationMs) || other.durationMs == durationMs)&&(identical(other.skipSlot, skipSlot) || other.skipSlot == skipSlot));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,type,byUid,startedAt,durationMs);
+int get hashCode => Object.hash(runtimeType,id,type,byUid,startedAt,durationMs,skipSlot);
 
 @override
 String toString() {
-  return 'RoomEffect(id: $id, type: $type, byUid: $byUid, startedAt: $startedAt, durationMs: $durationMs)';
+  return 'RoomEffect(id: $id, type: $type, byUid: $byUid, startedAt: $startedAt, durationMs: $durationMs, skipSlot: $skipSlot)';
 }
 
 
@@ -261,7 +269,7 @@ abstract mixin class _$RoomEffectCopyWith<$Res> implements $RoomEffectCopyWith<$
   factory _$RoomEffectCopyWith(_RoomEffect value, $Res Function(_RoomEffect) _then) = __$RoomEffectCopyWithImpl;
 @override @useResult
 $Res call({
- String id, RewardType type, String byUid, int startedAt, int durationMs
+ String id, RewardType type, String byUid, int startedAt, int durationMs, int? skipSlot
 });
 
 
@@ -278,14 +286,15 @@ class __$RoomEffectCopyWithImpl<$Res>
 
 /// Create a copy of RoomEffect
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? type = null,Object? byUid = null,Object? startedAt = null,Object? durationMs = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? type = null,Object? byUid = null,Object? startedAt = null,Object? durationMs = null,Object? skipSlot = freezed,}) {
   return _then(_RoomEffect(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,type: null == type ? _self.type : type // ignore: cast_nullable_to_non_nullable
 as RewardType,byUid: null == byUid ? _self.byUid : byUid // ignore: cast_nullable_to_non_nullable
 as String,startedAt: null == startedAt ? _self.startedAt : startedAt // ignore: cast_nullable_to_non_nullable
 as int,durationMs: null == durationMs ? _self.durationMs : durationMs // ignore: cast_nullable_to_non_nullable
-as int,
+as int,skipSlot: freezed == skipSlot ? _self.skipSlot : skipSlot // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 

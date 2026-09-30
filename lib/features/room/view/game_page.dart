@@ -295,7 +295,6 @@ class GamePage extends HookConsumerWidget {
           intervalSec: photoIntervalSec,
         ),
         intervalSec: photoIntervalSec,
-        lastPhotoAt: myLastPhotoAt,
       ),
     );
 
@@ -397,13 +396,89 @@ class GamePage extends HookConsumerWidget {
         ? null
         : readAccessPoint(mission: mission, location: myLocation);
 
+    // 特典が「足元写真を1回まぬがれる」だったときに飛ばすスロット。押した
+    // 瞬間の撮影バナーの状態で決め、効果に書いておく(後から撮り直しても
+    // ずれないように)。
+    int? footPhotoSkipSlotNow() => footPhotoSlotToSkip(
+      scheduleStartMillis: photoScheduleStartMillis(
+        releasedAt: room?.releasedAt,
+        intervalSec: photoIntervalSec,
+      ),
+      intervalSec: photoIntervalSec,
+      nowMillis: serverNowMillis(offset),
+      isDue: photoCapture.state.isDue,
+    );
+
+    // 特典を引けたら、確定演出(GachaPage)→ 特典の画面(RewardPage)の順に
+    // 出す。両方が閉じるまでゲーム終了の自動遷移を止める。
+    Future<void> showReward(RewardType reward) async {
+      rewardOpen.value = true;
+      await GachaPage.show(context, reward);
+      if (context.mounted) rewardOpen.value = false;
+    }
+
+    // 取れたのに特典の書き込みが済んでいないとき(取った直後に通信が切れた
+    // 等)の「特典を受け取る」。書き込みは何度やっても1つにまとまる。
+    Future<void> handleCompleteClaimPressed(Mission target) async {
+      RewardType? reward;
+      final result = await claimAction.run(() async {
+        reward = await ref
+            .read(missionRepositoryProvider)
+            .completeClaim(
+              roomId,
+              target.id,
+              footPhotoSkipSlot: footPhotoSkipSlotNow(),
+            );
+      });
+      if (!context.mounted) return;
+      switch (result.status) {
+        case AsyncActionStatus.succeeded:
+          if (reward case final granted?) await showReward(granted);
+        case AsyncActionStatus.failed:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '特典を受け取れませんでした。'
+                '${userFacingErrorMessage(result.error!)}',
+              ),
+            ),
+          );
+        case AsyncActionStatus.skipped:
+          break;
+      }
+    }
+
     // 「特典を引く」。先着1名はリポジトリのトランザクションで決まる。
     Future<void> handleClaimPressed(Mission target) async {
+      // 押した瞬間にも範囲の中にいるかを確かめ直す。一度通っただけで、
+      // 離れた場所から引けてしまわないように(canClaimAccessPoint)。
+      // ボタンは範囲の外では出ないが、描画から押すまでの間に位置が
+      // 更新されていることがあるため、最新の位置でもう一度見る。
+      final latest = readAccessPoint(
+        mission: target,
+        location: _findLocation(
+          ref.read(locationViewModelProvider).locations,
+          myUid,
+        ),
+      );
+      if (!canClaimAccessPoint(
+        arrival: ref.read(missionControllerProvider).arrival,
+        reading: latest,
+      )) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('判定範囲の外に出ています。半径15mに戻ってから引いてください')),
+        );
+        return;
+      }
       ClaimResult? claim;
       final result = await claimAction.run(() async {
         claim = await ref
             .read(missionRepositoryProvider)
-            .claimMission(roomId, target.id);
+            .claimMission(
+              roomId,
+              target.id,
+              footPhotoSkipSlot: footPhotoSkipSlotNow(),
+            );
       });
       if (!context.mounted) return;
       switch (result.status) {
@@ -414,10 +489,7 @@ class GamePage extends HookConsumerWidget {
             case ClaimOutcome.claimed:
               final reward = outcome.reward;
               if (reward == null) return;
-              // 確定演出(GachaPage)→ 特典の画面(RewardPage)の順に出す。
-              rewardOpen.value = true;
-              await GachaPage.show(context, reward);
-              if (context.mounted) rewardOpen.value = false;
+              await showReward(reward);
             case ClaimOutcome.takenByOther:
               // カードも「ほかの人に取られた」に変わるが、押した直後の
               // 結果なので知らせておく。
@@ -692,17 +764,38 @@ class GamePage extends HookConsumerWidget {
                         ),
                         ...mockUsers,
                       ];
+                // 特典「鬼の手がかりを止める」。効いている間、鬼の端末では
+                // Wi-Fi・気圧の表示を隠す。
+                final clueBlockedEffect = myRole == UserRole.demon
+                    ? activeEffectOf(
+                        roomEffects,
+                        RewardType.blockClues,
+                        serverNowMillis: now,
+                      )
+                    : null;
                 final rosterUids = opponentRoster.map((u) => u.id).toSet();
                 // 選択中のuidがまだ一覧に残っていればそれを使い、無ければ
                 // (未選択・退室・可視性が外れた等)既定で最も近い相手に戻す。
+                // 手がかりを止められている間は「Wi-Fiで最も近い相手」を既定に
+                // しない(選ばれるチップで、誰が近いかが漏れるため)。
                 final effectiveSelectedUid =
                     selectedOpponentUid.value != null &&
                         rosterUids.contains(selectedOpponentUid.value)
                     ? selectedOpponentUid.value
-                    : visibleNearestOpponentUid ??
+                    : (clueBlockedEffect == null
+                              ? visibleNearestOpponentUid
+                              : null) ??
                           (opponentRoster.isEmpty
                               ? null
                               : opponentRoster.first.id);
+                // 「鬼に近づけ」のパネルに出す鬼。達成は「どれかの鬼と反応あり」
+                // で判定している(MissionController)ので、反応ありの鬼がいれば
+                // その鬼を出す。いなければ選んでいる鬼。カードが「達成した」
+                // なのにパネルが「反応なし」、という食い違いを出さないため。
+                final approachCloseUid = firstCloseUid(
+                  visibleWifiEntries,
+                  opponentRoster.map((u) => u.id),
+                );
                 final selectedComparisons = effectiveSelectedUid != null
                     ? ref.watch(
                         wifiComparisonsForProvider((
@@ -712,16 +805,9 @@ class GamePage extends HookConsumerWidget {
                       )
                     : const <WifiApComparison>[];
 
-                // 特典の効果(ミッション)。鬼の手がかりを止める効果は鬼の端末の
-                // Wi-Fi・気圧の表示を隠し、鬼のアイコンを大きくする効果は
-                // 逃走者の地図で鬼のピンを2倍にする。
-                final clueBlockedEffect = myRole == UserRole.demon
-                    ? activeEffectOf(
-                        roomEffects,
-                        RewardType.blockClues,
-                        serverNowMillis: now,
-                      )
-                    : null;
+                // 特典の効果(ミッション)。鬼のアイコンを大きくする効果は
+                // 逃走者の地図で鬼のピンを2倍にする(鬼の手がかりを止める
+                // 効果は、相手選びの前で見ている)。
                 final enlargeDemonIcon =
                     myRole == UserRole.fugitive &&
                     activeEffectOf(
@@ -860,6 +946,21 @@ class GamePage extends HookConsumerWidget {
                                     ),
                                   ),
                                 ),
+                              if (missionStatus ==
+                                      MissionCardStatus.claimedWithoutReward &&
+                                  !claimAction.isRunning)
+                                Positioned(
+                                  left: 12,
+                                  right: 12,
+                                  bottom: 14,
+                                  child: MissionClaimButton(
+                                    label: '特典を受け取る',
+                                    isClaiming: false,
+                                    onPressed: () => unawaited(
+                                      handleCompleteClaimPressed(mission),
+                                    ),
+                                  ),
+                                ),
                             ],
                           ],
                         ),
@@ -957,17 +1058,20 @@ class GamePage extends HookConsumerWidget {
                                         demonName:
                                             findUser(
                                               displayUsers,
-                                              effectiveSelectedUid,
+                                              approachCloseUid ??
+                                                  effectiveSelectedUid,
                                             )?.displayName ??
                                             '',
                                         level: levelFor(
                                           visibleWifiEntries,
-                                          effectiveSelectedUid,
+                                          approachCloseUid ??
+                                              effectiveSelectedUid,
                                         ),
                                         metrics: ref.watch(
                                           wifiOverlapMetricsProvider((
                                             roomId,
-                                            effectiveSelectedUid,
+                                            approachCloseUid ??
+                                                effectiveSelectedUid,
                                           )),
                                         ),
                                       ),

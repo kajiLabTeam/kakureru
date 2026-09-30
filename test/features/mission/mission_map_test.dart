@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
 
@@ -57,7 +58,7 @@ void main() {
         .expand((layer) => layer.polygons)
         .toList();
     expect(
-      polygons.where((p) => p.borderColor == missionPointColor),
+      polygons.where((p) => p.borderColor == missionAccent),
       hasLength(1),
     );
   });
@@ -71,6 +72,26 @@ void main() {
     await _pumpMap(tester, enlargeDemonIcon: true);
     expect(_scaleOf(tester, 'おに（鬼）'), enlargedDemonIconScale);
     expect(_scaleOf(tester, '自分（逃走者）'), 1);
+  });
+
+  testWidgets('拡大しても鬼のアイコンの中心は動かない(実際の位置のまま)', (tester) async {
+    // 鬼のピン(ラベル「おに（鬼）」と同じ列にあるアイコン)の中心。
+    Offset demonIconCenter() => tester.getCenter(
+      find.descendant(
+        of: find
+            .ancestor(of: find.text('おに（鬼）'), matching: find.byType(Column))
+            .first,
+        matching: find.byType(MarkerIcon),
+      ),
+    );
+
+    await _pumpMap(tester);
+    final normal = demonIconCenter();
+    await _pumpMap(tester, enlargeDemonIcon: true);
+    final enlarged = demonIconCenter();
+
+    expect(enlarged.dx, closeTo(normal.dx, 0.5));
+    expect(enlarged.dy, closeTo(normal.dy, 0.5));
   });
 
   testWidgets('効果が無ければ鬼のピンは元の大きさ', (tester) async {
