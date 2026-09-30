@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/ble/repository/ble_proximity_calculator.dart';
+import 'package:kakureru/features/ble/repository/ble_scan_repository.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 
 /// 広告の停止(flutter_ble_peripheral)はプラグインの実装が要るため、
@@ -53,6 +55,58 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(done, isFalse);
+    });
+  });
+
+  group('freshDetections(スキャン結果の累積リストから流す検知を作る)', () {
+    BleScanSample sample(String uid, {required int at, int rssi = -60}) => (
+      payload: encodeAdvertisePayload(uid),
+      rssi: rssi,
+      receivedAtMillis: at,
+    );
+
+    test('時刻は「いま」ではなく、その相手を実際に受信した時刻にする', () {
+      final detections = freshDetections([
+        sample('mana', at: 1000),
+      ], lastEmittedAtMillis: {});
+      expect(detections.single.detectedAtMillis, 1000);
+    });
+
+    test('圏外に出た相手は、ほかの相手の受信で累積リストが流れても新しくならない', () {
+      final last = <String, int>{};
+      freshDetections([sample('mana', at: 1000)], lastEmittedAtMillis: last);
+
+      // 10秒後、近くの鬼(oni)の広告を受け取ったので累積リストが流れてきた。
+      // manaは1000のあと受信していない。
+      final detections = freshDetections([
+        sample('mana', at: 1000),
+        sample('oni', at: 11000),
+      ], lastEmittedAtMillis: last);
+
+      expect(detections.map((d) => d.shortUid), ['oni']);
+      expect(
+        isDetectionFresh(detectedAtMillis: 1000, nowMillis: 11000),
+        isFalse,
+        reason: '流さなければ、manaの検知は1000のまま古くなる',
+      );
+    });
+
+    test('同じ相手をもう一度受信したら流す', () {
+      final last = <String, int>{};
+      freshDetections([sample('mana', at: 1000)], lastEmittedAtMillis: last);
+      final detections = freshDetections([
+        sample('mana', at: 2000, rssi: -55),
+      ], lastEmittedAtMillis: last);
+      expect(detections.single.detectedAtMillis, 2000);
+      expect(detections.single.rssiDbm, -55);
+    });
+
+    test('自分たちの広告でない・読めないものは捨てる', () {
+      final detections = freshDetections([
+        (payload: null, rssi: -60, receivedAtMillis: 1000),
+        (payload: const [0xff, 0xfe], rssi: -60, receivedAtMillis: 1000),
+      ], lastEmittedAtMillis: {});
+      expect(detections, isEmpty);
     });
   });
 }

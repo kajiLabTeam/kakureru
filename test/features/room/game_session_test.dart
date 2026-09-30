@@ -422,6 +422,18 @@ void main() {
       expect(viewModel.restartCalls, 1);
     });
 
+    testWidgets('ゲーム画面(useGameSession)でも、裏から戻ったら張り直す', (
+      tester,
+    ) async {
+      final sensors = await _pumpGameSession(tester);
+
+      await _sendLifecycle(tester, AppLifecycleState.paused);
+      await _sendLifecycle(tester, AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(sensors.ble.restartCalls, 1);
+    });
+
     testWidgets('ダイアログが手前に出ただけ(inactive→resumed)では張り直さない', (
       tester,
     ) async {

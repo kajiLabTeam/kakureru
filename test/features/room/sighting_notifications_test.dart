@@ -168,6 +168,31 @@ void main() {
       expect(find.text('あやなさんが鬼の写真を撮りました'), findsOneWidget);
     });
 
+    testWidgets('知らせた後にルームが更新されても、同じ写真で二度知らせない', (tester) async {
+      final (:rooms, :sightings) = await pumpHook(tester);
+
+      sightings.add([_sighting('old')]);
+      rooms.add(room);
+      await tester.pump();
+      sightings.add([_sighting('old'), _sighting('new')]);
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('あやなさんが鬼の写真を撮りました'), findsOneWidget);
+
+      // 位置や役割の更新でルームが何度も流れてくる。
+      rooms
+        ..add(room)
+        ..add(room.copyWith(endsAt: 999999));
+      await tester.pump();
+      // 1枚目のSnackBar(表示4秒+出入りの動き)が消えた直後に、2枚目が
+      // 出ていないこと。二度知らせていれば、待ち行列から2枚目が出てきて
+      // この時点で表示されている(待ちすぎると2枚目も消えてしまう)。
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
     testWidgets('画面に入った時点で既にある写真は知らせない', (tester) async {
       final (:rooms, :sightings) = await pumpHook(tester);
 

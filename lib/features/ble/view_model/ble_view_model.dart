@@ -34,10 +34,14 @@ const _rssiWindowSize = 3;
 const bleRestartMinInterval = Duration(seconds: 10);
 
 /// 動いている間、この間隔で張り直す。Androidは30分を超えて続けたスキャンを
-/// 弱いモード(opportunistic。他のアプリがスキャンしたときしか結果が来ない)
-/// に落とすため、ゲーム(放出後30分)の終盤で相手が見えなくならないように
-/// その前に張り直す。
+/// 格下げする(フィルタ付きの今回は低頻度のスキャンに、フィルタ無しなら
+/// 他のアプリがスキャンしたときしか結果が来ないopportunisticに。版による)。
+/// ゲームの途中で相手が見えにくくならないよう、その前に張り直して数え直す。
 const blePeriodicRestartInterval = Duration(minutes: 10);
+
+/// 広告の開始に失敗したとき、やり直すまで待つ時間。止めた直後にすぐ
+/// 始めると、Android側で前の広告の片付けが終わっておらず失敗することがある。
+const bleAdvertiseRetryDelay = Duration(seconds: 3);
 
 /// 短縮uid→直近のBLE検知結果。継続的にストリームから更新されるため、
 /// Wi-Fiの導出Providerとは違いNotifierで状態として持つ(Pressureと同じ方針)。
@@ -89,7 +93,7 @@ class BleViewModel extends Notifier<Map<String, BleDetection>> {
         detection.shortUid: detection.copyWith(rssiDbm: _median(history)),
       };
     });
-    unawaited(_repo.startAdvertising(myUid));
+    unawaited(_advertise(myUid, epoch));
     _repo.startScanning();
     _myUid = myUid;
     _sinceRestart = clock.stopwatch()..start();
@@ -120,15 +124,39 @@ class BleViewModel extends Notifier<Map<String, BleDetection>> {
     debugPrint('[BleViewModel] スキャンと広告を張り直します');
     // startScanning()は先頭で前のスキャンを止めてから始める。
     _repo.startScanning();
-    final epoch = _epoch;
-    Future<void> restartAdvertising() async {
-      await _repo.stopAdvertising();
-      // 止めている間にstop()された(ゲーム画面を離れた)ら始めない。
-      if (epoch != _epoch) return;
-      await _repo.startAdvertising(uid);
-    }
+    unawaited(_advertise(uid, _epoch, stopFirst: true));
+  }
 
-    unawaited(restartAdvertising());
+  /// 広告を始める([stopFirst]なら先に止めてから)。
+  ///
+  /// 失敗してもどこにも投げず(呼び出し元は待たない)、ログを残して
+  /// [bleAdvertiseRetryDelay]後に1回だけやり直す。張り直しで「止めた
+  /// けれど始められなかった」まま放っておくと、逃走者の画面がOFFの間は
+  /// 戻ってくる([restart]が呼ばれる)まで鬼から見えなくなるため。
+  ///
+  /// 途中で[stop]された(ゲーム画面を離れた。[epoch]が変わった)ら始めない。
+  Future<void> _advertise(
+    String uid,
+    int epoch, {
+    bool stopFirst = false,
+  }) async {
+    if (stopFirst) {
+      try {
+        await _repo.stopAdvertising();
+      } on Object catch (e) {
+        debugPrint('[BleViewModel] 広告を止められませんでした: $e');
+      }
+    }
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (epoch != _epoch) return;
+      try {
+        await _repo.startAdvertising(uid);
+        return;
+      } on Object catch (e) {
+        debugPrint('[BleViewModel] 広告を始められませんでした(${attempt + 1}回目): $e');
+        if (attempt == 0) await Future<void>.delayed(bleAdvertiseRetryDelay);
+      }
+    }
   }
 
   /// ゲーム画面を離れる時に呼ぶ。

@@ -19,17 +19,33 @@ class _FakeBleScanRepository extends BleScanRepository {
   var startScanningCalls = 0;
   var stopScanningCalls = 0;
 
+  /// 広告の操作を呼ばれた順に記録する('start' / 'stop')。
+  final advertisingLog = <String>[];
+
+  /// これが入っている間、stopAdvertisingはこれが完了するまで待つ。
+  Completer<void>? stopAdvertisingGate;
+
+  /// startAdvertisingを失敗させる残り回数。
+  var failStartAdvertising = 0;
+
   @override
   Stream<BleDetection> get detections => _controller.stream;
 
   @override
   Future<void> startAdvertising(String uid) async {
     startAdvertisingCalls++;
+    advertisingLog.add('start');
+    if (failStartAdvertising > 0) {
+      failStartAdvertising--;
+      throw Exception('ADVERTISE_FAILED_INTERNAL_ERROR');
+    }
   }
 
   @override
   Future<void> stopAdvertising() async {
     stopAdvertisingCalls++;
+    advertisingLog.add('stop');
+    await stopAdvertisingGate?.future;
   }
 
   @override
@@ -456,6 +472,107 @@ void main() {
           ..elapse(blePeriodicRestartInterval * 3)
           ..flushMicrotasks();
         expect(repo.startScanningCalls, 3);
+      });
+    });
+  });
+
+  group('BleViewModel の広告の張り直し(失敗・途中の停止)', () {
+    ({_FakeBleScanRepository repo, BleViewModel notifier}) setUpStarted(
+      FakeAsync async,
+    ) {
+      final repo = _FakeBleScanRepository();
+      final container = ProviderContainer(
+        overrides: [
+          bleScanRepositoryProvider.overrideWithValue(repo),
+          blePermissionServiceProvider.overrideWithValue(
+            _FakeBlePermissionService(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(bleViewModelProvider.notifier);
+      unawaited(notifier.start('my-uid'));
+      async
+        ..flushMicrotasks()
+        ..elapse(bleRestartMinInterval);
+      repo.advertisingLog.clear();
+      return (repo: repo, notifier: notifier);
+    }
+
+    test('広告は止めてから始め直す(順序)', () {
+      fakeAsync((async) {
+        final (:repo, :notifier) = setUpStarted(async);
+        notifier.restart();
+        async.flushMicrotasks();
+        expect(repo.advertisingLog, ['stop', 'start']);
+      });
+    });
+
+    test('広告を止めている間にゲーム画面を離れたら、始め直さない', () {
+      fakeAsync((async) {
+        final (:repo, :notifier) = setUpStarted(async);
+        repo.stopAdvertisingGate = Completer<void>();
+
+        notifier.restart();
+        async.flushMicrotasks();
+        notifier.stop();
+        repo.stopAdvertisingGate!.complete();
+        async.flushMicrotasks();
+
+        expect(repo.advertisingLog.where((c) => c == 'start'), isEmpty);
+      });
+    });
+
+    test('始め直しに失敗したら、少し待って1回だけやり直す', () {
+      fakeAsync((async) {
+        final (:repo, :notifier) = setUpStarted(async);
+        repo.failStartAdvertising = 1;
+
+        notifier.restart();
+        async.flushMicrotasks();
+        expect(repo.advertisingLog, ['stop', 'start']);
+
+        async
+          ..elapse(bleAdvertiseRetryDelay)
+          ..flushMicrotasks();
+        expect(repo.advertisingLog, ['stop', 'start', 'start']);
+      });
+    });
+
+    test('やり直しも失敗したらあきらめる(例外は外に出さない)', () {
+      fakeAsync((async) {
+        final (:repo, :notifier) = setUpStarted(async);
+        repo.failStartAdvertising = 5;
+
+        notifier.restart();
+        async
+          ..flushMicrotasks()
+          ..elapse(bleAdvertiseRetryDelay * 3)
+          ..flushMicrotasks();
+
+        expect(repo.advertisingLog, ['stop', 'start', 'start']);
+      });
+    });
+
+    test('ゲーム画面に入ったときの広告の開始が失敗しても、やり直す', () {
+      fakeAsync((async) {
+        final repo = _FakeBleScanRepository()..failStartAdvertising = 1;
+        final container = ProviderContainer(
+          overrides: [
+            bleScanRepositoryProvider.overrideWithValue(repo),
+            blePermissionServiceProvider.overrideWithValue(
+              _FakeBlePermissionService(),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        unawaited(container.read(bleViewModelProvider.notifier).start('me'));
+        async
+          ..flushMicrotasks()
+          ..elapse(bleAdvertiseRetryDelay)
+          ..flushMicrotasks();
+
+        expect(repo.startAdvertisingCalls, 2);
       });
     });
   });
