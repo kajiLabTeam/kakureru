@@ -11,10 +11,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```sh
 flutter pub get                                            # 依存関係の取得
 dart run build_runner build --delete-conflicting-outputs   # Freezed等の生成コード更新
-flutter run                                                # 実行（Android実機/エミュレータ）
+./scripts/run.sh                                           # 実行（Android実機/エミュレータ）。dart_defines.json を渡す
 flutter test                                               # テスト
 flutter analyze                                            # 静的解析（very_good_analysis のstrict lint）
 ```
+
+素の `flutter run` / `flutter build` では `dart_defines.json` が渡らず、写真の送り先（`PHOTO_API_BASE_URL`）が空になって撮影ボタンがすべてグレーになる。直接叩くときは `--dart-define-from-file=dart_defines.json` を必ず付ける（README参照）。
 
 生成コード（`*.freezed.dart` / `*.g.dart`）を手で編集せず、必ず `build_runner` で再生成する。
 
