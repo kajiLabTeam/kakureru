@@ -13,6 +13,39 @@ Future<void> _pumpGacha(WidgetTester tester) async {
   );
 }
 
+/// ゲーム画面と同じく[GachaPage.show]で重ねて開く。返す関数は
+/// showのFutureが完了したかどうか。
+Future<bool Function()> _openGachaViaShow(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(393, 852));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  var completed = false;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Builder(
+        builder: (context) => TextButton(
+          onPressed: () async {
+            await GachaPage.show(context, RewardType.blockClues);
+            completed = true;
+          },
+          child: const Text('open'),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('open'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+  expect(find.byType(GachaPage), findsOneWidget);
+  return () => completed;
+}
+
+/// 画面の切り替え(演出のフェード200ms・MaterialPageRoute)を終わらせる。
+/// 演出は繰り返しアニメーションがあるのでpumpAndSettleは使えない。
+Future<void> _pumpTransition(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 600));
+}
+
 /// 紙吹雪の数(`gacha-confetti-N` のキーが付いたもの)。
 int _confettiCount(WidgetTester tester) => tester
     .widgetList(
@@ -125,17 +158,46 @@ void main() {
       expect(_confettiCount(tester), lessThanOrEqualTo(10));
     });
 
-    testWidgets('「特典の中身を見る」で特典の画面に差し替わる', (tester) async {
-      await _pumpGacha(tester);
+    testWidgets('「特典の中身を見る」で特典の画面に移る', (tester) async {
+      final done = await _openGachaViaShow(tester);
       await tester.tapAt(const Offset(200, 400));
       await tester.pump();
 
       await tester.tap(find.text('特典の中身を見る'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
+      await _pumpTransition(tester);
 
       expect(find.byType(RewardPage), findsOneWidget);
       expect(find.byType(GachaPage), findsNothing);
+      expect(done(), isFalse);
+    });
+
+    testWidgets('showのFutureは特典の画面を閉じるまで完了しない', (tester) async {
+      final done = await _openGachaViaShow(tester);
+      await tester.tapAt(const Offset(200, 400));
+      await tester.pump();
+      await tester.tap(find.text('特典の中身を見る'));
+      await _pumpTransition(tester);
+      // 演出は閉じたが特典の画面を見ている間(=ゲーム終了の遷移を止める間)。
+      expect(done(), isFalse);
+
+      await tester.tap(find.text('地図にもどる'));
+      await _pumpTransition(tester);
+
+      expect(find.byType(RewardPage), findsNothing);
+      expect(done(), isTrue);
+    });
+
+    testWidgets('演出を戻るで閉じたら特典の画面は出さずに完了する', (tester) async {
+      final done = await _openGachaViaShow(tester);
+      await tester.tapAt(const Offset(200, 400));
+      await _pumpTransition(tester);
+
+      await tester.binding.handlePopRoute();
+      await _pumpTransition(tester);
+
+      expect(find.byType(GachaPage), findsNothing);
+      expect(find.byType(RewardPage), findsNothing);
+      expect(done(), isTrue);
     });
   });
 }

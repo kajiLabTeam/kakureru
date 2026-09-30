@@ -46,16 +46,28 @@ class GachaPage extends HookWidget {
   final RewardType reward;
 
   /// ゲーム画面の上に重ねて開く。最後に「特典の中身を見る」を押すと
-  /// 特典の画面([RewardPage])に差し替わる。
-  static Future<void> show(BuildContext context, RewardType reward) =>
-      Navigator.of(context).push(
-        PageRouteBuilder<void>(
-          pageBuilder: (_, _, _) => GachaPage(reward: reward),
-          transitionsBuilder: (_, animation, _, child) =>
-              FadeTransition(opacity: animation, child: child),
-          transitionDuration: const Duration(milliseconds: 200),
-        ),
-      );
+  /// 特典の画面([RewardPage])に移る。
+  ///
+  /// 返すFutureは**特典の画面まで閉じてから**完了する。呼び出し側は
+  /// これを待つ間、ゲーム終了の自動遷移を止めている(`GamePage`の
+  /// `rewardOpen`)ため、演出だけ閉じた時点で完了させてはいけない。
+  static Future<void> show(BuildContext context, RewardType reward) async {
+    // 演出を閉じたあとはcontext(GamePage)に戻らずに続けられるよう、
+    // 先にNavigatorを取っておく。
+    final navigator = Navigator.of(context);
+    final openReward = await navigator.push<bool>(
+      PageRouteBuilder<bool>(
+        pageBuilder: (_, _, _) => GachaPage(reward: reward),
+        transitionsBuilder: (_, animation, _, child) =>
+            FadeTransition(opacity: animation, child: child),
+        transitionDuration: const Duration(milliseconds: 200),
+      ),
+    );
+    if (openReward != true || !navigator.mounted) return;
+    await navigator.push(
+      MaterialPageRoute<void>(builder: (_) => RewardPage(reward: reward)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1180,13 +1192,9 @@ class _ConfirmedOverlay extends StatelessWidget {
                 builder: (context, _) => _GachaButton(
                   label: '特典の中身を見る',
                   onPressed: confirm.isCompleted
-                      ? () => unawaited(
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute<void>(
-                              builder: (_) => RewardPage(reward: reward),
-                            ),
-                          ),
-                        )
+                      // 特典の画面はshowが続けて開く(ここで差し替えると
+                      // showのFutureが特典の画面を開いたまま完了する)。
+                      ? () => Navigator.of(context).pop(true)
                       : null,
                 ),
               ),
