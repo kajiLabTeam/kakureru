@@ -27,13 +27,14 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 }) {
   final catches = ref.watch(catchesStreamProvider(roomId)).value ?? const [];
   final room = ref.watch(roomStreamProvider(roomId)).value;
-  final myRole = room?.users.where((u) => u.id == myUid).firstOrNull?.role;
+  final me = room?.users.where((u) => u.id == myUid).firstOrNull;
 
   final toAccept = catchToAcceptAsCaught(
     catches: catches,
     myUid: myUid,
-    myRole: myRole,
+    myRole: me?.role,
     startedAt: room?.startedAt,
+    myBecameDemonAt: me?.becameDemonAt,
   );
 
   // 受け入れを試みた捕獲のid。全画面を出す対象を決めるのに使う。

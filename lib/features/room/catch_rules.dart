@@ -86,18 +86,29 @@ List<RoomCatch> catchesOfCurrentGame(
 /// `users/{uid}`は本人しか書けないため、鬼が`catches`に書いた捕獲を
 /// 捕まった本人の端末が見つけて、自分の役割をDEMONに書き換える。
 /// 既に鬼なら反映済み(または別の経路で鬼になった)なのでnull。
+///
+/// [myBecameDemonAt]が捕獲の`caughtAt`以降なら、その捕獲は反映済みとみなす。
+/// 役割だけFUGITIVEに戻された人が、残っている同じ捕獲を見つけて再び鬼に
+/// ならないようにするため(PRレビュー1)。反映済みかどうかを端末の中の記憶
+/// ではなくRTDBの値で決めるので、画面を作り直しても変わらない。
 RoomCatch? catchToAcceptAsCaught({
   required List<RoomCatch> catches,
   required String? myUid,
   required UserRole? myRole,
   required int? startedAt,
+  int? myBecameDemonAt,
 }) {
   if (myUid == null || myRole != UserRole.fugitive) return null;
   final mine = catchesOfCurrentGame(
     catches,
     startedAt: startedAt,
   ).where((c) => c.fugitiveUserId == myUid);
-  return mine.isEmpty ? null : mine.last;
+  if (mine.isEmpty) return null;
+  final latest = mine.last;
+  if (myBecameDemonAt != null && myBecameDemonAt >= latest.caughtAt) {
+    return null;
+  }
+  return latest;
 }
 
 /// 全員に「AがBを捕まえた」と知らせる捕獲。

@@ -169,6 +169,69 @@ void main() {
     });
   });
 
+  // PRレビュー1: ホストのrevokeDemonで逃走者に戻された人が、残っている捕獲を
+  // 見つけて再び鬼になってしまわないか。
+  group('catchToAcceptAsCaught と鬼の取り消し(revokeDemon)', () {
+    // revokeDemonのUIは待機画面にしかなく、待機中はstartedAtがnull
+    // (初回は未設定、「もう一回」はrestartRoomが消す)。
+    test('待機中(startedAtがnull)は、自分宛ての捕獲が残っていても受け入れない', () {
+      expect(
+        catchToAcceptAsCaught(
+          catches: [_catch('c', 300, fugitive: 'me')],
+          myUid: 'me',
+          myRole: UserRole.fugitive,
+          startedAt: null,
+        ),
+        isNull,
+      );
+    });
+
+    // 役割だけ戻され、捕獲を反映したときのbecameDemonAt(>=caughtAt)は残る。
+    test('ゲーム中に役割だけFUGITIVEに戻されたら、同じ捕獲で鬼に戻さない', () {
+      expect(
+        catchToAcceptAsCaught(
+          catches: [_catch('c', 300, fugitive: 'me')],
+          myUid: 'me',
+          myRole: UserRole.fugitive,
+          startedAt: 200,
+          myBecameDemonAt: 350,
+        ),
+        isNull,
+      );
+    });
+
+    test('鬼になった時刻が同じ捕獲の時刻と等しくても、反映済みとみなす', () {
+      expect(
+        catchToAcceptAsCaught(
+          catches: [_catch('c', 300, fugitive: 'me')],
+          myUid: 'me',
+          myRole: UserRole.fugitive,
+          startedAt: 200,
+          myBecameDemonAt: 300,
+        ),
+        isNull,
+      );
+    });
+
+    // 反映した後にもう一度捕まったなら、新しい捕獲は受け入れる。
+    test('鬼になった時刻より後の捕獲は受け入れる', () {
+      final newer = _catch('c2', 500, fugitive: 'me');
+      expect(
+        catchToAcceptAsCaught(
+          catches: [
+            _catch('c1', 300, fugitive: 'me'),
+            newer,
+          ],
+          myUid: 'me',
+          myRole: UserRole.fugitive,
+          startedAt: 200,
+          myBecameDemonAt: 350,
+        ),
+        newer,
+      );
+    });
+  });
+
   group('undoneCatchesOf', () {
     test('自分が報告した捕獲が消えたら取り消しとみなす', () {
       final mine = _catch('a', 0);
