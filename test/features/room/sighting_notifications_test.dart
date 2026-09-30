@@ -1,8 +1,16 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/room/model/room.dart';
+import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/model/sighting.dart';
 import 'package:kakureru/features/room/sighting_notifications.dart';
 import 'package:kakureru/features/room/sighting_rules.dart';
+import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
 const _users = [
   RoomUser(id: 'demon', displayName: 'おに', role: UserRole.demon),
@@ -104,4 +112,89 @@ void main() {
       );
     });
   });
+
+  group('useSightingTakenNotifications', () {
+    const roomId = 'room1';
+    const room = Room(
+      id: roomId,
+      roomCode: '1234',
+      hostUserId: 'demon',
+      createdAt: 0,
+      status: RoomStatus.playing,
+      startedAt: 1000,
+      setting: RoomSetting(),
+      users: _users,
+    );
+
+    Future<
+      ({
+        StreamController<Room> rooms,
+        StreamController<List<Sighting>> sightings,
+      })
+    >
+    pumpHook(WidgetTester tester) async {
+      final rooms = StreamController<Room>();
+      final sightings = StreamController<List<Sighting>>();
+      addTearDown(rooms.close);
+      addTearDown(sightings.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            roomStreamProvider(roomId).overrideWith((ref) => rooms.stream),
+            sightingsStreamProvider(
+              roomId,
+            ).overrideWith((ref) => sightings.stream),
+          ],
+          child: const MaterialApp(home: Scaffold(body: _Harness())),
+        ),
+      );
+      return (rooms: rooms, sightings: sightings);
+    }
+
+    testWidgets('ルームより先に写真が届いても、ルームが届いたら知らせる', (tester) async {
+      final (:rooms, :sightings) = await pumpHook(tester);
+
+      // 画面に入った時点の一覧(基準。通知しない)。
+      sightings.add([_sighting('old')]);
+      await tester.pump();
+      // ルームが届く前に、新しい写真が撮られた。
+      sightings.add([_sighting('old'), _sighting('new')]);
+      await tester.pump();
+      expect(find.byType(SnackBar), findsNothing);
+
+      rooms.add(room);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('あやなさんが鬼の写真を撮りました'), findsOneWidget);
+    });
+
+    testWidgets('画面に入った時点で既にある写真は知らせない', (tester) async {
+      final (:rooms, :sightings) = await pumpHook(tester);
+
+      sightings.add([_sighting('old')]);
+      await tester.pump();
+      rooms.add(room);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(SnackBar), findsNothing);
+    });
+  });
+}
+
+/// 鬼(uid: demon)として[useSightingTakenNotifications]を貼るだけのウィジェット。
+class _Harness extends HookConsumerWidget {
+  const _Harness();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    useSightingTakenNotifications(
+      ref,
+      context,
+      roomId: 'room1',
+      myUid: 'demon',
+    );
+    return const SizedBox.shrink();
+  }
 }

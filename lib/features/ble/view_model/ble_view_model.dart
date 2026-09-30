@@ -118,9 +118,8 @@ class BleViewModel extends Notifier<Map<String, BleDetection>> {
     if (since.elapsed < bleRestartMinInterval) return;
     since.reset();
     debugPrint('[BleViewModel] スキャンと広告を張り直します');
-    _repo
-      ..stopScanning()
-      ..startScanning();
+    // startScanning()は先頭で前のスキャンを止めてから始める。
+    _repo.startScanning();
     final epoch = _epoch;
     Future<void> restartAdvertising() async {
       await _repo.stopAdvertising();

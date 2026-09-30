@@ -382,7 +382,6 @@ void main() {
         async.flushMicrotasks();
 
         expect(repo.startScanningCalls, 2);
-        expect(repo.stopScanningCalls, 1);
         expect(repo.stopAdvertisingCalls, 1);
         expect(repo.startAdvertisingCalls, 2);
         expect(notifier.state.keys, contains('mana'));

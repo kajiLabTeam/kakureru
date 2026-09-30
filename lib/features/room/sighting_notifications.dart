@@ -54,31 +54,32 @@ void useSightingTakenNotifications(
   required String? myUid,
 }) {
   final previousIds = useRef<Set<String>?>(null);
-  // 役割と名前・開始時刻を引くためのルーム。購読を保つためにwatchし、値は
-  // 写真が届いた時点の最新をコールバックの中で読む。
-  ref.watch(roomStreamProvider(roomId));
 
-  // 一覧がすでに読み込まれていると、ref.listenはその値では呼ばれない。
-  // 増えた写真を見落とさないよう、読み込み済みの一覧を先に基準にする。
-  previousIds.value ??= ref
-      .read(sightingsStreamProvider(roomId))
-      .value
-      ?.map((sighting) => sighting.id)
-      .toSet();
-
-  ref.listen(sightingsStreamProvider(roomId), (prev, next) {
-    final all = next.value;
+  // 届いている一覧とルームで判定する。写真の一覧とルームは別々の購読なので、
+  // どちらが先に届いても取りこぼさないよう、両方の更新から呼ぶ。
+  void evaluate() {
+    final all = ref.read(sightingsStreamProvider(roomId)).value;
     if (all == null) return;
+    final ids = {for (final sighting in all) sighting.id};
 
     final room = ref.read(roomStreamProvider(roomId)).value;
-    final users = room?.users ?? const <RoomUser>[];
+    if (room == null) {
+      // ルームがまだ届いていない(役割が分からない)間は基準を進めない。
+      // 進めると、その間に撮られた写真が「もう見た」扱いになり、ルームが
+      // 届いた後も通知されない。最初に届いた一覧だけは基準にする(画面に
+      // 入った時点で既にある写真は通知しない)。
+      previousIds.value ??= ids;
+      return;
+    }
+
+    final users = room.users;
     final newSightings = sightingsToNotify(
       previousIds: previousIds.value,
-      sightings: sightingsOfCurrentGame(all, startedAt: room?.startedAt),
+      sightings: sightingsOfCurrentGame(all, startedAt: room.startedAt),
       myUid: myUid,
       myRole: roleOf(users, myUid),
     );
-    previousIds.value = {for (final sighting in all) sighting.id};
+    previousIds.value = ids;
     if (newSightings.isEmpty) return;
 
     final message = sightingTakenMessage(newSightings, users);
@@ -91,5 +92,21 @@ void useSightingTakenNotifications(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
     }
-  });
+  }
+
+  // ルームの購読を保つ(値は判定の時点の最新を読む)。
+  ref.watch(roomStreamProvider(roomId));
+
+  // 一覧がすでに読み込まれていると、ref.listenはその値では呼ばれない。
+  // 増えた写真を見落とさないよう、読み込み済みの一覧を先に基準にする。
+  previousIds.value ??= ref
+      .read(sightingsStreamProvider(roomId))
+      .value
+      ?.map((sighting) => sighting.id)
+      .toSet();
+
+  ref
+    ..listen(sightingsStreamProvider(roomId), (_, _) => evaluate())
+    // ルームが写真より後に届いたとき、その間に撮られた写真をここで知らせる。
+    ..listen(roomStreamProvider(roomId), (_, _) => evaluate());
 }
