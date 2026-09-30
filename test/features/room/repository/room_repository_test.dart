@@ -6,6 +6,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/room/model/room.dart';
 import 'package:kakureru/features/room/model/room_catch.dart';
+import 'package:kakureru/features/room/model/sighting.dart';
 import 'package:kakureru/features/room/repository/room_repository.dart';
 import 'package:kakureru/features/room/room_create_error.dart';
 import 'package:kakureru/features/room/room_join_error.dart';
@@ -973,6 +974,44 @@ void main() {
       );
       expect(db.read('rooms/room-1/catches/gone'), isNull);
       expect(db.read('rooms/room-1/catchPhotos/p9'), isNull);
+    });
+  });
+
+  group('RoomRepository 目撃写真(sightings)', () {
+    test('addSightingは自分のuidとサーバー時刻を書き、placeは書かない', () async {
+      final db = _FakeDatabase(_rtdbWith(status: 'PLAYING'));
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await repo.addSighting('room-1', 'p1');
+
+      expect(db.read('rooms/room-1/sightings/p1'), <String, Object?>{
+        'uid': 'me',
+        'takenAt': ServerValue.timestamp,
+      });
+    });
+
+    test('watchSightingsは子を一覧にし、読めない子は飛ばす', () async {
+      final db = _FakeDatabase(_rtdbWith(status: 'PLAYING'))
+        ..write('rooms/room-1/sightings/p1', <String, Object?>{
+          'uid': 'alice',
+          'takenAt': 100,
+          'place': '中庭',
+        })
+        ..write('rooms/room-1/sightings/p2', <String, Object?>{'uid': 'bob'});
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      final sightings = await repo.watchSightings('room-1').first;
+
+      expect(sightings, const [
+        Sighting(id: 'p1', uid: 'alice', takenAt: 100, place: '中庭'),
+      ]);
+    });
+
+    test('watchSightingsは写真が無ければ空の一覧を流す', () async {
+      final db = _FakeDatabase(_rtdbWith(status: 'PLAYING'));
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      expect(await repo.watchSightings('room-1').first, isEmpty);
     });
   });
 

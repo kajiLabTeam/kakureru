@@ -66,6 +66,7 @@ import 'package:kakureru/features/room/view/game/map_photo_tab_bar.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
 import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
 import 'package:kakureru/features/room/view/game/photo_capture_banner.dart';
+import 'package:kakureru/features/room/view/game/sighting_photo_button.dart';
 import 'package:kakureru/features/room/view/photo_gallery_page.dart';
 import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/photo_capture_controller.dart';
@@ -248,6 +249,17 @@ class GamePage extends HookConsumerWidget {
         pageIndex.value != 1 &&
         seenPhotoCount.value != null &&
         galleryPhotoCount > seenPhotoCount.value!;
+
+    // 目撃写真(見つけた鬼の写真)の未読の数と、シートを開く操作。地図の
+    // ページは写真タブへ移ると破棄されるため、見た数はここ(GamePage本体)で
+    // 持つ。中身はsighting_photo_button.dartにある。
+    final sightingBadge = useSightingBadge(
+      context,
+      ref,
+      roomId: roomId,
+      startedAt: room?.startedAt,
+      myUid: myUid,
+    );
 
     // デバッグ用の偽プレイヤーを出しているかどうか(issue #67)。多人数での
     // 見え方は端末を人数分集めないと確認できないため、デバッグビルドでだけ
@@ -825,6 +837,11 @@ class GamePage extends HookConsumerWidget {
                         reading: missionReading,
                         progress: missionProgress,
                       );
+                // 地図の下寄せに「特典を引く/受け取る」が出ているか。
+                final showsMissionButton =
+                    missionStatus == MissionCardStatus.arrived ||
+                    (missionStatus == MissionCardStatus.claimedWithoutReward &&
+                        !claimAction.isRunning);
                 final missionLat = mission?.lat;
                 final missionLng = mission?.lng;
                 final isApproachMission =
@@ -885,85 +902,112 @@ class GamePage extends HookConsumerWidget {
                     // 下のカードが押し出されて画面外へ消えるため
                     // (OutsideAreaAlertMapのコメント参照)。
                     Expanded(
-                      child: OutsideAreaAlertMap(
-                        alert: outsideAreaAlert,
-                        // 偽プレイヤーのピンにも名前と役割色を出すため、
-                        // 地図には表示用の一覧を渡す(issue #67)。
-                        // ミッションのカードと「特典を引く」は地図の上に重ねる。
-                        // エリア外アラートはさらにその上に出る(戻る方が優先)。
-                        map: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: GameLocationMap(
-                                locations: visibleLocations,
-                                users: displayUsers,
-                                myUid: myUid,
-                                cachedPosition: cachedPosition.value,
-                                gameArea: room.setting.gameArea,
-                                missionPoint:
-                                    missionLat != null && missionLng != null
-                                    ? (
-                                        lat: missionLat,
-                                        lng: missionLng,
-                                        radiusM:
-                                            mission?.radiusM ??
-                                            accessPointRadiusM,
-                                      )
-                                    : null,
-                                enlargeDemonIcon: enlargeDemonIcon,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: OutsideAreaAlertMap(
+                              alert: outsideAreaAlert,
+                              // 偽プレイヤーのピンにも名前と役割色を出すため、
+                              // 地図には表示用の一覧を渡す(issue #67)。
+                              // ミッションのカードと「特典を引く」は地図の上に
+                              // 重ねる。エリア外アラートはさらにその上に出る
+                              // (戻る方が優先)。
+                              map: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: GameLocationMap(
+                                      locations: visibleLocations,
+                                      users: displayUsers,
+                                      myUid: myUid,
+                                      cachedPosition: cachedPosition.value,
+                                      gameArea: room.setting.gameArea,
+                                      missionPoint:
+                                          missionLat != null &&
+                                              missionLng != null
+                                          ? (
+                                              lat: missionLat,
+                                              lng: missionLng,
+                                              radiusM:
+                                                  mission?.radiusM ??
+                                                  accessPointRadiusM,
+                                            )
+                                          : null,
+                                      enlargeDemonIcon: enlargeDemonIcon,
+                                    ),
+                                  ),
+                                  if (mission != null &&
+                                      missionReading != null &&
+                                      missionStatus != null) ...[
+                                    Positioned(
+                                      left: 12,
+                                      right: 12,
+                                      top: 12,
+                                      child: MissionCard(
+                                        mission: mission,
+                                        status: missionStatus,
+                                        reading: missionReading,
+                                        remainingMillis:
+                                            mission.expiresAt - now,
+                                        claimedByName:
+                                            switch (mission.claimedBy) {
+                                              final uid? => findUser(
+                                                room.users,
+                                                uid,
+                                              )?.displayName,
+                                              null => null,
+                                            },
+                                      ),
+                                    ),
+                                    if (missionStatus ==
+                                        MissionCardStatus.arrived)
+                                      Positioned(
+                                        left: 12,
+                                        right: 12,
+                                        bottom: 14,
+                                        child: MissionClaimButton(
+                                          isClaiming: claimAction.isRunning,
+                                          onPressed: () => unawaited(
+                                            handleClaimPressed(mission),
+                                          ),
+                                        ),
+                                      ),
+                                    if (missionStatus ==
+                                            MissionCardStatus
+                                                .claimedWithoutReward &&
+                                        !claimAction.isRunning)
+                                      Positioned(
+                                        left: 12,
+                                        right: 12,
+                                        bottom: 14,
+                                        child: MissionClaimButton(
+                                          label: '特典を受け取る',
+                                          isClaiming: false,
+                                          onPressed: () => unawaited(
+                                            handleCompleteClaimPressed(mission),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ],
                               ),
                             ),
-                            if (mission != null &&
-                                missionReading != null &&
-                                missionStatus != null) ...[
-                              Positioned(
-                                left: 12,
-                                right: 12,
-                                top: 12,
-                                child: MissionCard(
-                                  mission: mission,
-                                  status: missionStatus,
-                                  reading: missionReading,
-                                  remainingMillis: mission.expiresAt - now,
-                                  claimedByName: switch (mission.claimedBy) {
-                                    final uid? => findUser(
-                                      room.users,
-                                      uid,
-                                    )?.displayName,
-                                    null => null,
-                                  },
-                                ),
+                          ),
+                          // 目撃写真のボタン(地図の右下)。地図の帰属表示
+                          // (右下の「i」)を隠さないよう、その上に置く。
+                          // 「特典を引く」が出ている間は、そのボタンに
+                          // 重ならないようさらに上へずらす。
+                          // 写真機能が無効な環境では出さない。
+                          if (isPhotoFeatureConfigured)
+                            Positioned(
+                              right: 14,
+                              bottom: showsMissionButton ? 120 : 60,
+                              child: SightingPhotoButton(
+                                unreadCount: sightingBadge.unreadCount,
+                                onPressed: () =>
+                                    unawaited(sightingBadge.openSheet()),
                               ),
-                              if (missionStatus == MissionCardStatus.arrived)
-                                Positioned(
-                                  left: 12,
-                                  right: 12,
-                                  bottom: 14,
-                                  child: MissionClaimButton(
-                                    isClaiming: claimAction.isRunning,
-                                    onPressed: () => unawaited(
-                                      handleClaimPressed(mission),
-                                    ),
-                                  ),
-                                ),
-                              if (missionStatus ==
-                                      MissionCardStatus.claimedWithoutReward &&
-                                  !claimAction.isRunning)
-                                Positioned(
-                                  left: 12,
-                                  right: 12,
-                                  bottom: 14,
-                                  child: MissionClaimButton(
-                                    label: '特典を受け取る',
-                                    isClaiming: false,
-                                    onPressed: () => unawaited(
-                                      handleCompleteClaimPressed(mission),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ],
-                        ),
+                            ),
+                        ],
                       ),
                     ),
                     // マップの下は、対象役割の相手をタップで選べるチップ一覧と、
