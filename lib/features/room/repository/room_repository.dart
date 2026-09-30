@@ -12,6 +12,7 @@ import 'package:kakureru/features/room/model/room_catch.dart';
 import 'package:kakureru/features/room/model/room_photo.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/model/sighting.dart';
 import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 import 'package:kakureru/features/room/room_code_validation.dart';
@@ -648,6 +649,27 @@ class RoomRepository {
     'rooms/$roomId/catchPhotos',
     CatchPhoto.fromMap,
   );
+
+  /// 目撃写真(見つけた鬼の写真)のメタデータ一覧をリアルタイムで監視する。
+  ///
+  /// 前のゲームの分も含む(`restartRoom`は消さない)ので、画面で使うときは
+  /// `sightingsOfCurrentGame`(sighting_rules.dart)で今のゲームに絞ること。
+  Stream<List<Sighting>> watchSightings(String roomId) => _watchList(
+    'rooms/$roomId/sightings',
+    Sighting.fromMap,
+  );
+
+  /// 目撃写真のメタデータ`sightings/{photoId}`を書く。
+  ///
+  /// 画像本体は先に`PhotoRepository.upload`でR2へ上げておくこと(順序が逆
+  /// だと、送信に失敗した写真が一覧に出てしまう。足元の写真と同じ)。
+  /// `place`は作る仕組みがまだ無いので書かない。
+  Future<void> addSighting(String roomId, String photoId) {
+    return _db.ref('rooms/$roomId/sightings/$photoId').set({
+      'uid': _uid,
+      'takenAt': ServerValue.timestamp,
+    });
+  }
 
   /// `path`直下の子を[parse]で読み、一覧として流す([watchPhotos]と同じ形)。
   ///

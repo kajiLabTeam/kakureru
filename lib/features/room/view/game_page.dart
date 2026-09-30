@@ -17,8 +17,8 @@ import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/repository/mission_repository.dart';
 import 'package:kakureru/features/mission/view/effect_band.dart';
 import 'package:kakureru/features/mission/view/mission_card.dart';
+import 'package:kakureru/features/mission/view/gacha/gacha_page.dart';
 import 'package:kakureru/features/mission/view/mission_notice_banner.dart';
-import 'package:kakureru/features/mission/view/reward_page.dart';
 import 'package:kakureru/features/mission/view_model/mission_view_model.dart';
 import 'package:kakureru/features/pressure/model/pressure_sensor_availability.dart';
 import 'package:kakureru/features/pressure/model/relative_vertical_position.dart';
@@ -66,6 +66,7 @@ import 'package:kakureru/features/room/view/game/map_photo_tab_bar.dart';
 import 'package:kakureru/features/room/view/game/opponent_selector_chips.dart';
 import 'package:kakureru/features/room/view/game/outside_area_alert.dart';
 import 'package:kakureru/features/room/view/game/photo_capture_banner.dart';
+import 'package:kakureru/features/room/view/game/sighting_photo_button.dart';
 import 'package:kakureru/features/room/view/photo_gallery_page.dart';
 import 'package:kakureru/features/room/view/room_stream_error.dart';
 import 'package:kakureru/features/room/view_model/photo_capture_controller.dart';
@@ -168,7 +169,7 @@ class GamePage extends HookConsumerWidget {
     final captureOpen = useState(false);
 
     // ミッションの「特典を引く」。送信中はボタンをローディング表示にし、
-    // 取れたら特典の画面(RewardPage)を開く。開いている間はゲーム終了の
+    // 取れたら確定演出(GachaPage)を開く。開いている間はゲーム終了の
     // 自動遷移を止める(captureOpenと同じ)。
     final claimAction = useAsyncAction(context);
     final rewardOpen = useState(false);
@@ -248,6 +249,17 @@ class GamePage extends HookConsumerWidget {
         pageIndex.value != 1 &&
         seenPhotoCount.value != null &&
         galleryPhotoCount > seenPhotoCount.value!;
+
+    // 目撃写真(見つけた鬼の写真)の未読の数と、シートを開く操作。地図の
+    // ページは写真タブへ移ると破棄されるため、見た数はここ(GamePage本体)で
+    // 持つ。中身はsighting_photo_button.dartにある。
+    final sightingBadge = useSightingBadge(
+      context,
+      ref,
+      roomId: roomId,
+      startedAt: room?.startedAt,
+      myUid: myUid,
+    );
 
     // デバッグ用の偽プレイヤーを出しているかどうか(issue #67)。多人数での
     // 見え方は端末を人数分集めないと確認できないため、デバッグビルドでだけ
@@ -414,11 +426,11 @@ class GamePage extends HookConsumerWidget {
       isDue: photoCapture.state.isDue,
     );
 
-    // 特典を引けたら、確定演出の代わりに特典の画面を出す。開いている間は
-    // ゲーム終了の自動遷移を止める。
+    // 特典を引けたら、確定演出(GachaPage)→ 特典の画面(RewardPage)の順に
+    // 出す。両方が閉じるまでゲーム終了の自動遷移を止める。
     Future<void> showReward(RewardType reward) async {
       rewardOpen.value = true;
-      await RewardPage.show(context, reward);
+      await GachaPage.show(context, reward);
       if (context.mounted) rewardOpen.value = false;
     }
 
@@ -845,6 +857,13 @@ class GamePage extends HookConsumerWidget {
                 final myMissionSpot = mission == null
                     ? null
                     : spotClaimedBy(mission, myUid);
+                // 地図の下寄せに「ごほうびガチャを引く/受け取る」が出ているか。
+                final showsMissionButton =
+                    (missionStatus == MissionCardStatus.arrived &&
+                        missionTargetSpot != null) ||
+                    (missionStatus == MissionCardStatus.claimedWithoutReward &&
+                        myMissionSpot != null &&
+                        !claimAction.isRunning);
 
                 final mapPageContent = Column(
                   children: [
@@ -901,114 +920,138 @@ class GamePage extends HookConsumerWidget {
                     // 下のカードが押し出されて画面外へ消えるため
                     // (OutsideAreaAlertMapのコメント参照)。
                     Expanded(
-                      child: OutsideAreaAlertMap(
-                        alert: outsideAreaAlert,
-                        // 偽プレイヤーのピンにも名前と役割色を出すため、
-                        // 地図には表示用の一覧を渡す(issue #67)。
-                        // ミッションのカードと「特典を引く」は地図の上に重ねる。
-                        // エリア外アラートはさらにその上に出る(戻る方が優先)。
-                        map: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: GameLocationMap(
-                                locations: visibleLocations,
-                                users: displayUsers,
-                                myUid: myUid,
-                                cachedPosition: cachedPosition.value,
-                                gameArea: room.setting.gameArea,
-                                // 空いている地点だけを出す(取られた地点へ
-                                // 向かわせない)。
-                                missionPoints: [
-                                  if (mission != null)
-                                    for (final spot in openSpots(mission))
-                                      (
-                                        lat: spot.lat,
-                                        lng: spot.lng,
-                                        radiusM: spot.radiusM,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: OutsideAreaAlertMap(
+                              alert: outsideAreaAlert,
+                              // 偽プレイヤーのピンにも名前と役割色を出すため、
+                              // 地図には表示用の一覧を渡す(issue #67)。
+                              // ミッションのカードと「特典を引く」は地図の上に重ねる。
+                              // エリア外アラートはさらにその上に出る(戻る方が優先)。
+                              map: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: GameLocationMap(
+                                      locations: visibleLocations,
+                                      users: displayUsers,
+                                      myUid: myUid,
+                                      cachedPosition: cachedPosition.value,
+                                      gameArea: room.setting.gameArea,
+                                      // 空いている地点だけを出す(取られた地点へ
+                                      // 向かわせない)。
+                                      missionPoints: [
+                                        if (mission != null)
+                                          for (final spot in openSpots(mission))
+                                            (
+                                              lat: spot.lat,
+                                              lng: spot.lng,
+                                              radiusM: spot.radiusM,
+                                            ),
+                                      ],
+                                      enlargeDemonIcon: enlargeDemonIcon,
+                                    ),
+                                  ),
+                                  if (mission != null &&
+                                      missionReading != null &&
+                                      missionStatus != null) ...[
+                                    Positioned(
+                                      left: 12,
+                                      right: 12,
+                                      top: 12,
+                                      child: MissionCard(
+                                        mission: mission,
+                                        status: missionStatus,
+                                        reading: missionReading,
+                                        remainingMillis:
+                                            mission.expiresAt - now,
+                                        myReward: myMissionSpot?.reward,
                                       ),
+                                    ),
+                                    if (missionStatus ==
+                                            MissionCardStatus.arrived &&
+                                        missionTargetSpot != null)
+                                      Positioned(
+                                        left: 12,
+                                        right: 12,
+                                        bottom: 14,
+                                        child: MissionClaimButton(
+                                          isClaiming: claimAction.isRunning,
+                                          onPressed: () => unawaited(
+                                            handleClaimPressed(
+                                              mission,
+                                              missionTargetSpot,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    if (missionStatus ==
+                                            MissionCardStatus
+                                                .claimedWithoutReward &&
+                                        myMissionSpot != null &&
+                                        !claimAction.isRunning)
+                                      Positioned(
+                                        left: 12,
+                                        right: 12,
+                                        bottom: 14,
+                                        child: MissionClaimButton(
+                                          label: 'ごほうびを受け取る',
+                                          isClaiming: false,
+                                          onPressed: () => unawaited(
+                                            handleCompleteClaimPressed(
+                                              mission,
+                                              myMissionSpot,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    // デバッグ用(DEBUG_MISSION=trueのときだけ)。
+                                    // 距離の判定を飛ばして、いちばん近い空いている
+                                    // 地点(位置が無ければ最初の空き)を取りに行く。
+                                    if (debugMissionArrivalEnabled &&
+                                        missionStatus !=
+                                            MissionCardStatus.takenByOther &&
+                                        myMissionSpot == null)
+                                      if (missionTargetSpot ??
+                                              openSpots(mission).firstOrNull
+                                          case final debugSpot?)
+                                        Positioned(
+                                          left: 12,
+                                          right: 12,
+                                          bottom: 80,
+                                          child: MissionDebugArrivalButton(
+                                            onPressed: claimAction.isRunning
+                                                ? null
+                                                : () => unawaited(
+                                                    handleClaimPressed(
+                                                      mission,
+                                                      debugSpot,
+                                                      skipRangeCheck: true,
+                                                    ),
+                                                  ),
+                                          ),
+                                        ),
+                                  ],
                                 ],
-                                enlargeDemonIcon: enlargeDemonIcon,
                               ),
                             ),
-                            if (mission != null &&
-                                missionReading != null &&
-                                missionStatus != null) ...[
-                              Positioned(
-                                left: 12,
-                                right: 12,
-                                top: 12,
-                                child: MissionCard(
-                                  mission: mission,
-                                  status: missionStatus,
-                                  reading: missionReading,
-                                  remainingMillis: mission.expiresAt - now,
-                                  myReward: myMissionSpot?.reward,
-                                ),
+                          ),
+                          // 目撃写真のボタン(地図の右下)。地図の帰属表示
+                          // (右下の「i」)を隠さないよう、その上に置く。
+                          // 「特典を引く」が出ている間は、そのボタンに
+                          // 重ならないようさらに上へずらす。
+                          // 写真機能が無効な環境では出さない。
+                          if (isPhotoFeatureConfigured)
+                            Positioned(
+                              right: 14,
+                              bottom: showsMissionButton ? 120 : 60,
+                              child: SightingPhotoButton(
+                                unreadCount: sightingBadge.unreadCount,
+                                onPressed: () =>
+                                    unawaited(sightingBadge.openSheet()),
                               ),
-                              if (missionStatus == MissionCardStatus.arrived &&
-                                  missionTargetSpot != null)
-                                Positioned(
-                                  left: 12,
-                                  right: 12,
-                                  bottom: 14,
-                                  child: MissionClaimButton(
-                                    isClaiming: claimAction.isRunning,
-                                    onPressed: () => unawaited(
-                                      handleClaimPressed(
-                                        mission,
-                                        missionTargetSpot,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              if (missionStatus ==
-                                      MissionCardStatus.claimedWithoutReward &&
-                                  myMissionSpot != null &&
-                                  !claimAction.isRunning)
-                                Positioned(
-                                  left: 12,
-                                  right: 12,
-                                  bottom: 14,
-                                  child: MissionClaimButton(
-                                    label: 'ごほうびを受け取る',
-                                    isClaiming: false,
-                                    onPressed: () => unawaited(
-                                      handleCompleteClaimPressed(
-                                        mission,
-                                        myMissionSpot,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              // デバッグ用(DEBUG_MISSION=trueのときだけ)。
-                              // 距離の判定を飛ばして、いちばん近い空いている
-                              // 地点(位置が無ければ最初の空き)を取りに行く。
-                              if (debugMissionArrivalEnabled &&
-                                  missionStatus !=
-                                      MissionCardStatus.takenByOther &&
-                                  myMissionSpot == null)
-                                if (missionTargetSpot ??
-                                        openSpots(mission).firstOrNull
-                                    case final debugSpot?)
-                                  Positioned(
-                                    left: 12,
-                                    right: 12,
-                                    bottom: 80,
-                                    child: MissionDebugArrivalButton(
-                                      onPressed: claimAction.isRunning
-                                          ? null
-                                          : () => unawaited(
-                                              handleClaimPressed(
-                                                mission,
-                                                debugSpot,
-                                                skipRangeCheck: true,
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                            ],
-                          ],
-                        ),
+                            ),
+                        ],
                       ),
                     ),
                     // マップの下は、対象役割の相手をタップで選べるチップ一覧と、

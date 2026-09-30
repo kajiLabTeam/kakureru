@@ -94,6 +94,16 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # 特典ガチャの演出(lib/features/mission/view/gacha/)だけで使う太い書体。
+  # SIL Open Font License 1.1。ライセンス文は同じフォルダの
+  # DelaGothicOne-OFL.txt で、アプリのライセンス表示にも登録している(main.dart)。
+  assets:
+    - assets/fonts/DelaGothicOne-OFL.txt
+  fonts:
+    - family: DelaGothicOne
+      fonts:
+        - asset: assets/fonts/DelaGothicOne-Regular.ttf
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

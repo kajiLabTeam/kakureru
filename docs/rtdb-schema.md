@@ -75,6 +75,11 @@ rooms/
       {photoId}/
         uid                 撮影者のuid
         takenAt             撮影時刻(ServerValue.timestamp)。画像本体はR2([docs/photo-storage.md](photo-storage.md)参照)
+    sightings/
+      {photoId}/            目撃写真(逃走者が撮った、見つけた鬼の写真)。ルームの全員がいつでも見られる(下の「目撃写真」参照)
+        uid                 撮影者のuid
+        takenAt             ServerValue.timestamp。画像本体はR2の photos/{photoId}(足元写真と同じ置き場)
+        place               撮った場所の説明(任意)。作る仕組みはまだ無く、今は書かない。あれば表示だけする
     events/
       {pushKey}/          分析用のイベントログ。追記のみで上書きしない(下の「events」参照)
         type                "game_started" | "released" | "catch" | "catch_undone" | "became_demon" | "game_ended" | "photo_taken" | "mission_claimed"
@@ -106,11 +111,6 @@ rooms/
         startedAt           発動した時刻(サーバー時刻のミリ秒)
         durationMs          効いている時間(30000)。skip_foot_photo は 0(回数もの)
         skipSlot            skip_foot_photo で飛ばす撮影スロットの番号(skip_foot_photo のみ。次の1回だけ)
-    sightings/
-      {photoId}/            (予約。まだ書かない)目撃情報。photos/{photoId} と同じID
-        uid                 撮った人のuid
-        takenAt             ServerValue.timestamp
-        place               場所の説明(任意)
     taunts/
       {tauntId}/            (予約。まだ書かない)逃走者から鬼への挑発
         fromUid             送った人のuid
@@ -136,13 +136,13 @@ roomCodes/
 現状のルールは、この設計意図のうち既に決まっている部分だけを反映している:
 
 - 全体のデフォルトは `auth != null`（未認証アクセスは拒否）。認証は起動時の匿名サインイン（`lib/main.dart`）が前提
-- `rooms/{roomId}` 自体には一括の `.read`/`.write` を付けない。RTDBのルールは上位ノードで許可すると下位ノードでの制限を上書きしてしまう（カスケードする）ため、`meta`/`setting`/`users`/`locations`/`visible`/`catches`/`catchPhotos`/`photos`/`events` それぞれに個別にルールを付けている
+- `rooms/{roomId}` 自体には一括の `.read`/`.write` を付けない。RTDBのルールは上位ノードで許可すると下位ノードでの制限を上書きしてしまう（カスケードする）ため、`meta`/`setting`/`users`/`locations`/`visible`/`catches`/`catchPhotos`/`photos`/`events`/`sightings` それぞれに個別にルールを付けている
 - `users/{uid}`・`locations/{uid}` は本人（`auth.uid === $uid`）以外は書き込み不可
 - `visible/{uid}` はクライアント書き込みを禁止（Cloud Functions が Admin SDK 経由で書く想定）し、読み取りは本人のみ
 - `roomCodes/{code}` は新規作成は誰でも可能だが、既存コードへの上書き・削除はそのルームのホスト（`meta/hostUserId` と `auth.uid` が一致する人）のみ
 - `catches/{catchId}` と `catchPhotos/{photoId}` は、捕獲の当事者（鬼・捕まった逃走者）だけが書ける（下の「`catches` / `catchPhotos` のルール」参照）
 
-`meta` / `setting` / `photos` の書き込みロジック（誰がホストか、誰が捕獲を報告できるか等）は、対応する Dart 側の実装が入ってから、その仕様に合わせてルールを絞り込むこと。それまでは認証済みなら誰でも読み書きできる暫定ルールになっている。
+`meta` / `setting` / `photos` / `sightings` の書き込みロジック（誰がホストか、誰が捕獲を報告できるか等）は、対応する Dart 側の実装が入ってから、その仕様に合わせてルールを絞り込むこと。それまでは認証済みなら誰でも読み書きできる暫定ルールになっている。
 
 APIキー自体はアクセス制御に使われない（プロジェクトを識別するだけ）ため、ここでの Security Rules と、Google Cloud Console 側のAPIキー制限（アプリ制限・API制限）の両方が必須。
 
@@ -319,6 +319,17 @@ npm test
 ```
 
 ルールを変えたら、デプロイ(`firebase deploy --only database`)の前にこれを通すこと。
+
+### 目撃写真: `sightings`
+
+逃走者が鬼を見つけたときに撮って共有する写真。地図の右下のボタンから開くシートに、時系列のチャット風に並べる(足元写真の写真タブとは分ける)。
+
+- 画像本体は足元写真と同じR2の `photos/{photoId}` に置き、圧縮も同じ(長辺1080px・画質80から、`pickCameraPhotoWithinLimit`)。足元写真(`photos`)・捕まえた瞬間(`catchPhotos`)との区別はこのメタデータの置き場所だけで行う
+- 書き込みは画像のアップロードが成功した後に限る(`RoomRepository.addSighting`)。順序が逆だと、送れなかった写真が一覧に出るため
+- 足元写真と違い、**撮ったかどうかに関係なくルームの全員(鬼も)がいつでも見られる**。撮れるのは逃走者だけ(画面側で「撮る」ボタンを逃走者にだけ出す。ルールでは絞っていない)
+- `restartRoom` は `sightings` を消さないので、読む側は `meta/startedAt` 以降のものだけに絞る(`sightingsOfCurrentGame`、`lib/features/room/sighting_rules.dart`)
+- `place` は任意。場所の文字列を作る仕組みはまだ無いので今は書かず、書かれていれば表示するだけ
+- ルールは `photos` / `events` と同じ、認証済みなら読み書きできる暫定ルール。**`database.rules.json` をデプロイしないと読み書きできない**(ルートが `.read/.write: false` のため)
 
 ### ルーム設定画面: `setting` の書き込みはホスト限定になっていない
 

@@ -72,6 +72,11 @@
           ".write": "auth != null"
         },
 
+        "sightings": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+
         "missions": {
           ".read": "auth != null",
           ".write": "auth != null"
