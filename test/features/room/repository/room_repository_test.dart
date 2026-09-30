@@ -48,6 +48,10 @@ class _FakeDatabase implements FirebaseDatabase {
   /// 検証するために記録する(テスト側から直接[read]した分は含めない)。
   final readPaths = <String>[];
 
+  /// リポジトリが`get()`で読んだ直後に呼ばれる。読み取りと次の書き込みの
+  /// 間に、別の端末の書き込みが割り込む状況を作るために使う。
+  void Function(String path)? afterGet;
+
   @override
   DatabaseReference ref([String? path]) => _FakeReference(this, path ?? '');
 
@@ -105,7 +109,9 @@ class _FakeReference implements DatabaseReference {
   @override
   Future<DataSnapshot> get() async {
     _db.readPaths.add(_path);
-    return _FakeSnapshot(_db.read(_path));
+    final snapshot = _FakeSnapshot(_db.read(_path));
+    _db.afterGet?.call(_path);
+    return snapshot;
   }
 
   @override
@@ -792,6 +798,45 @@ void main() {
       expect(db.read('rooms/room-1/users/me/role'), 'FUGITIVE');
       hold.complete();
       await undo;
+    });
+
+    test('写真IDを読んだ後に写真が付いても、取り消し後にその写真は残らない', () async {
+      // issue #145: undoCatchがcatchPhotoIdを読んでから捕獲を消すまでの間に
+      // 鬼のattachCatchPhotoが確定したケース。
+      final (:db, :roomCatch) = caughtState(agoMillis: 0);
+      db.afterGet = (path) {
+        if (!path.endsWith('/catchPhotoId')) return;
+        db
+          ..write('rooms/room-1/catchPhotos/p2', <String, Object?>{
+            'catchId': 'c1',
+            'demonUid': 'demon',
+            'fugitiveUid': 'me',
+            'takenAt': roomCatch.caughtAt,
+          })
+          ..write('rooms/room-1/catches/c1/catchPhotoId', 'p2');
+      };
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await _atFixedNow(() => repo.undoCatch('room-1', roomCatch));
+
+      expect(db.read('rooms/room-1/catches/c1'), isNull);
+      expect(db.read('rooms/room-1/catchPhotos/p2'), isNull);
+    });
+
+    test('取り消しは別の捕獲の写真を消さない', () async {
+      final (:db, :roomCatch) = caughtState(agoMillis: 0, photoId: 'p1');
+      db.write('rooms/room-1/catchPhotos/other', <String, Object?>{
+        'catchId': 'c-other',
+        'demonUid': 'demon',
+        'fugitiveUid': 'me',
+        'takenAt': roomCatch.caughtAt,
+      });
+      final repo = RoomRepository(db: db, auth: _FakeAuth());
+
+      await _atFixedNow(() => repo.undoCatch('room-1', roomCatch));
+
+      expect(db.read('rooms/room-1/catchPhotos/p1'), isNull);
+      expect(db.read('rooms/room-1/catchPhotos/other'), isNotNull);
     });
 
     test('10秒を過ぎたら取り消せず、何も書き換えない', () async {

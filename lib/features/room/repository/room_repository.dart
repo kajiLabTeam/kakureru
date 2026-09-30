@@ -344,6 +344,7 @@ class RoomRepository {
         'becameDemonAt': null,
       }),
     ]);
+    await _removeOrphanedCatchPhotos(roomId, roomCatch.id);
     unawaited(
       _eventLog.log(
         roomId,
@@ -352,6 +353,34 @@ class RoomRepository {
         targetUid: roomCatch.demonUserId,
       ),
     );
+  }
+
+  /// 取り消した捕獲[catchId]を指す`catchPhotos`を探して消す(issue #145)。
+  ///
+  /// [undoCatch]が`catchPhotoId`を読んでから捕獲を消すまでの間に
+  /// [attachCatchPhoto]が確定すると、そこで書かれた写真は削除の対象に入らず
+  /// 取り残される。捕獲の削除がサーバーに届いた後なら、それより前に確定した
+  /// 写真は必ず読めるし、後から来た[attachCatchPhoto]は捕獲が無いのを見て
+  /// 自分で写真を消す。なので、ここで一度探し直せば取りこぼしは無い。
+  ///
+  /// 取り消し自体は済んでいるので、失敗しても投げない(残るのは画面に出ない
+  /// 小さなレコードだけで、画像本体はR2で7日後に消える)。ルールで消せるのは
+  /// 自分が当事者の写真だけなので、`fugitiveUid`が自分のものに絞る。
+  Future<void> _removeOrphanedCatchPhotos(String roomId, String catchId) async {
+    try {
+      final snapshot = await _db.ref('rooms/$roomId/catchPhotos').get();
+      final photos = snapshot.value as Map<dynamic, dynamic>? ?? const {};
+      await Future.wait([
+        for (final entry in photos.entries)
+          if (entry.value case {
+            'catchId': final String id,
+            'fugitiveUid': final String fugitiveUid,
+          } when id == catchId && fugitiveUid == _uid)
+            _db.ref('rooms/$roomId/catchPhotos/${entry.key}').set(null),
+      ]);
+    } on Object catch (e, st) {
+      debugPrint('取り消した捕獲の写真を片付けられませんでした: $e\n$st');
+    }
   }
 
   /// 捕まえた瞬間の写真のメタデータを書き、捕獲に写真IDを結びつける。
