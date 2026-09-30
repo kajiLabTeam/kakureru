@@ -22,6 +22,10 @@ abstract class RoomUser with _$RoomUser {
     UserRole role,
     double? pressureOffset,
     bool? pressureSensorAvailable,
+
+    /// 待機画面の「テザリングで接続している」の自己申告(issue #142)。
+    /// 未設定はOFF扱い。再戦でも保持する。
+    bool? usesTethering,
     int? becameDemonAt,
     int? lastPhotoAt,
     @Default(0) int joinedAt,

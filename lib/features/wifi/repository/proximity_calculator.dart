@@ -1,5 +1,6 @@
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
+import 'package:kakureru/features/wifi/model/wifi_scan_result.dart';
 
 /// Wi-Fi近接判定に使う閾値。
 ///
@@ -26,6 +27,34 @@ class ProximityThresholds {
 
   /// [calculateTopOverlap]で比べる上位APの件数。
   static const topOverlapCount = 5;
+}
+
+/// 参加者全員のスキャン結果から、共有されたホットスポットのBSSID(小文字)を
+/// 集める(issue #142)。
+///
+/// テザリングの親機(スマホ)は持ち主と一緒に動くため、固定APを前提にした
+/// 比較に混ぜると判定がブレる。自分の分も含めて集め、[excludeAccessPoints]で
+/// 自分と相手の両方のスキャンから除く。自分の分は送信前にも除いているが、
+/// 受け取る側でも同じ集合を除けば、どちらの端末から見ても計算が揃う。
+Set<String> hotspotBssidsOf(Iterable<WifiScanResult?> scans) => {
+  for (final scan in scans)
+    if (scan?.hotspotBssid case final bssid? when bssid.isNotEmpty)
+      bssid.toLowerCase(),
+};
+
+/// [excluded](小文字のBSSID)に含まれるAPを除いたマップを返す。
+///
+/// 物理AP単位の集約([groupByPhysicalAp])より**前**に、BSSIDの完全一致で
+/// 除くこと。集約後の「末尾1文字を落としたキー」で除くと、たまたま同じ
+/// キーになった固定APまで巻き込むため。
+Map<String, int> excludeAccessPoints(
+  Map<String, int> bssidRssi,
+  Set<String> excluded,
+) {
+  if (excluded.isEmpty) return bssidRssi;
+  return Map.fromEntries(
+    bssidRssi.entries.where((e) => !excluded.contains(e.key.toLowerCase())),
+  );
 }
 
 /// BSSIDを物理APごとにまとめ、各物理APのRSSIはその中の最大値にする。

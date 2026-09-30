@@ -34,6 +34,7 @@ rooms/
         role              "FUGITIVE" | "DEMON"
         pressureOffset
         pressureSensorAvailable  気圧センサーの有無(true/false)。判定前は未設定
+        usesTethering     待機画面の「テザリングで接続している」の自己申告(true/false。未設定はOFF扱い)。再戦でも保持する。下の「テザリングのホットスポットの除外」参照
         becameDemonAt
         lastPhotoAt
         joinedAt
@@ -49,7 +50,8 @@ rooms/
         pressure
         updatedAt
         wifiScan/          直近のWi-Fiスキャン結果（WifiScanRepositoryが書く）
-          bssidRssi/       {bssid}: rssi。電波の強い上位40件だけを残す
+          bssidRssi/       {bssid}: rssi。電波の強い上位40件だけを残す(自分のホットスポットは除いてから絞る)
+          hotspotBssid     usesTethering が true の人だけが書く、接続中のWi-Fi(=自分のホットスポット)のBSSID(小文字)。未接続・取得できないときは無し
           scannedAt
     visible/
       {uid}/              Functions が書き出す派生データ
@@ -149,6 +151,18 @@ RTDBの `.read`/`.write` 権限は、**アクセス先のパス自身か、そ�
 - 退出者の `locations/{uid}`(最後の位置・Wi-Fiスキャン)は残る。消えないぶん古い値が残り続ける点に注意
 
 **ルームの掃除方針(未実装)**: 退出で消さない代わりに、**作成から7日以上たったルームを `rooms/{roomId}` ごと(と対応する `roomCodes/{code}` を)削除する**。個々の `users/{uid}` を消すことはしない。実装はPhase 2のCloud Functions(Admin SDK)かスクリプトで行う予定で、現時点では何も消えない。
+
+### テザリングのホットスポットの除外(issue #142)
+
+SIMなしの研究室端末を各自のスマホのテザリングにつないで遊ぶと、自分のホットスポットが端末のすぐ横で常に最強のAPになる。さらに他の参加者のホットスポットも「人と一緒に動くAP」としてスキャンに入り、固定APを前提にしたWi-Fiの手がかり(近い/遠い・最寄り・メーター・電波の一致)がブレる。
+
+- 待機画面でトグルをONにした人(`users/{uid}/usesTethering == true`)だけ、`WifiScanRepository.sendScan` がスキャンのたびに接続中のBSSIDを読み、`wifiScan/hotspotBssid` として書く。自分の `bssidRssi` からもこのBSSIDを除いてから送る。ホットスポットのBSSIDはランダムMACで接続ごとに変わりうるため、固定のリストにはしない
+  - `usesTethering` は購読せず、**スキャンのたびに読み直す**。購読だと、ゲーム開始直後の最初のスキャンが最初の値より先に届いたときにホットスポット入りのまま送ってしまうため。読めなければ直前の値を使う
+  - 接続先が**ランダムMAC(ローカル管理ビットが立ったBSSID)でなければ共有しない**。ONのままテザリングが切れて構内Wi-Fiにつなぎ直った、わざとONにした、といった場合に固定APを全員の計算から消さないため。スマホのホットスポットはAndroid(10以降)もiPhoneもランダムMACを使う
+  - 一瞬の切断などで1回取れなかっただけなら、直前に取れた `hotspotBssid` を送り続ける。OFFにしたら送らない
+- 受け取る側は、`clueBssidRssiProvider`(`lib/features/wifi/clue_scans.dart` の `clueBssidRssiByUid`)で**退出していない参加者**の `hotspotBssid` を集め、全員のスキャンから除く。近い/遠い・最寄り・メーター・電波の一致はすべてこの結果から計算する。テザリングを使っていない人の端末でも除く。退出者の分を使わないのは、`locations/` が退出しても残るため(古い値がルームの続く限り残り続ける)
+- 自動判定にしていないのは、構内Wi-Fiにつないでいる人の接続先が**固定AP**だから。接続先を一律に除くと、正規のAPを全員の比較から消してしまう
+- `usesTethering` / `hotspotBssid` が無い(旧バージョンの端末・OFFの人)ときは何も除かず、従来どおりに動く
 
 ### オフライン永続化
 

@@ -1,14 +1,13 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
+import 'package:kakureru/features/wifi/clue_scans.dart';
 import 'package:kakureru/features/wifi/model/proximity_level.dart';
 import 'package:kakureru/features/wifi/model/wifi_ap_comparison.dart';
 import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
-import 'package:kakureru/features/wifi/model/wifi_scan_result.dart';
 import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:kakureru/features/wifi/repository/wifi_scan_repository.dart';
@@ -63,30 +62,38 @@ final wifiScanStatusProvider =
       WifiScanStatusNotifier.new,
     );
 
+/// 手がかりの計算に使う、各参加者のBSSID→RSSI(uid→)。共有された
+/// ホットスポットは除いてある(issue #142)。
+///
+/// このファイルのWi-Fiの判定・表示はすべてこれを読む。除外の手順は
+/// [clueBssidRssiByUid]を参照。
+final clueBssidRssiProvider =
+    Provider.family<Map<String, Map<String, int>>, String>((ref, roomId) {
+      return clueBssidRssiByUid(
+        locations: ref.watch(locationViewModelProvider).locations,
+        users: ref.watch(roomStreamProvider(roomId)).value?.users,
+      );
+    });
+
 /// 表示方式A用: 自分以外の参加者それぞれの3段階判定(ヒステリシス適用前の生の値)。
 ///
 /// 気圧の relativeVerticalPositionsProvider と同じ方針で、room(役割)と
 /// locations(各人のWi-Fiスキャン結果)の両方に依存する導出Providerにしている。
 final _rawWifiProximityLevelsProvider =
     Provider.family<List<WifiProximityEntry>, String>((ref, roomId) {
-      final myUid = FirebaseAuth.instance.currentUser?.uid;
-      final locations = ref.watch(locationViewModelProvider).locations;
-      final selfScan = _scanFor(locations, myUid);
-      if (myUid == null || selfScan == null) return const [];
+      final myUid = ref.watch(myUidProvider);
+      final scans = ref.watch(clueBssidRssiProvider(roomId));
+      final self = scans[myUid];
+      if (myUid == null || self == null) return const [];
 
-      final entries = <WifiProximityEntry>[];
-      for (final location in locations) {
-        if (location.uid == myUid) continue;
-        final targetScan = location.wifiScan;
-        if (targetScan == null) continue;
-        entries.add(
-          WifiProximityEntry(
-            uid: location.uid,
-            level: calculateProximity(selfScan.bssidRssi, targetScan.bssidRssi),
-          ),
-        );
-      }
-      return entries;
+      return [
+        for (final MapEntry(key: uid, value: target) in scans.entries)
+          if (uid != myUid)
+            WifiProximityEntry(
+              uid: uid,
+              level: calculateProximity(self, target),
+            ),
+      ];
     });
 
 /// 表示方式A用: 自分以外の参加者それぞれの3段階判定。
@@ -149,7 +156,7 @@ final _rawNearestOpponentUidProvider = Provider.family<String?, String>((
   roomId,
 ) {
   final room = ref.watch(roomStreamProvider(roomId)).value;
-  final myUid = FirebaseAuth.instance.currentUser?.uid;
+  final myUid = ref.watch(myUidProvider);
   if (room == null || myUid == null) return null;
 
   final myRole = _roleOf(room.users, myUid);
@@ -157,20 +164,14 @@ final _rawNearestOpponentUidProvider = Provider.family<String?, String>((
       ? UserRole.fugitive
       : UserRole.demon;
 
-  final locations = ref.watch(locationViewModelProvider).locations;
-  final selfScan = _scanFor(locations, myUid);
-  if (selfScan == null) return null;
+  final scans = ref.watch(clueBssidRssiProvider(roomId));
+  final self = scans[myUid];
+  if (self == null) return null;
 
-  final candidates = <String, Map<String, int>>{};
-  for (final location in locations) {
-    if (location.uid == myUid) continue;
-    if (_roleOf(room.users, location.uid) != opponentRole) continue;
-    final scan = location.wifiScan;
-    if (scan == null) continue;
-    candidates[location.uid] = scan.bssidRssi;
-  }
-
-  return findNearestUid(selfScan.bssidRssi, candidates);
+  return findNearestUid(self, {
+    for (final MapEntry(key: uid, value: target) in scans.entries)
+      if (uid != myUid && _roleOf(room.users, uid) == opponentRole) uid: target,
+  });
 });
 
 /// 自分から見て最も近い「対象の役割」の相手のuid。
@@ -225,16 +226,12 @@ final wifiComparisonsForProvider =
       args,
     ) {
       final (roomId, targetUid) = args;
-      final myUid = FirebaseAuth.instance.currentUser?.uid;
-      final locations = ref.watch(locationViewModelProvider).locations;
-      final selfScan = _scanFor(locations, myUid);
-      final targetScan = _scanFor(locations, targetUid);
-      if (selfScan == null || targetScan == null) return const [];
+      final scans = ref.watch(clueBssidRssiProvider(roomId));
+      final self = scans[ref.watch(myUidProvider)];
+      final target = scans[targetUid];
+      if (self == null || target == null) return const [];
 
-      return selectTopCommonAccessPoints(
-        selfScan.bssidRssi,
-        targetScan.bssidRssi,
-      );
+      return selectTopCommonAccessPoints(self, target);
     });
 
 /// 指定した相手との手がかりメーターの値(0〜100)。共通APが無い、
@@ -245,26 +242,13 @@ final wifiComparisonsForProvider =
 /// 判定そのものには使わない。
 final clueMeterForProvider =
     Provider.family<double?, (String roomId, String targetUid)>((ref, args) {
-      final (_, targetUid) = args;
-      final myUid = FirebaseAuth.instance.currentUser?.uid;
-      final locations = ref.watch(locationViewModelProvider).locations;
-      final selfScan = _scanFor(locations, myUid);
-      final targetScan = _scanFor(locations, targetUid);
-      if (selfScan == null || targetScan == null) return null;
-      return calculateClueMeter(selfScan.bssidRssi, targetScan.bssidRssi);
+      final (roomId, targetUid) = args;
+      final scans = ref.watch(clueBssidRssiProvider(roomId));
+      final self = scans[ref.watch(myUidProvider)];
+      final target = scans[targetUid];
+      if (self == null || target == null) return null;
+      return calculateClueMeter(self, target);
     });
-
-UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
-  if (uid == null) return null;
-  for (final location in locations) {
-    if (location.uid == uid) return location;
-  }
-  return null;
-}
-
-WifiScanResult? _scanFor(List<UserLocation> locations, String? uid) {
-  return _findLocation(locations, uid)?.wifiScan;
-}
 
 RoomUser? _findUser(List<RoomUser> users, String uid) {
   for (final user in users) {
