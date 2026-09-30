@@ -109,8 +109,9 @@ roomCodes/
 - `users/{uid}`・`locations/{uid}` は本人（`auth.uid === $uid`）以外は書き込み不可
 - `visible/{uid}` はクライアント書き込みを禁止（Cloud Functions が Admin SDK 経由で書く想定）し、読み取りは本人のみ
 - `roomCodes/{code}` は新規作成は誰でも可能だが、既存コードへの上書き・削除はそのルームのホスト（`meta/hostUserId` と `auth.uid` が一致する人）のみ
+- `catches/{catchId}` と `catchPhotos/{photoId}` は、捕獲の当事者（鬼・捕まった逃走者）だけが書ける（下の「`catches` / `catchPhotos` のルール」参照）
 
-`meta` / `setting` / `catches` / `photos` の書き込みロジック（誰がホストか、誰が捕獲を報告できるか等）は、対応する Dart 側の実装が入ってから、その仕様に合わせてルールを絞り込むこと。それまでは認証済みなら誰でも読み書きできる暫定ルールになっている。
+`meta` / `setting` / `photos` の書き込みロジック（誰がホストか、誰が捕獲を報告できるか等）は、対応する Dart 側の実装が入ってから、その仕様に合わせてルールを絞り込むこと。それまでは認証済みなら誰でも読み書きできる暫定ルールになっている。
 
 APIキー自体はアクセス制御に使われない（プロジェクトを識別するだけ）ため、ここでの Security Rules と、Google Cloud Console 側のAPIキー制限（アプリ制限・API制限）の両方が必須。
 
@@ -234,9 +235,38 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 `restartRoom` は `catches` / `catchPhotos` を消さないので、読む側は必ず `meta/startedAt` 以降のものだけに絞る(`catchesOfCurrentGame`)。
 
+### `catches` / `catchPhotos` のルール(issue #144)
+
+鬼が他人の捕獲を書く形になったため、ルールで当事者以外の書き込みを塞いでいる。読み取りは従来どおり認証済みなら誰でも可。
+
+| 操作 | 許可される条件 |
+|---|---|
+| `catches/{catchId}` の作成 | `demonUserId` が書き込む本人 / `caughtAt` がサーバー時刻(`now`) / `fugitiveUserId` が同じルームの `users` にいて本人ではない / 本人もそのルームの `users` にいる / その `catchId` がまだ無い / `catchPhotoId` を含まない |
+| `catches/{catchId}` の削除(取り消し) | その捕獲の `demonUserId` か `fugitiveUserId` が本人 |
+| `catches/{catchId}` の更新(写真の紐づけ) | その捕獲の `demonUserId` が本人で、`demonUserId` / `fugitiveUserId` / `caughtAt` が変わらない(実質 `catchPhotoId` だけ) |
+| `catchPhotos/{photoId}` の作成 | `demonUid` が書き込む本人 / `takenAt` がサーバー時刻 / `fugitiveUid` が同じルームの `users` にいて本人ではない / 本人もそのルームの `users` にいる / その `photoId` がまだ無い |
+| `catchPhotos/{photoId}` の削除 | その写真の `demonUid` か `fugitiveUid` が本人(`undoCatch` は捕まった側が消すため) |
+| `catchPhotos/{photoId}` の更新 | 不可 |
+
+- 項目は上のスキーマにあるものだけ。型(文字列・数値)と必須項目を `.validate` で確かめ、それ以外の子は拒否する
+- **取り消しの期限(10秒)はルールでは判定しない**。ルールで時刻を比べると、端末とサーバーの時計のずれで正当な取り消しまで弾かれるため。期限はクライアント(`undoCatch` のサーバー時刻による確認)の責務
+- 存在しない捕獲への「nullのまま」の書き込み(`attachCatchPhoto` のトランザクションが、取り消し済みの捕獲に対して確定する形)は許可している。これを拒否すると、取り消し済みの判定が権限エラーに化けるため
+- `catchPhotos` の作成時に、対応する捕獲が存在するかは見ていない。見ると、取り消しと写真送信が行き違ったときに `CatchAlreadyUndoneException` ではなく権限エラーになるため(孤立レコードの扱いは issue #145)
+- `undoCatch` は捕獲の削除を手元に先に反映するので、拒否が返る前に「あなたは鬼になった」の全画面が閉じる。そのため取り消しの実行と失敗のSnackBarは全画面ではなく `GamePage` 側(`useUndoCatch`)で行う
+
+**確かめ方**: `rules-test/` に Firebase Local Emulator Suite で動かすテストがある(本番には触れない。Java と Node.js が要る)。
+
+```sh
+cd rules-test
+npm install
+npm test
+```
+
+ルールを変えたら、デプロイ(`firebase deploy --only database`)の前にこれを通すこと。
+
 ### ルーム設定画面: `setting` の書き込みはホスト限定になっていない
 
-`setting` は現状 `auth != null` で誰でも書き込める暫定ルールのままなので、`RoomRepository.updateSetting` をホスト以外が呼んでも**権限エラーにはならない**。`meta`/`catches`/`photos` と同じ「Dart側の実装が入ってから絞り込む」対象として先送りしてきた項目の一つ。
+`setting` は現状 `auth != null` で誰でも書き込める暫定ルールのままなので、`RoomRepository.updateSetting` をホスト以外が呼んでも**権限エラーにはならない**。`meta`/`photos` と同じ「Dart側の実装が入ってから絞り込む」対象として先送りしてきた項目の一つ。
 
 今回、ルーム設定画面を追加するにあたりルールを絞る案（`meta.hostUserId` と一致する人だけ `setting` を書けるようにする）も検討したが、鬼の決定のときと同じ理由（`meta.hostUserId` 自体が誰でも書き換えられるため、host限定ルールを足しても実効性が薄く権限昇格の抜け道になりうる）で見送った。代わりに、設定画面自体をホストにしか開かせない（`RoomWaitingPage` の「設定」ボタンをホストにのみ表示）というクライアント側の制御だけにしている。
 
@@ -244,7 +274,7 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 ### `events`: プレイテスト分析用のイベントログ
 
-ゲーム後に「最初の捕獲までの時間」「捕獲人数」「各逃走者が捕まるまでの時間」「屋内/屋外での捕獲回数」を、エクスポートしたJSONから手で集計するための追記専用ログ。書き込みは `EventLogRepository`(`lib/features/room/repository/event_log_repository.dart`)が fire-and-forget で行い、失敗してもゲーム進行は止めない。ルールは `catches` と同じく認証済みなら読み書き可の暫定ルール。
+ゲーム後に「最初の捕獲までの時間」「捕獲人数」「各逃走者が捕まるまでの時間」「屋内/屋外での捕獲回数」を、エクスポートしたJSONから手で集計するための追記専用ログ。書き込みは `EventLogRepository`(`lib/features/room/repository/event_log_repository.dart`)が fire-and-forget で行い、失敗してもゲーム進行は止めない。ルールは認証済みなら読み書き可の暫定ルール。
 
 | type | 書く端末 | 記録するタイミング | uid |
 |---|---|---|---|

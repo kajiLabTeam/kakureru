@@ -18,7 +18,8 @@ const _undoBoxColor = Color(0x38141413);
 ///
 /// 取り消しの期限([catchUndoWindow])の間だけ「取り消す」を押せる。
 /// 取り消すと捕獲が`catches`から消えるので、GamePage側の`shownCatch`が
-/// nullになってこの画面も消える。
+/// nullになってこの画面も消える。取り消しの実行と失敗の表示は、この画面
+/// より長生きするGamePage側([useUndoCatch])が受け持つ。
 class CaughtByDemonOverlay extends HookConsumerWidget {
   /// [canUndo]は役割の書き換え(`acceptCaught`)が終わったか。終わる前に
   /// 取り消すと、取り消した後で鬼に書き換わってしまうため押せなくする。
@@ -28,6 +29,8 @@ class CaughtByDemonOverlay extends HookConsumerWidget {
     required this.roomCatch,
     required this.demonName,
     required this.canUndo,
+    required this.isUndoing,
+    required this.onUndo,
     required this.onContinue,
   });
 
@@ -42,6 +45,12 @@ class CaughtByDemonOverlay extends HookConsumerWidget {
 
   /// 「取り消す」を押せる状態か(期限とは別の条件)。
   final bool canUndo;
+
+  /// 取り消しを実行中か。実行中は「取り消す」を押せなくする。
+  final bool isUndoing;
+
+  /// 「取り消す」。
+  final VoidCallback onUndo;
 
   /// 「鬼の画面へ」。
   final VoidCallback onContinue;
@@ -59,7 +68,6 @@ class CaughtByDemonOverlay extends HookConsumerWidget {
       return timer.cancel;
     }, const []);
 
-    final undo = useAsyncAction(context);
     final nowMillis = serverNowMillis(offset);
     final undoable = isCatchUndoable(
       caughtAt: roomCatch.caughtAt,
@@ -75,20 +83,6 @@ class CaughtByDemonOverlay extends HookConsumerWidget {
           catchUndoWindow.inMilliseconds,
         );
     final progress = remainingMillis / catchUndoWindow.inMilliseconds;
-
-    Future<void> handleUndo() async {
-      final result = await undo.run(
-        () => ref.read(roomRepositoryProvider).undoCatch(roomId, roomCatch),
-      );
-      if (!context.mounted) return;
-      if (result.status == AsyncActionStatus.failed) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
-          SnackBar(content: Text(undoCatchErrorMessage(result.error!))),
-        );
-      }
-    }
 
     return Material(
       color: catchSurfaceColor,
@@ -143,9 +137,7 @@ class CaughtByDemonOverlay extends HookConsumerWidget {
                       SizedBox(
                         height: 52,
                         child: OutlinedButton.icon(
-                          onPressed: canUndo && !undo.isRunning
-                              ? () => unawaited(handleUndo())
-                              : null,
+                          onPressed: canUndo && !isUndoing ? onUndo : null,
                           icon: const Icon(Icons.undo),
                           label: const Text(
                             '取り消す',
@@ -228,3 +220,45 @@ String undoCatchErrorMessage(Object error) => switch (error) {
   CatchUndoExpiredException() || CatchUndoUnavailableException() => '$error',
   _ => userFacingErrorMessage(error),
 };
+
+/// 捕まった本人の「取り消す」を実行し、失敗したらSnackBarで知らせる
+/// (issue #144)。
+///
+/// [CaughtByDemonOverlay]ではなく、それを載せるGamePageで呼ぶこと。
+/// `undoCatch`は捕獲の削除を端末の書き込み待ち行列に積んだ時点で手元の
+/// `catches`から消すため、サーバーの応答より先に全画面が閉じる。全画面の
+/// 中で実行すると、ルールで拒否されたと分かったときにはcontextが破棄済みで、
+/// 何も出せずに黙って失敗していた。
+///
+/// 戻り値はレコードにしている([useAsyncAction]と同じ理由。フックの戻り値で
+/// コールバックを含み、このフック以外から作られないため)。
+UndoCatchAction useUndoCatch(
+  BuildContext context,
+  WidgetRef ref, {
+  required String roomId,
+}) {
+  final undo = useAsyncAction(context);
+
+  Future<void> run(RoomCatch roomCatch) async {
+    final result = await undo.run(
+      () => ref.read(roomRepositoryProvider).undoCatch(roomId, roomCatch),
+    );
+    if (!context.mounted) return;
+    if (result.status == AsyncActionStatus.failed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(undoCatchErrorMessage(result.error!))),
+      );
+    }
+  }
+
+  return (isRunning: undo.isRunning, run: run);
+}
+
+/// [useUndoCatch]の戻り値。
+typedef UndoCatchAction = ({
+  /// 取り消しを実行中か。
+  bool isRunning,
+
+  /// 取り消しを1回実行する。実行中に呼ばれた分は何もしない。
+  Future<void> Function(RoomCatch roomCatch) run,
+});

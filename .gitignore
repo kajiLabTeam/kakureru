@@ -70,5 +70,9 @@ night-run/state/*
 kakureru-photo-api/node_modules/
 kakureru-photo-api/.wrangler/
 .dev.vars
+
+# rules-test (RTDBルールのエミュレータテスト)
+rules-test/node_modules/
+
 # Widget Preview related
 .widget_preview/

@@ -283,6 +283,7 @@ class GamePage extends HookConsumerWidget {
     // 捕獲まわり(issue #140)。捕まった本人の役割の書き換えと全画面、
     // 取り消しの期限を過ぎた捕獲の全員への通知、取り消しの鬼への通知。
     final caught = useCaughtByDemon(ref, roomId: roomId, myUid: myUid);
+    final undoCatch = useUndoCatch(context, ref, roomId: roomId);
     final announcement = useCatchAnnouncements(
       ref,
       roomId: roomId,
@@ -862,6 +863,8 @@ class GamePage extends HookConsumerWidget {
                 roomCatch: shown,
                 demonName: catchPersonName(room.users, shown.demonUserId),
                 canUndo: roleOf(room.users, myUid) == UserRole.demon,
+                isUndoing: undoCatch.isRunning,
+                onUndo: () => unawaited(undoCatch.run(shown)),
                 onContinue: caught.dismiss,
               ),
             ),

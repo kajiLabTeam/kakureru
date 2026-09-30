@@ -38,12 +38,28 @@
 
         "catches": {
           ".read": "auth != null",
-          ".write": "auth != null"
+          "$catchId": {
+            ".write": "auth != null && ((!data.exists() && newData.exists() && newData.child('demonUserId').val() === auth.uid && newData.child('fugitiveUserId').val() !== auth.uid && newData.child('caughtAt').val() === now && !newData.child('catchPhotoId').exists() && root.child('rooms').child($roomId).child('users').child(auth.uid).exists() && root.child('rooms').child($roomId).child('users').child(newData.child('fugitiveUserId').val()).exists()) || (data.exists() && !newData.exists() && (data.child('demonUserId').val() === auth.uid || data.child('fugitiveUserId').val() === auth.uid)) || (data.exists() && newData.exists() && data.child('demonUserId').val() === auth.uid && newData.child('demonUserId').val() === data.child('demonUserId').val() && newData.child('fugitiveUserId').val() === data.child('fugitiveUserId').val() && newData.child('caughtAt').val() === data.child('caughtAt').val()) || (!data.exists() && !newData.exists()))",
+            ".validate": "newData.hasChildren(['demonUserId', 'fugitiveUserId', 'caughtAt'])",
+            "demonUserId": { ".validate": "newData.isString()" },
+            "fugitiveUserId": { ".validate": "newData.isString()" },
+            "caughtAt": { ".validate": "newData.isNumber()" },
+            "catchPhotoId": { ".validate": "newData.isString()" },
+            "$other": { ".validate": false }
+          }
         },
 
         "catchPhotos": {
           ".read": "auth != null",
-          ".write": "auth != null"
+          "$photoId": {
+            ".write": "auth != null && ((!data.exists() && newData.exists() && newData.child('demonUid').val() === auth.uid && newData.child('fugitiveUid').val() !== auth.uid && newData.child('takenAt').val() === now && root.child('rooms').child($roomId).child('users').child(auth.uid).exists() && root.child('rooms').child($roomId).child('users').child(newData.child('fugitiveUid').val()).exists()) || (data.exists() && !newData.exists() && (data.child('demonUid').val() === auth.uid || data.child('fugitiveUid').val() === auth.uid)) || (!data.exists() && !newData.exists()))",
+            ".validate": "newData.hasChildren(['catchId', 'demonUid', 'fugitiveUid', 'takenAt'])",
+            "catchId": { ".validate": "newData.isString()" },
+            "demonUid": { ".validate": "newData.isString()" },
+            "fugitiveUid": { ".validate": "newData.isString()" },
+            "takenAt": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
         },
 
         "photos": {
