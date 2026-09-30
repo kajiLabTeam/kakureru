@@ -65,6 +65,10 @@ class PhotoCaptureController {
 /// ないとき。`takesFootPhotos`)。途中で役割が変わることがあるので、タイマーが
 /// 発火した時点の値を使う。通知は1スロットにつき1回まで。
 ///
+/// [skippedSlots]は特典 `skip_foot_photo` で飛ばすスロットの番号
+/// (`skippedFootPhotoSlots`)。そのスロットでは撮っていなくても撮影を
+/// 促さない(バナーも通知も出さない)。
+///
 /// このタイマー/アップロード状態はGamePageが消えたら一緒に消えてよい
 /// (次に入った時はlastPhotoAtから復元できる)ため、AGENTS.mdの
 /// 判断基準に従いRiverpodではなくhooksで持つ(useGameSessionが束ねる
@@ -79,12 +83,14 @@ PhotoCaptureController usePhotoCaptureController(
   required int? lastPhotoAt,
   required int serverTimeOffsetMillis,
   required bool notifyWhenDue,
+  Set<int> skippedSlots = const {},
 }) {
   final stateHook = useState(const PhotoCaptureState());
   // タイマーのコールバックやアップロード完了時の処理は作った時点の引数を
   // 閉じ込めるので、最新の値を参照できるようにrefへ入れておく。
   final notifyWhenDueRef = useRef(notifyWhenDue)..value = notifyWhenDue;
   final intervalSecRef = useRef(intervalSec)..value = intervalSec;
+  final skippedSlotsRef = useRef(skippedSlots)..value = skippedSlots;
   final releasedAtRef = useRef(releasedAt)..value = releasedAt;
   final lastPhotoAtRef = useRef(lastPhotoAt)..value = lastPhotoAt;
   final offsetRef = useRef(serverTimeOffsetMillis)
@@ -120,12 +126,20 @@ PhotoCaptureController usePhotoCaptureController(
         ? photoAt
         : math.max(photoAt, uploadedAt);
 
-    final due = isPhotoCaptureDue(
-      startedAt: start,
-      lastPhotoAt: takenAt,
-      nowMillis: nowMillis,
-      intervalSec: interval,
-    );
+    final due =
+        isPhotoCaptureDue(
+          startedAt: start,
+          lastPhotoAt: takenAt,
+          nowMillis: nowMillis,
+          intervalSec: interval,
+        ) &&
+        !skippedSlotsRef.value.contains(
+          currentPhotoSlotIndex(
+            startedAt: start,
+            nowMillis: nowMillis,
+            intervalSec: interval,
+          ),
+        );
     if (due != stateHook.value.isDue) {
       stateHook.value = stateHook.value.copyWith(isDue: due);
     }
@@ -163,20 +177,31 @@ PhotoCaptureController usePhotoCaptureController(
     );
   }
 
-  useEffect(() {
-    // useEffect内で同期的にstate.value = ... を書くとビルド中の
-    // Navigator操作の「!_debugLocked」アサーション失敗と同種の事故に
-    // つながった経緯があるため(game_alerts.dart参照)、フレーム確定後に回す。
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!context.mounted) return;
-      evaluate(serverNow());
-    });
-    return () => dueTimerRef.value?.cancel();
-    // evaluate/stateHookはeffect内でのみ参照するクロージャの再生成元であり、
-    // 依存に加えるとタイマーが無限に張り直されてしまうため除外する
-    // (最新の値はrefから読む)。
-    // ignore: exhaustive_keys
-  }, [roomId, intervalSec, releasedAt, lastPhotoAt, serverTimeOffsetMillis]);
+  useEffect(
+    () {
+      // useEffect内で同期的にstate.value = ... を書くとビルド中の
+      // Navigator操作の「!_debugLocked」アサーション失敗と同種の事故に
+      // つながった経緯があるため(game_alerts.dart参照)、フレーム確定後に回す。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        evaluate(serverNow());
+      });
+      return () => dueTimerRef.value?.cancel();
+      // evaluate/stateHookはeffect内でのみ参照するクロージャの再生成元であり、
+      // 依存に加えるとタイマーが無限に張り直されてしまうため除外する
+      // (最新の値はrefから読む)。
+      // ignore: exhaustive_keys
+    },
+    [
+      roomId,
+      intervalSec,
+      releasedAt,
+      lastPhotoAt,
+      serverTimeOffsetMillis,
+      // Setは中身が同じでも別インスタンスになるので、並べた文字列で比べる。
+      (skippedSlots.toList()..sort()).join(','),
+    ],
+  );
 
   Future<void> uploadWithRetry(Uint8List bytes) async {
     final uid = myUid;

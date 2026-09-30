@@ -26,6 +26,8 @@ Widget buildLocationMapForTest({
   required List<RoomUser> users,
   required String? myUid,
   List<LatLng> gameArea = const [],
+  MissionMapPoint? missionPoint,
+  bool enlargeDemonIcon = false,
 }) {
   return GameLocationMap(
     locations: locations,
@@ -33,8 +35,16 @@ Widget buildLocationMapForTest({
     myUid: myUid,
     cachedPosition: null,
     gameArea: gameArea,
+    missionPoint: missionPoint,
+    enlargeDemonIcon: enlargeDemonIcon,
   );
 }
+
+/// 地図に出すミッションの地点(アクセスポイント)と判定の半径(m)。
+typedef MissionMapPoint = ({double lat, double lng, double radiusM});
+
+/// `big_demon_icon` が効いているあいだの、鬼のピンの倍率。
+const enlargedDemonIconScale = 2.0;
 
 /// ゲーム中の地図。参加者のGPSピン、プレイエリアの境界と外側のマスクを描く。
 ///
@@ -55,6 +65,8 @@ class GameLocationMap extends HookWidget {
     required this.myUid,
     required this.cachedPosition,
     required this.gameArea,
+    this.missionPoint,
+    this.enlargeDemonIcon = false,
   });
 
   /// 地図に出す位置。自分から見えていい相手の分だけが渡ってくる。
@@ -71,6 +83,14 @@ class GameLocationMap extends HookWidget {
 
   /// ルーム設定で指定されたプレイエリア。未設定なら空。
   final List<LatLng> gameArea;
+
+  /// いま受けているアクセスポイント。点と判定範囲の破線の円を描く。
+  /// 無ければnull。
+  final MissionMapPoint? missionPoint;
+
+  /// 鬼のピンを[enlargedDemonIconScale]倍にするか(特典 `big_demon_icon`)。
+  /// 自分のピンは大きくしない。
+  final bool enlargeDemonIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -160,6 +180,10 @@ class GameLocationMap extends HookWidget {
                   _areaBorderPolygon(areaPoints),
                 ],
               ),
+            if (missionPoint case final point?) ...[
+              PolygonLayer(polygons: [_missionRangePolygon(point)]),
+              MarkerLayer(markers: [_missionMarker(point)]),
+            ],
             AnimatedMarkerLayer(
               markers: [
                 for (final visual in locationVisuals)
@@ -228,6 +252,67 @@ class GameLocationMap extends HookWidget {
     );
   }
 
+  /// アクセスポイントの判定範囲(半径 `radiusM`)の破線の円。
+  /// flutter_mapのCircleMarkerは破線にできないため、円周を多角形で描く。
+  Polygon<Object> _missionRangePolygon(MissionMapPoint point) {
+    const distance = latlong.Distance();
+    final center = latlong.LatLng(point.lat, point.lng);
+    return Polygon(
+      points: [
+        for (var deg = 0; deg < 360; deg += 10)
+          distance.offset(center, point.radiusM, deg),
+      ],
+      color: missionRangeFillColor,
+      borderStrokeWidth: 2,
+      borderColor: missionPointColor,
+      pattern: StrokePattern.dashed(segments: const [6, 4]),
+    );
+  }
+
+  /// アクセスポイントの点とラベル。
+  Marker _missionMarker(MissionMapPoint point) {
+    return Marker(
+      point: latlong.LatLng(point.lat, point.lng),
+      width: 110,
+      height: 58,
+      alignment: const Alignment(0, (58 / 2 - 34 / 2) / (58 / 2)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: missionPointColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: const [
+                BoxShadow(color: Color(0x4D1B1B19), blurRadius: 6),
+              ],
+            ),
+            child: const Icon(Icons.flag, size: 16, color: Colors.white),
+          ),
+          const SizedBox(height: 3),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: missionLabelColor,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Text(
+              'アクセスポイント',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// プレイエリアの境界線。ルーム設定画面と同じ青い破線で揃えている。
   Polygon<Object> _areaBorderPolygon(List<latlong.LatLng> areaPoints) {
     return Polygon(
@@ -281,6 +366,11 @@ class GameLocationMap extends HookWidget {
       role: displayRole,
     );
 
+    // 特典 `big_demon_icon` の間は、鬼のピンをアイコンの中心を起点に拡大する。
+    // Transformはレイアウトを変えないので、重なりの判定や座標合わせは
+    // 元の大きさのまま動く。
+    final enlarged =
+        enlargeDemonIcon && !isSelf && targetRole == UserRole.demon;
     final marker = Marker(
       // どの役割から見ても実座標に置く(issue #118でグリッドを廃止)。
       point: latlong.LatLng(location.latitude, location.longitude),
@@ -295,29 +385,33 @@ class GameLocationMap extends HookWidget {
       alignment: usesRoleIcon
           ? markerIconCenterAlignment
           : markerIconTipAlignment,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          MarkerIcon(icon: icon, color: color),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                height: 1.1,
+      child: Transform.scale(
+        scale: enlarged ? enlargedDemonIconScale : 1,
+        alignment: const Alignment(0, markerIconSize / markerHeight * 2 - 1),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MarkerIcon(icon: icon, color: color),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(4),
               ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  height: 1.1,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
 
@@ -332,6 +426,15 @@ class GameLocationMap extends HookWidget {
     return null;
   }
 }
+
+/// アクセスポイントの点と判定範囲の円の色(ミッションの色)。
+const missionPointColor = Color(0xFFC98A1E);
+
+/// アクセスポイントのラベルの地(白文字を載せる濃い方のミッションの色)。
+const missionLabelColor = Color(0xFF8A6A16);
+
+/// 判定範囲の円の塗り。
+const missionRangeFillColor = Color(0x1FC98A1E);
 
 /// GPSマーカーの幅。ラベル(名前)が入る幅。
 const markerWidth = 72.0;

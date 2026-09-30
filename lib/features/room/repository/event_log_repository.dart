@@ -27,7 +27,11 @@ enum GameEventType {
   gameEnded('game_ended'),
 
   /// 足元写真のアップロードに成功した。
-  photoTaken('photo_taken');
+  photoTaken('photo_taken'),
+
+  /// アクセスポイントのミッションを先着で取った。引いた特典は
+  /// `missions/{missionId}/reward` に残る。
+  missionClaimed('mission_claimed');
 
   const GameEventType(this.raw);
 

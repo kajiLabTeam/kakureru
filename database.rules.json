@@ -70,6 +70,16 @@
         "events": {
           ".read": "auth != null",
           ".write": "auth != null"
+        },
+
+        "missions": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+
+        "effects": {
+          ".read": "auth != null",
+          ".write": "auth != null"
         }
       }
     },

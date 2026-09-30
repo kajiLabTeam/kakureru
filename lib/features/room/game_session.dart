@@ -3,6 +3,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/ble/view_model/ble_view_model.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
+import 'package:kakureru/features/mission/view_model/mission_view_model.dart';
 import 'package:kakureru/features/room/game_alerts.dart';
 import 'package:kakureru/features/pressure/view_model/pressure_view_model.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
@@ -65,6 +66,14 @@ void useGameSession(
   useEffect(() {
     final alerts = ref.read(gameAlertsProvider.notifier)..start(roomId);
     return alerts.stop;
+  }, [roomId]);
+
+  // ミッションの生成(ホストの端末だけ)と、自分の到着・達成の判定。
+  // GameAlertsと同じく画面が消えていても進むよう、自前のタイマーで回す。
+  useEffect(() {
+    final missions = ref.read(missionControllerProvider.notifier)
+      ..start(roomId);
+    return missions.stop;
   }, [roomId]);
 
   // BLEの広告・スキャン(issue #16)。myUidが確定するまで
