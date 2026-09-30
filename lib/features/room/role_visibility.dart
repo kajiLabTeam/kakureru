@@ -9,8 +9,8 @@ import 'package:kakureru/features/room/model/room_user.dart';
 /// - 同じ役割同士は常に見える(チームメイトを隠す理由が無い)
 /// - 鬼→逃走者: releasedAt を過ぎたら(released フェーズ)見える
 /// - 逃走者→鬼: 鬼放出前(beforeRelease)は一切見えない(issue #10)、
-///   放出後も releasedAt + fugitiveInfoDelaySec(=最初の1分は鬼タイム)
-///   を過ぎるまで見えない
+///   放出後は releasedAt + fugitiveInfoDelaySec を過ぎたら見える
+///   (既定は0秒=放出されたらすぐ見える。以前は最初の1分を鬼タイムにしていた)
 ///
 /// Phase 1ではクライアント側の表示制御のみ(Phase 3でvisible/方式へ移行、
 /// docs/rtdb-schema.md参照)。
@@ -76,43 +76,40 @@ int? calculateCountdownSeconds({
   return ((target - nowMillis) / 1000).ceil();
 }
 
-/// 「捕まった」ボタンを表示すべきかどうかを判定する。
+/// 「捕まえた」の帯(CatchButtonStrip)自体を表示すべきかどうか(issue #140)。
 ///
-/// まだ誰も追いかけていない鬼放出前(beforeRelease)は不要なため、
-/// 逃走者(role==fugitive)かつ鬼放出後(phase==released)のときだけ表示する。
-bool canReportCaught({required UserRole role, required GamePhase phase}) {
-  return role == UserRole.fugitive && phase == GamePhase.released;
+/// 旧「鬼になる」ボタン(issue #43)と同じく、ゲーム中は最初から出しておき、
+/// 押せるかどうかだけを[canPressCatchButton]とBLEの検知で切り替える。
+/// 鬼の放出前も出す(放出されてから帯が現れるとレイアウトがずれ、
+/// どこに出るのかも分からないため)。
+bool shouldShowCatchButton({required UserRole? role}) {
+  return role == UserRole.demon;
 }
 
-/// 「鬼になる」ボタン(BecomeDemonButton)自体を表示すべきかどうかを判定する。
-///
-/// [canReportCaught]と同じ条件(逃走者かつ鬼放出後)で、BLEでの検知状況は
-/// 一切見ない(issue #43)。BLEの検知状況(bleBecomeDemonDetected)は、この
-/// 関数がtrueを返して表示されたボタンをdisabledにするかどうかにしか使わ
-/// ない(GamePage.build参照)。役割がまだ確定していない(roleがnull)間は
-/// 表示しない。
-bool shouldShowBecomeDemonButton({
-  required UserRole? role,
-  required GamePhase phase,
-}) {
-  return role != null && canReportCaught(role: role, phase: phase);
+/// 「捕まえた」を押せるフェーズか。放出前の鬼はまだ捕まえられない。
+/// 3m以内に逃走者がいるかどうか(BLE)は別に判定する。
+bool canPressCatchButton({required UserRole? role, required GamePhase phase}) {
+  return role == UserRole.demon && phase == GamePhase.released;
 }
 
 /// 新たに鬼になった参加者のうち、SnackBarで通知すべきuidの集合を返す。
 ///
-/// 自分自身(myUid)は除く。「捕まった」ボタンで自分が鬼になった場合は
-/// GamePage側で別途CaughtTransitionOverlay(全画面演出)を出すため、
-/// 同じ変化に対してSnackBarも表示すると二重の通知になってしまう(issue #15)。
+/// 自分自身(myUid)は除く。自分が捕まって鬼になった場合はGamePage側で
+/// 全画面の「あなたは鬼になった」を出すため、SnackBarも出すと二重になる。
+///
+/// [excludedUids](今のゲームで「捕まえた」で鬼になった人)も除く。捕獲は
+/// 取り消しの期限(catch_rules.dartの`catchUndoWindow`)を過ぎてから「AがBを捕まえた」として
+/// 全員に知らせる(issue #140)。ここで役割の変化をすぐ知らせると、期限前に
+/// 捕まったことが漏れ、取り消されたら撤回もできないため。
 Set<String> uidsToNotifyOfDemonChange({
   required Set<String> previousDemonUids,
   required Set<String> currentDemonUids,
   required String? myUid,
+  Set<String> excludedUids = const {},
 }) {
   return currentDemonUids
-      .difference(
-        previousDemonUids,
-      )
-      .where((uid) => uid != myUid)
+      .difference(previousDemonUids)
+      .where((uid) => uid != myUid && !excludedUids.contains(uid))
       .toSet();
 }
 
@@ -147,6 +144,7 @@ String? hiddenOpponentReason({
     case UserRole.fugitive:
       // 逃走者→鬼は、放出前に加えてfugitiveInfoDelaySecの間も見えない。
       if (phase == GamePhase.beforeRelease) {
+        if (fugitiveInfoDelaySec <= 0) return '鬼が放出されると表示されます';
         return '鬼の放出後、$fugitiveInfoDelaySec秒経つと表示されます';
       }
       if (releasedAt == null) return null;

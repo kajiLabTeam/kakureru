@@ -22,7 +22,7 @@ final blePermissionServiceProvider = Provider((ref) => BlePermissionService());
 
 /// 直近のRSSI(dBm)を何件保持して中央値を取るか。BLEの単発RSSIは反射等で
 /// 数dB〜十数dB振れることがあるため、単発の値だけで「3m以内」と即断すると
-/// 誤検知しやすい(押すと取り消せないreportCaughtにつながるボタンのため)。
+/// 誤検知しやすい(鬼の「捕まえた」ボタンを押せるかどうかに使うため)。
 const _rssiWindowSize = 3;
 
 /// 短縮uid→直近のBLE検知結果。継続的にストリームから更新されるため、

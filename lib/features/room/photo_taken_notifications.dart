@@ -9,11 +9,12 @@ import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:kakureru/features/room/view_model/room_view_model.dart';
 
-/// 撮影タイミングの通知(「足元の写真を撮ってください」)を出すか。
+/// 足元の写真を撮る側か(撮影バナーと「撮ってください」の通知を出すか)。
 ///
-/// 鬼は撮影しないので出さない(issue #120)。役割がまだ分からない間は、
-/// 逃走者が気づけないほうが困るので出す。
-bool shouldNotifyPhotoCaptureDue(UserRole? role) => role != UserRole.demon;
+/// 以前は鬼を撮影の対象から外していたが、鬼も写真を送れるようにする
+/// (issue #140)ため、鬼と逃走者のどちらも撮る。参加者一覧に自分が
+/// 見つからない(役割が分からない)間は出さない。
+bool takesFootPhotos(UserRole? role) => role != null;
 
 /// 新しく撮られた写真のうち、鬼である自分に知らせるべきものを返す
 /// (issue #120)。

@@ -161,10 +161,9 @@ const _photoCaptureDueNotificationId = 3;
 /// 撮影間隔が来たタイミングで出す通知(issue #107フォローアップ)。
 ///
 /// バナーは画面内表示のため、他のタブ(地図/写真)を見ている・アプリを
-/// バックグラウンドにしている等で気づかれないことがある。鬼には出さない
-/// (鬼は撮影しないため。代わりに逃走者が撮ったことを
-/// [showPhotoTakenNotification]で知らせる。issue #120)。出し分けは呼び出し側
-/// (`shouldNotifyPhotoCaptureDue`)で行う。チャンネルを`kakureru_release`/`kakureru_area`と分けるのは、
+/// バックグラウンドにしている等で気づかれないことがある。鬼も逃走者も撮る
+/// ので両方に出す(issue #140)。出し分けは呼び出し側(`takesFootPhotos`)で
+/// 行う。チャンネルを`kakureru_release`/`kakureru_area`と分けるのは、
 /// こちらは1ゲーム中に何度も繰り返し出るため、性格が違う通知と一緒に
 /// 端末側の設定をいじられたくないため。失敗してもログに残すだけ。
 Future<void> showPhotoCaptureDueNotification() {
@@ -211,5 +210,34 @@ Future<void> showPhotoTakenNotification(String message) {
       notificationDetails: const NotificationDetails(android: androidDetails),
     ),
     what: '写真の撮影の通知',
+  );
+}
+
+/// 「AがBを捕まえた」通知のID。他の通知とは別に取る。
+const _catchNotificationId = 5;
+
+/// 捕獲が確定した(取り消しの期限を過ぎた)ときに全員の端末へ出す通知
+/// (issue #140)。
+///
+/// 画面内のカードと同じ内容を、別のタブを見ている・画面OFFのときにも
+/// 気づけるよう端末通知でも出す。取り消されるかもしれない期限内には
+/// 出さない(出し分けは呼び出し側の`catchesToAnnounce`)。同じIDで出すので、
+/// 続けて捕まったら最新の内容に置き換わる。失敗してもログに残すだけ。
+Future<void> showCatchNotification(String message) {
+  const androidDetails = AndroidNotificationDetails(
+    'kakureru_catch',
+    '捕獲の通知',
+    channelDescription: '誰かが捕まったら通知します',
+    importance: Importance.high,
+    priority: Priority.high,
+  );
+  return _runOrLogFailure(
+    () => _plugin.show(
+      id: _catchNotificationId,
+      title: 'kakureru',
+      body: message,
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    ),
+    what: '捕獲の通知',
   );
 }

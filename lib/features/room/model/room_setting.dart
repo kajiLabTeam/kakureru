@@ -18,7 +18,9 @@ abstract class RoomSetting with _$RoomSetting {
     @Default(60) int releaseWaitSec,
     @Default(1800) int gameDurationSec,
     @Default(300) int photoIntervalSec,
-    @Default(60) int fugitiveInfoDelaySec,
+    // 逃走者が鬼の位置を見られるまでの、放出後の待ち時間。以前は60秒
+    // (最初の1分は鬼タイム)だったが、放出されたらすぐ見えるようにした。
+    @Default(0) int fugitiveInfoDelaySec,
     @Default(50) int senseDistanceRadiusM,
     int? updatedAt,
   }) = _RoomSetting;

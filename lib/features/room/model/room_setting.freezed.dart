@@ -481,7 +481,7 @@ return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.
 @JsonSerializable()
 
 class _RoomSetting extends RoomSetting {
-  const _RoomSetting({final  List<LatLng> gameArea = const [], this.releaseWaitSec = 60, this.gameDurationSec = 1800, this.photoIntervalSec = 300, this.fugitiveInfoDelaySec = 60, this.senseDistanceRadiusM = 50, this.updatedAt}): _gameArea = gameArea,super._();
+  const _RoomSetting({final  List<LatLng> gameArea = const [], this.releaseWaitSec = 60, this.gameDurationSec = 1800, this.photoIntervalSec = 300, this.fugitiveInfoDelaySec = 0, this.senseDistanceRadiusM = 50, this.updatedAt}): _gameArea = gameArea,super._();
   factory _RoomSetting.fromJson(Map<String, dynamic> json) => _$RoomSettingFromJson(json);
 
  final  List<LatLng> _gameArea;

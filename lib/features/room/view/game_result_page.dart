@@ -5,12 +5,15 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/providers/firebase_providers.dart';
 import 'package:kakureru/core/utils/avatar_initial.dart';
+import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/room/async_action.dart';
+import 'package:kakureru/features/room/catch_rules.dart';
 import 'package:kakureru/features/room/error_message.dart';
 import 'package:kakureru/features/room/game_outcome.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
+import 'package:kakureru/features/room/view/game/catch_photo_section.dart';
 import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/game/game_tone_theme.dart';
 import 'package:kakureru/features/room/view/leave_room_action.dart';
@@ -32,6 +35,11 @@ class GameResultPage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final roomAsync = ref.watch(roomStreamProvider(roomId));
     final myUid = ref.watch(myUidProvider);
+    // 捕まえた瞬間の写真(issue #140)。ゲーム中の写真タブと同じ一覧を出す。
+    final catches = ref.watch(catchesStreamProvider(roomId)).value ?? const [];
+    final catchPhotos =
+        ref.watch(catchPhotosStreamProvider(roomId)).value ?? const [];
+    final offset = ref.watch(serverTimeOffsetProvider).value ?? 0;
     final restart = useAsyncAction(context);
 
     // 破棄中(unmount中)はrefがもう使えずStateErrorになるため、disposeで使う
@@ -83,6 +91,12 @@ class GameResultPage extends HookConsumerWidget {
               // 逃げ切り、0人なら鬼の勝ち(issue #30)。
               final outcome = determineGameOutcome(
                 survivedFugitiveCount: survivedFugitives.length,
+              );
+              final galleryCatchPhotos = catchPhotosForGallery(
+                catchPhotos: catchPhotos,
+                catches: catches,
+                startedAt: room.startedAt,
+                nowMillis: serverNowMillis(offset),
               );
               final outcomeText = describeGameOutcome(
                 outcome: outcome,
@@ -168,6 +182,14 @@ class GameResultPage extends HookConsumerWidget {
                             user: user,
                             color: roleThemeOf(UserRole.demon).color,
                           ),
+                        if (galleryCatchPhotos.isNotEmpty) ...[
+                          const SizedBox(height: 24),
+                          CatchPhotoSection(
+                            roomId: roomId,
+                            users: room.users,
+                            catchPhotos: galleryCatchPhotos,
+                          ),
+                        ],
                       ],
                     ),
                   ),

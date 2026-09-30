@@ -1,10 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/room/model/room.dart';
+import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
 
 void main() {
   group('isRoleVisible', () {
+    test('既定の設定では、逃走者は鬼の放出と同時に鬼が見える', () {
+      final visible = isRoleVisible(
+        viewerRole: UserRole.fugitive,
+        targetRole: UserRole.demon,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: const RoomSetting().fugitiveInfoDelaySec,
+        nowMillis: 100000,
+      );
+      expect(visible, isTrue);
+    });
+
     const releasedAt = 100000;
     const fugitiveInfoDelaySec = 60;
 
@@ -309,84 +321,17 @@ void main() {
     });
   });
 
-  group('canReportCaught', () {
-    test('逃走者かつ鬼放出後なら表示する', () {
-      expect(
-        canReportCaught(role: UserRole.fugitive, phase: GamePhase.released),
-        isTrue,
-      );
-    });
-
-    test('逃走者でも鬼放出前は表示しない', () {
-      expect(
-        canReportCaught(
-          role: UserRole.fugitive,
-          phase: GamePhase.beforeRelease,
-        ),
-        isFalse,
-      );
-    });
-
-    test('鬼放出後でも自分が鬼なら表示しない', () {
-      expect(
-        canReportCaught(role: UserRole.demon, phase: GamePhase.released),
-        isFalse,
-      );
-    });
-
-    test('鬼かつ鬼放出前も表示しない', () {
-      expect(
-        canReportCaught(role: UserRole.demon, phase: GamePhase.beforeRelease),
-        isFalse,
-      );
-    });
-  });
-
-  group('shouldShowBecomeDemonButton', () {
-    // 「鬼になる」ボタン自体の表示条件はcanReportCaughtと同じで、BLEの
-    // 検知状況(bleBecomeDemonDetected)を一切見ない(issue #43)。ボタンが
-    // 常時表示され、BLE検知の有無はdisabled/enabledの切り替えにしか使わ
-    // れないことを担保するテスト。
-
-    test('逃走者かつ鬼放出後なら表示する(BLE検知の有無に関わらず常時表示)', () {
-      expect(
-        shouldShowBecomeDemonButton(
-          role: UserRole.fugitive,
-          phase: GamePhase.released,
-        ),
-        isTrue,
-      );
-    });
-
-    test('逃走者でも鬼放出前は表示しない', () {
-      expect(
-        shouldShowBecomeDemonButton(
-          role: UserRole.fugitive,
-          phase: GamePhase.beforeRelease,
-        ),
-        isFalse,
-      );
-    });
-
-    test('鬼放出後でも自分が鬼なら表示しない', () {
-      expect(
-        shouldShowBecomeDemonButton(
-          role: UserRole.demon,
-          phase: GamePhase.released,
-        ),
-        isFalse,
-      );
-    });
-
-    test('役割がまだ確定していない(null)間は表示しない', () {
-      expect(
-        shouldShowBecomeDemonButton(role: null, phase: GamePhase.released),
-        isFalse,
-      );
-    });
-  });
-
   group('uidsToNotifyOfDemonChange', () {
+    test('excludedUidsの相手は通知対象から除く(捕獲は取り消し期限後に別で知らせる)', () {
+      final result = uidsToNotifyOfDemonChange(
+        previousDemonUids: {},
+        currentDemonUids: {'a', 'b'},
+        myUid: 'me',
+        excludedUids: {'a'},
+      );
+      expect(result, {'b'});
+    });
+
     test('新たに鬼になった相手を通知対象にする', () {
       final result = uidsToNotifyOfDemonChange(
         previousDemonUids: {},
@@ -425,6 +370,29 @@ void main() {
   });
 
   group('hiddenOpponentReason(逃走者視点)', () {
+    // 待ち時間が0秒(既定)なら「0秒経つと」とは言わない。
+    test('待ち時間0秒なら、鬼放出前は「放出されると表示」と案内する', () {
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.fugitive,
+        phase: GamePhase.beforeRelease,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: 0,
+        nowMillis: 0,
+      );
+      expect(reason, '鬼が放出されると表示されます');
+    });
+
+    test('待ち時間0秒なら、放出された瞬間から案内を出さない', () {
+      final reason = hiddenOpponentReason(
+        viewerRole: UserRole.fugitive,
+        phase: GamePhase.released,
+        releasedAt: 100000,
+        fugitiveInfoDelaySec: 0,
+        nowMillis: 100000,
+      );
+      expect(reason, isNull);
+    });
+
     test('鬼放出前は、放出後の待ち時間を案内する', () {
       final reason = hiddenOpponentReason(
         viewerRole: UserRole.fugitive,
@@ -515,6 +483,32 @@ void main() {
         nowMillis: 0,
       );
       expect(reasonWithDelay(0), reasonWithDelay(120));
+    });
+  });
+
+  group('shouldShowCatchButton / canPressCatchButton', () {
+    test('鬼なら放出前から帯を出すが、押せるのは放出後だけ', () {
+      expect(shouldShowCatchButton(role: UserRole.demon), isTrue);
+      expect(
+        canPressCatchButton(
+          role: UserRole.demon,
+          phase: GamePhase.beforeRelease,
+        ),
+        isFalse,
+      );
+      expect(
+        canPressCatchButton(role: UserRole.demon, phase: GamePhase.released),
+        isTrue,
+      );
+    });
+
+    test('逃走者・役割未確定には帯を出さず、押せもしない', () {
+      for (final role in [UserRole.fugitive, null]) {
+        expect(shouldShowCatchButton(role: role), isFalse);
+        for (final phase in GamePhase.values) {
+          expect(canPressCatchButton(role: role, phase: phase), isFalse);
+        }
+      }
     });
   });
 }

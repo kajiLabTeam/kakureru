@@ -18,21 +18,22 @@ import 'package:kakureru/features/room/view/game_result_page.dart';
 /// 走って結果画面に着けばよい(そのとき終了の通知は[GameAlerts]が既に
 /// 出している)。
 ///
-/// [isShowingCaughtTransition]がtrueの間は遷移を見送る。「捕まった」
-/// 確定演出(CaughtTransitionOverlay)の表示中に結果画面へ差し替えると
-/// 演出が一瞬で消えてしまうため、演出を閉じた後の再描画で改めて判定させる。
+/// [isNavigationBlocked]がtrueの間は遷移を見送る。捕まった側の
+/// 「あなたは鬼になった」(取り消しの受付中)や、鬼の「捕まえた」の撮影画面を
+/// 開いている間に結果画面へ差し替えると、取り消しも写真の送信もできずに
+/// 消えてしまうため(issue #140)。閉じた後の再描画で改めて判定させる。
 void useGameOverNavigation(
   WidgetRef ref,
   BuildContext context, {
   required String roomId,
-  required bool isShowingCaughtTransition,
+  required bool isNavigationBlocked,
 }) {
   final isGameOver = ref.watch(gameAlertsProvider).isGameOver;
   final hasNavigated = useRef(false);
   final photoRepository = useMemoized(PhotoRepository.new, const []);
   useEffect(() {
     if (hasNavigated.value || !isGameOver) return null;
-    if (isShowingCaughtTransition) return null;
+    if (isNavigationBlocked) return null;
     hasNavigated.value = true;
     // ルームが終わった写真キャッシュはもう使われないため、この端末から
     // 削除しておく(spec: 「ルーム終了時、またはキャッシュが約200MBを
@@ -58,5 +59,5 @@ void useGameOverNavigation(
       );
     });
     return null;
-  }, [isGameOver, isShowingCaughtTransition]);
+  }, [isGameOver, isNavigationBlocked]);
 }

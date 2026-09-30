@@ -13,8 +13,12 @@ enum GameEventType {
   /// 鬼が放出された(ホスト端末が検知した時刻)。
   released('released'),
 
-  /// 逃走者が「捕まった」を申告した。uidは捕まった本人。
+  /// 鬼が「捕まえた」を確定した。uidは捕まえた鬼、targetUidは捕まった逃走者。
   caught('catch'),
+
+  /// 捕まった逃走者が、期限内に捕獲を取り消した。uidは取り消した本人
+  /// (捕まった逃走者)、targetUidは捕まえた鬼。
+  catchUndone('catch_undone'),
 
   /// 指名を受諾して鬼になった(開始前の初期鬼)。
   becameDemon('became_demon'),

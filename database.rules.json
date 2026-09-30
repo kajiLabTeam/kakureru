@@ -41,6 +41,11 @@
           ".write": "auth != null"
         },
 
+        "catchPhotos": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+
         "photos": {
           ".read": "auth != null",
           ".write": "auth != null"

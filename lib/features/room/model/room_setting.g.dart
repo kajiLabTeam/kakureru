@@ -25,7 +25,7 @@ _RoomSetting _$RoomSettingFromJson(Map<String, dynamic> json) => _RoomSetting(
   releaseWaitSec: (json['releaseWaitSec'] as num?)?.toInt() ?? 60,
   gameDurationSec: (json['gameDurationSec'] as num?)?.toInt() ?? 1800,
   photoIntervalSec: (json['photoIntervalSec'] as num?)?.toInt() ?? 300,
-  fugitiveInfoDelaySec: (json['fugitiveInfoDelaySec'] as num?)?.toInt() ?? 60,
+  fugitiveInfoDelaySec: (json['fugitiveInfoDelaySec'] as num?)?.toInt() ?? 0,
   senseDistanceRadiusM: (json['senseDistanceRadiusM'] as num?)?.toInt() ?? 50,
   updatedAt: (json['updatedAt'] as num?)?.toInt(),
 );

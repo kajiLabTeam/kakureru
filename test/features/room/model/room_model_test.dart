@@ -5,6 +5,11 @@ import 'package:kakureru/features/room/model/room_user.dart';
 
 void main() {
   group('RoomSetting', () {
+    // 逃走者は鬼が放出されたらすぐ鬼の位置を見られる(以前は60秒待ち)。
+    test('fugitiveInfoDelaySecの既定は0秒', () {
+      expect(const RoomSetting().fugitiveInfoDelaySec, 0);
+    });
+
     test(
       'fromMap parses RTDB-shaped Map<dynamic, dynamic> including gameArea',
       () {

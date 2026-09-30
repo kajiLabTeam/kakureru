@@ -68,3 +68,5 @@ night-run/state/*
 kakureru-photo-api/node_modules/
 kakureru-photo-api/.wrangler/
 .dev.vars
+# Widget Preview related
+.widget_preview/
