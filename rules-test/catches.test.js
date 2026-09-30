@@ -243,6 +243,18 @@ describe('catchPhotos', () => {
     await assertFails(set(ref(db(OTHER), `${ROOM}/catchPhotos/p1`), photo()));
   });
 
+  test('ルームの参加者でなければ書けない', async () => {
+    await assertFails(
+      set(ref(db('stranger'), `${ROOM}/catchPhotos/p1`), photo({ demonUid: 'stranger' })),
+    );
+  });
+
+  test('fugitiveUidは同じルームの自分以外の参加者に限る', async () => {
+    const d = db(DEMON);
+    await assertFails(set(ref(d, `${ROOM}/catchPhotos/p1`), photo({ fugitiveUid: 'stranger' })));
+    await assertFails(set(ref(d, `${ROOM}/catchPhotos/p2`), photo({ fugitiveUid: DEMON })));
+  });
+
   test('takenAtを過去や未来の時刻にできない', async () => {
     const d = db(DEMON);
     await assertFails(set(ref(d, `${ROOM}/catchPhotos/p1`), photo({ takenAt: Date.now() - 60_000 })));

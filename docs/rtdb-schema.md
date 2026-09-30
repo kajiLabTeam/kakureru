@@ -244,7 +244,7 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 | `catches/{catchId}` の作成 | `demonUserId` が書き込む本人 / `caughtAt` がサーバー時刻(`now`) / `fugitiveUserId` が同じルームの `users` にいて本人ではない / 本人もそのルームの `users` にいる / その `catchId` がまだ無い / `catchPhotoId` を含まない |
 | `catches/{catchId}` の削除(取り消し) | その捕獲の `demonUserId` か `fugitiveUserId` が本人 |
 | `catches/{catchId}` の更新(写真の紐づけ) | その捕獲の `demonUserId` が本人で、`demonUserId` / `fugitiveUserId` / `caughtAt` が変わらない(実質 `catchPhotoId` だけ) |
-| `catchPhotos/{photoId}` の作成 | `demonUid` が書き込む本人 / `takenAt` がサーバー時刻 / その `photoId` がまだ無い |
+| `catchPhotos/{photoId}` の作成 | `demonUid` が書き込む本人 / `takenAt` がサーバー時刻 / `fugitiveUid` が同じルームの `users` にいて本人ではない / 本人もそのルームの `users` にいる / その `photoId` がまだ無い |
 | `catchPhotos/{photoId}` の削除 | その写真の `demonUid` か `fugitiveUid` が本人(`undoCatch` は捕まった側が消すため) |
 | `catchPhotos/{photoId}` の更新 | 不可 |
 
