@@ -12,14 +12,11 @@ part 'sighting.g.dart';
 /// 区別するのはこのメタデータの置き場所だけで、R2側では区別しない。
 /// 足元の写真と違い、撮ったかどうかに関係なくルームの全員が見られる。
 ///
-/// コンストラクタと`fromJson`にはドキュメントコメントを付けない。freezedの
-/// 版によって生成ファイルへ写す/写さないが違い、CIの「生成コードが
-/// ソースと一致しているか」が端末によって落ちるため(ほかのモデルと同じ形)。
+/// `id` は photoId(`sightings/{photoId}`のキー。R2の画像本体と同じID)。
 /// RTDBからは[Sighting.fromMap]で読む。
 @freezed
 abstract class Sighting with _$Sighting {
   const factory Sighting({
-    /// photoId(`sightings/{photoId}`のキー。R2の画像本体と同じID)。
     required String id,
 
     /// 撮った人のuid。
