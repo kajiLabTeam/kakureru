@@ -5,6 +5,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/room/model/room_catch.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/photo_capture_config.dart';
 import 'package:kakureru/features/room/repository/photo_repository.dart';
@@ -52,6 +53,19 @@ class CatchCapturePage extends HookConsumerWidget {
     final remaining = users
         .where((u) => u.role == UserRole.fugitive && u.id != fugitiveUid)
         .length;
+
+    // 捕まえた相手が「取り消す」を押したら、撮る意味が無くなるので閉じる
+    // (取り消しの知らせはゲーム画面のSnackBarで出る)。
+    ref.listen(catchesStreamProvider(roomId), (previous, next) {
+      if (!catchWasUndone(
+        previous: previous?.value,
+        current: next.value,
+        catchId: catchId,
+      )) {
+        return;
+      }
+      if (context.mounted) Navigator.of(context).pop();
+    });
 
     // 画面内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
     final isPicking = useState(false);
@@ -108,6 +122,20 @@ class CatchCapturePage extends HookConsumerWidget {
       onTakePhoto: () => unawaited(takeAndSend()),
     );
   }
+}
+
+/// [catchId]の捕獲が、前回はあって今回は消えた(=取り消された)か。
+///
+/// 前回の一覧が無い(読み込み前)ときは判定しない。捕獲の書き込みが一覧に
+/// 載る前に「無い」と見て、開いた直後に閉じてしまわないようにするため。
+bool catchWasUndone({
+  required List<RoomCatch>? previous,
+  required List<RoomCatch>? current,
+  required String catchId,
+}) {
+  if (previous == null || current == null) return false;
+  return previous.any((c) => c.id == catchId) &&
+      !current.any((c) => c.id == catchId);
 }
 
 /// 捕まえた瞬間の写真を送り、結果としてSnackBarに出す1文を返す。

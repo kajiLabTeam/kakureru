@@ -1,7 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:kakureru/features/room/model/room.dart';
+import 'package:kakureru/features/room/model/room_catch.dart';
 import 'package:kakureru/features/room/repository/room_repository.dart';
 import 'package:kakureru/features/room/view/catch_capture_page.dart';
+import 'package:kakureru/features/room/view_model/room_view_model.dart';
+
+RoomCatch _catch(String id) =>
+    RoomCatch(id: id, fugitiveUserId: 'f', caughtAt: 0);
 
 Future<({List<String> calls})> _pump(
   WidgetTester tester, {
@@ -99,6 +108,87 @@ void main() {
 
       expect(calls, isEmpty);
       expect(message, '捕まえた瞬間の写真を送れませんでした');
+    });
+  });
+
+  group('catchWasUndone', () {
+    test('前回あった捕獲が消えたら取り消しとみなす', () {
+      expect(
+        catchWasUndone(
+          previous: [_catch('c1'), _catch('c2')],
+          current: [_catch('c2')],
+          catchId: 'c1',
+        ),
+        isTrue,
+      );
+    });
+
+    test('別の捕獲が消えただけなら取り消しではない', () {
+      expect(
+        catchWasUndone(
+          previous: [_catch('c1'), _catch('c2')],
+          current: [_catch('c1')],
+          catchId: 'c1',
+        ),
+        isFalse,
+      );
+    });
+
+    // 開いた直後、捕獲がまだ一覧に載っていないだけのときに閉じない。
+    test('前回の一覧に無かった(まだ載っていない)ときは取り消しではない', () {
+      expect(
+        catchWasUndone(previous: const [], current: const [], catchId: 'c1'),
+        isFalse,
+      );
+      expect(
+        catchWasUndone(previous: null, current: const [], catchId: 'c1'),
+        isFalse,
+      );
+    });
+  });
+
+  group('CatchCapturePage', () {
+    testWidgets('捕まえた相手が取り消したら、撮影画面を閉じる', (tester) async {
+      final catches = StreamController<List<RoomCatch>>();
+      addTearDown(catches.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            catchesStreamProvider.overrideWith((ref, _) => catches.stream),
+            roomStreamProvider.overrideWith(
+              (ref, _) => const Stream<Room>.empty(),
+            ),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const CatchCapturePage(
+                      roomId: 'r',
+                      catchId: 'c1',
+                      fugitiveUid: 'f',
+                      fugitiveName: 'たろう',
+                    ),
+                  ),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      catches.add([_catch('c1')]);
+      await tester.pumpAndSettle();
+      expect(find.byType(CatchCapturePage), findsOneWidget);
+
+      catches.add(const []);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CatchCapturePage), findsNothing);
+      expect(find.text('open'), findsOneWidget);
     });
   });
 }
