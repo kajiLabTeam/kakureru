@@ -229,7 +229,7 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 1. 鬼が `RoomRepository.reportCatch` で `catches/{catchId}` を書く。`users/{uid}` は本人しか書けないため、逃走者の役割はここでは変えない
 2. 捕まった本人の端末が `catches` を購読していて、自分宛ての捕獲を見つけたら `acceptCaught` で自分の `role` を `DEMON` にする(`useCaughtByDemon`)
-3. 捕まった本人は `caughtAt` から10秒(`lib/features/room/catch_rules.dart` の `catchUndoWindow`)の間だけ `undoCatch` で取り消せる。**捕獲を先に消し、役割を後で `FUGITIVE` に戻す**(逆だと、戻った瞬間に残っている捕獲を見てまた鬼になる)。写真が付いていれば `catchPhotos/{photoId}` も消す
+3. 捕まった本人は `caughtAt` から10秒(`lib/features/room/catch_rules.dart` の `catchUndoWindow`)の間だけ `undoCatch` で取り消せる。**捕獲を先に消し、役割を後で `FUGITIVE` に戻す**(逆だと、戻った瞬間に残っている捕獲を見てまた鬼になる)。写真が付いていれば `catchPhotos/{photoId}` も消す。さらに削除がサーバーに届いた後、その `catchId` を指す `catchPhotos` を探し直して消す(下の「取り消しと写真送信の行き違い」参照)
 4. 期限を過ぎた捕獲だけを、各端末が「AがBを捕まえた」と全員に知らせる。期限はサーバー時刻で判定する
 5. 鬼が写真を撮って送ると、R2へ上げた後に `catchPhotos/{photoId}` を書き、`catches/{catchId}/catchPhotoId` をトランザクションで付ける。捕獲が既に取り消されていたら写真のメタデータを消して送信を失敗扱いにする
 
@@ -251,8 +251,20 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 - 項目は上のスキーマにあるものだけ。型(文字列・数値)と必須項目を `.validate` で確かめ、それ以外の子は拒否する
 - **取り消しの期限(10秒)はルールでは判定しない**。ルールで時刻を比べると、端末とサーバーの時計のずれで正当な取り消しまで弾かれるため。期限はクライアント(`undoCatch` のサーバー時刻による確認)の責務
 - 存在しない捕獲への「nullのまま」の書き込み(`attachCatchPhoto` のトランザクションが、取り消し済みの捕獲に対して確定する形)は許可している。これを拒否すると、取り消し済みの判定が権限エラーに化けるため
-- `catchPhotos` の作成時に、対応する捕獲が存在するかは見ていない。見ると、取り消しと写真送信が行き違ったときに `CatchAlreadyUndoneException` ではなく権限エラーになるため(孤立レコードの扱いは issue #145)
+- `catchPhotos` の作成時に、対応する捕獲が存在するかは見ていない。見ると、取り消しと写真送信が行き違ったときに `CatchAlreadyUndoneException` ではなく権限エラーになるため(孤立レコードの扱いは下の「取り消しと写真送信の行き違い」)
 - `undoCatch` は捕獲の削除を手元に先に反映するので、拒否が返る前に「あなたは鬼になった」の全画面が閉じる。そのため取り消しの実行と失敗のSnackBarは全画面ではなく `GamePage` 側(`useUndoCatch`)で行う
+
+### 取り消しと写真送信の行き違い(issue #145)
+
+`undoCatch` は「`catches/{catchId}/catchPhotoId` を読む → その写真と捕獲を消す」の順で動く。読んだ後・消す前に `attachCatchPhoto` が確定すると、そこで書かれた `catchPhotos` は削除の対象に入らず、捕獲だけが消えて写真のメタデータが取り残される。
+
+**方針: 取り消しの後に探し直して消す**(issueの案A)。
+
+- `undoCatch` は捕獲の削除がサーバーに届いた後、`catchPhotos` を1回読み、`catchId` がその捕獲で `fugitiveUid` が自分のものを消す(ルール上、捕まった側が消せるのは自分が当事者の写真だけ)
+- これで取りこぼしは無い。削除より前に確定した `attachCatchPhoto` の写真は必ず読める。削除より後に来た `attachCatchPhoto` は、トランザクションで捕獲が無いのを見て自分で写真を消す
+- `catchId` のインデックス(`.indexOn`)は付けず、一覧を読んで端末側で絞る。1ルームの捕獲写真は少なく、ルールの変更・デプロイを増やさないため
+- 探し直しに失敗しても取り消しは成功扱いにする(取り消し自体は済んでいる)。残るのは画面に出ない小さなレコードだけで(写真一覧は `catchPhotosForGallery` が確定した捕獲の `catchId` で絞る)、画像本体はR2で7日後に消える。ルームごとの削除を実装するときに、まとめて片付く
+- 捕獲の存在を `attachCatchPhoto` 側で同じトランザクション内に確かめる案(案B)は、`catchPhotos` と `catches` が別ノードで原子的に書けず、窓の短さに対して手間が見合わないため採らない
 
 **確かめ方**: `rules-test/` に Firebase Local Emulator Suite で動かすテストがある(本番には触れない。Java と Node.js が要る)。
 
