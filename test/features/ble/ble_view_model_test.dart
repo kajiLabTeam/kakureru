@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/core/utils/permission_queue.dart';
@@ -340,6 +341,123 @@ void main() {
       final granted = await service.ensureGranted();
 
       expect(granted, isTrue);
+    });
+  });
+
+  group('BleViewModel.restart(撮影などで裏に回った後の張り直し)', () {
+    ({_FakeBleScanRepository repo, BleViewModel notifier}) setUpStarted(
+      FakeAsync async,
+    ) {
+      final repo = _FakeBleScanRepository();
+      final container = ProviderContainer(
+        overrides: [
+          bleScanRepositoryProvider.overrideWithValue(repo),
+          blePermissionServiceProvider.overrideWithValue(
+            _FakeBlePermissionService(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(bleViewModelProvider.notifier);
+      unawaited(notifier.start('my-uid'));
+      async.flushMicrotasks();
+      return (repo: repo, notifier: notifier);
+    }
+
+    test('スキャンと広告を止めてから始め直す。検知の状態は消さない', () {
+      fakeAsync((async) {
+        final (:repo, :notifier) = setUpStarted(async);
+        repo.emit(
+          const BleDetection(
+            shortUid: 'mana',
+            rssiDbm: -60,
+            detectedAtMillis: 1,
+          ),
+        );
+        async
+          ..flushMicrotasks()
+          ..elapse(bleRestartMinInterval);
+
+        notifier.restart();
+        async.flushMicrotasks();
+
+        expect(repo.startScanningCalls, 2);
+        expect(repo.stopScanningCalls, 1);
+        expect(repo.stopAdvertisingCalls, 1);
+        expect(repo.startAdvertisingCalls, 2);
+        expect(notifier.state.keys, contains('mana'));
+      });
+    });
+
+    test('前の開始・張り直しから10秒以内は張り直さない', () {
+      fakeAsync((async) {
+        final (:repo, :notifier) = setUpStarted(async);
+        async.elapse(const Duration(seconds: 5));
+
+        notifier.restart();
+        async.flushMicrotasks();
+        expect(repo.startScanningCalls, 1);
+
+        async.elapse(const Duration(seconds: 5));
+        notifier.restart();
+        async.flushMicrotasks();
+        expect(repo.startScanningCalls, 2);
+
+        notifier.restart();
+        async.flushMicrotasks();
+        expect(repo.startScanningCalls, 2);
+      });
+    });
+
+    test('start前・stop後は何もしない', () {
+      fakeAsync((async) {
+        final repo = _FakeBleScanRepository();
+        final container = ProviderContainer(
+          overrides: [
+            bleScanRepositoryProvider.overrideWithValue(repo),
+            blePermissionServiceProvider.overrideWithValue(
+              _FakeBlePermissionService(),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        final notifier = container.read(bleViewModelProvider.notifier)
+          ..restart();
+        expect(repo.startScanningCalls, 0);
+
+        unawaited(notifier.start('my-uid'));
+        async
+          ..flushMicrotasks()
+          ..elapse(const Duration(minutes: 1));
+        notifier
+          ..stop()
+          ..restart();
+        async.flushMicrotasks();
+        expect(repo.startScanningCalls, 1);
+        expect(repo.startAdvertisingCalls, 1);
+      });
+    });
+
+    test('10分ごとに張り直す。stop後は張り直さない', () {
+      fakeAsync((async) {
+        final (:repo, :notifier) = setUpStarted(async);
+
+        async
+          ..elapse(blePeriodicRestartInterval)
+          ..flushMicrotasks();
+        expect(repo.startScanningCalls, 2);
+
+        async
+          ..elapse(blePeriodicRestartInterval)
+          ..flushMicrotasks();
+        expect(repo.startScanningCalls, 3);
+
+        notifier.stop();
+        async
+          ..elapse(blePeriodicRestartInterval * 3)
+          ..flushMicrotasks();
+        expect(repo.startScanningCalls, 3);
+      });
     });
   });
 }

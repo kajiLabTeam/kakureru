@@ -41,6 +41,10 @@ void useGameSession(
   // 位置送信に失敗していたら、アプリへ戻ってきたタイミングで貼り直す。
   useLocationRetryOnResume(ref, roomId: roomId);
 
+  // BLEのスキャン・広告を、アプリへ戻ってきたタイミングで張り直す
+  // (撮影のカメラなどで裏に回ると、Android側で止まったまま戻らないため)。
+  useBleRestartOnResume(ref);
+
   // 気圧の送信。センサー購読自体は待機画面のキャリブレーションで既に
   // 始まっている想定(PressureViewModel.initは判定済みなら再判定しない)。
   useEffect(() {
@@ -124,5 +128,30 @@ void useLocationRetryOnResume(WidgetRef ref, {required String roomId}) {
     final location = ref.read(locationViewModelProvider);
     if (location.failure == LocationFailure.none) return;
     ref.read(locationViewModelProvider.notifier).start(roomId);
+  });
+}
+
+/// アプリが実際に背面へ回ってから戻ってきたときに、BLEのスキャンと広告を
+/// 張り直すフック([BleViewModel.restart])。
+///
+/// 撮影(外部のカメラアプリ)や画面OFFで裏に回ると、Android側でスキャン・
+/// 広告が止まったまま戻らないことがある。鬼が1人目を捕まえて写真を撮った
+/// 後、2人目に近づいても「捕まえた」が押せなかった(プレイテスト)。
+///
+/// [useLocationRetryOnResume]と同じく、**背面まで回ったことがある**ときだけ
+/// 動く(権限ダイアログが出ただけの`inactive`→`resumed`では張り直さない)。
+/// 張り直しすぎないための間隔は[BleViewModel.restart]の側で見ている。
+void useBleRestartOnResume(WidgetRef ref) {
+  final wentToBackground = useRef(false);
+  useOnAppLifecycleStateChange((previous, current) {
+    if (current == AppLifecycleState.paused ||
+        current == AppLifecycleState.hidden) {
+      wentToBackground.value = true;
+      return;
+    }
+    if (current != AppLifecycleState.resumed) return;
+    if (!wentToBackground.value) return;
+    wentToBackground.value = false;
+    ref.read(bleViewModelProvider.notifier).restart();
   });
 }
