@@ -11,9 +11,13 @@ part 'sighting.g.dart';
 /// に置く。足元の写真(`photos/`)・捕まえた瞬間の写真(`catchPhotos/`)と
 /// 区別するのはこのメタデータの置き場所だけで、R2側では区別しない。
 /// 足元の写真と違い、撮ったかどうかに関係なくルームの全員が見られる。
+///
+/// コンストラクタと`fromJson`にはドキュメントコメントを付けない。freezedの
+/// 版によって生成ファイルへ写す/写さないが違い、CIの「生成コードが
+/// ソースと一致しているか」が端末によって落ちるため(ほかのモデルと同じ形)。
+/// RTDBからは[Sighting.fromMap]で読む。
 @freezed
 abstract class Sighting with _$Sighting {
-  /// 目撃写真1件ぶんのメタデータを作る。
   const factory Sighting({
     /// photoId(`sightings/{photoId}`のキー。R2の画像本体と同じID)。
     required String id,
@@ -29,7 +33,6 @@ abstract class Sighting with _$Sighting {
     String? place,
   }) = _Sighting;
 
-  /// json_serializableが生成する読み込み。RTDBからは[Sighting.fromMap]を使う。
   factory Sighting.fromJson(Map<String, dynamic> json) =>
       _$SightingFromJson(json);
 
