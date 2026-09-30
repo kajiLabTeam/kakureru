@@ -10,6 +10,8 @@ import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/room/area_alert.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
+import 'package:kakureru/features/wifi/model/proximity_level.dart';
+import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 
 /// 鬼の放出から1件目のミッションを出すまでの時間。
@@ -274,8 +276,9 @@ typedef ArrivalProgress = ({
   /// 最後に数えた読み取りの時刻。同じ読み取りを二重に数えない。
   int? lastSampleAt,
 
-  /// 到着したか。一度到着したら、そのミッションの間は到着のままにする
-  /// (GPSのブレで「特典を引く」が出たり消えたりしないように)。
+  /// 一度でも到着したか(範囲内が[requiredConsecutiveInRange]回続いたか)。
+  /// そのミッションの間は保つが、これだけでは引けない。引けるかどうかは
+  /// いまの読み取りと合わせて[canClaimAccessPoint]で決める。
   bool arrived,
 });
 
@@ -291,6 +294,8 @@ const ArrivalProgress initialArrival = (
 /// - 範囲内が[requiredConsecutiveInRange]回続いたら到着
 /// - 範囲外・精度が悪い読み取りで連続は途切れる
 /// - 同じ時刻の読み取り(位置が更新されていない)は数えない
+/// - 一度到着したら、以後の読み取りでは変えない(戻ってきたときに、
+///   また2回待たせないため)
 ArrivalProgress advanceArrival(
   ArrivalProgress previous,
   AccessPointReading reading,
@@ -310,6 +315,27 @@ ArrivalProgress advanceArrival(
     lastSampleAt: sampleAt,
     arrived: streak >= requiredConsecutiveInRange,
   );
+}
+
+/// いま「特典を引く」を押せるか。
+///
+/// 一度到着していて([ArrivalProgress.arrived])、**いまの読み取りでも範囲の
+/// 外に出ていない**ときだけ引ける。一度通っただけで、離れた場所から期限まで
+/// 引けてしまうのを防ぐ(「先に着いた人が取る」ため)。
+///
+/// 到着した後にGPSの精度が悪くなっただけ([AccessPointFix.weakGps])なら
+/// 引ける。精度が悪いときは距離も当てにならず、その場に立っている人の
+/// ボタンがブレで消えてしまうため。位置が届いていないとき(noFix)は
+/// 確かめられないので引けない。
+bool canClaimAccessPoint({
+  required ArrivalProgress arrival,
+  required AccessPointReading reading,
+}) {
+  if (!arrival.arrived) return false;
+  return switch (reading.fix) {
+    AccessPointFix.inside || AccessPointFix.weakGps => true,
+    AccessPointFix.outside || AccessPointFix.noFix => false,
+  };
 }
 
 /// 先着1名のトランザクションの中身(`missions/{missionId}` に対して回す)。
@@ -400,4 +426,21 @@ WifiOverlapMetrics wifiOverlapMetrics(
     selfCount: self.length,
     medianDiffDbm: calculateMedianRssiDiff(self, target),
   );
+}
+
+/// [candidateUids]の順に見て、Wi-Fiの判定が「反応あり」(close)の最初の
+/// 相手。いなければnull。「鬼に近づけ」で、達成の判定に使われた鬼を
+/// 画面に出すために使う。
+String? firstCloseUid(
+  List<WifiProximityEntry> entries,
+  Iterable<String> candidateUids,
+) {
+  final close = {
+    for (final entry in entries)
+      if (entry.level == ProximityLevel.close) entry.uid,
+  };
+  for (final uid in candidateUids) {
+    if (close.contains(uid)) return uid;
+  }
+  return null;
 }

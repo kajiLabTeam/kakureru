@@ -87,77 +87,83 @@ void main() {
       intervalSec: interval,
     );
 
-    Set<int> skipped(List<RoomEffect> effects, {int? lastPhotoAt}) =>
-        skippedFootPhotoSlots(
-          effects: effects,
-          myUid: 'me',
-          scheduleStartMillis: start,
+    int? slotToSkip(int now, {required bool isDue}) => footPhotoSlotToSkip(
+      scheduleStartMillis: start,
+      intervalSec: interval,
+      nowMillis: now,
+      isDue: isDue,
+    );
+
+    test('引いた瞬間に撮影タイムが来ていてまだ撮っていなければ、そのスロット', () {
+      expect(slotToSkip(slotStart(2) + 10000, isDue: true), 2);
+    });
+
+    test('撮影タイムが来ていない・もう撮った後なら、次のスロット', () {
+      expect(slotToSkip(slotStart(2) + 60000, isDue: false), 3);
+    });
+
+    test('撮影が始まる前に引いたら、最初の撮影タイム', () {
+      expect(slotToSkip(start - 60000, isDue: false), 0);
+    });
+
+    test('撮影スケジュールが決まっていなければnull', () {
+      expect(
+        footPhotoSlotToSkip(
+          scheduleStartMillis: null,
           intervalSec: interval,
-          lastPhotoAt: lastPhotoAt,
-        );
-
-    RoomEffect skipAt(int at, {String byUid = 'me', String id = 's'}) =>
-        _effect(
-          id: id,
-          type: RewardType.skipFootPhoto,
-          byUid: byUid,
-          startedAt: at,
-        );
-
-    test('撮影タイムが来ていてまだ撮っていなければ、そのスロットを飛ばす', () {
-      expect(
-        skipped([skipAt(slotStart(2) + 10000)], lastPhotoAt: slotStart(1)),
-        {2},
-      );
-    });
-
-    test('もう撮った後なら、次のスロットを飛ばす', () {
-      expect(
-        skipped(
-          [skipAt(slotStart(2) + 60000)],
-          lastPhotoAt: slotStart(2) + 5000,
+          nowMillis: 0,
+          isDue: false,
         ),
-        {3},
+        isNull,
       );
     });
 
-    test('撮影が始まる前に引いたら、最初の撮影タイムを飛ばす', () {
-      expect(skipped([skipAt(start - 60000)]), {0});
+    RoomEffect skip(
+      int? skipSlot, {
+      String byUid = 'me',
+      String id = 's',
+      int? startedAt,
+    }) => _effect(
+      id: id,
+      type: RewardType.skipFootPhoto,
+      byUid: byUid,
+      startedAt: startedAt ?? slotStart(2) + 10000,
+    ).copyWith(skipSlot: skipSlot);
+
+    Set<int> skipped(List<RoomEffect> effects) => skippedFootPhotoSlots(
+      effects: effects,
+      myUid: 'me',
+      scheduleStartMillis: start,
+      intervalSec: interval,
+    );
+
+    // 以前は lastPhotoAt から計算し直していたため、引いた後に撮り直すと
+    // 飛ばす回が撮影済みのスロットへずれていた。いまは引いた瞬間に決めて
+    // 書いた skipSlot だけを見る(lastPhotoAt は受け取らない)。
+    test('引いた瞬間に決めたスロットだけを飛ばす(次の回は飛ばさない)', () {
+      expect(skipped([skip(3)]), {3});
     });
 
-    test('飛ばすのは1回だけ(その次のスロットは飛ばさない)', () {
-      final result = skipped(
-        [skipAt(slotStart(2) + 10000)],
-        lastPhotoAt: slotStart(1),
-      );
-      expect(result.contains(3), isFalse);
-    });
-
-    test('2回引いたら2回ぶん飛ばす', () {
-      expect(
-        skipped(
-          [
-            skipAt(slotStart(2) + 10000, id: 'a'),
-            skipAt(slotStart(2) + 20000, id: 'b'),
-          ],
-          lastPhotoAt: slotStart(1),
-        ),
-        {2, 3},
-      );
+    test('2回引いて同じスロットに重なったら、2回ぶん飛ばす', () {
+      expect(skipped([skip(2, id: 'a'), skip(2, id: 'b')]), {2, 3});
     });
 
     test('ほかの人が引いたものは自分には効かない', () {
-      expect(skipped([skipAt(slotStart(2), byUid: 'other')]), isEmpty);
+      expect(skipped([skip(2, byUid: 'other')]), isEmpty);
+    });
+
+    test('skipSlotが無い古いデータは、引いた時刻のスロット', () {
+      expect(skipped([skip(null, startedAt: slotStart(4) + 1)]), {4});
+      expect(skipped([skip(null, startedAt: start - 1)]), {0});
     });
 
     test('撮影スケジュールが決まっていなければ空', () {
       expect(
         skippedFootPhotoSlots(
-          effects: [skipAt(slotStart(2))],
+          effects: [skip(2)],
           myUid: 'me',
           scheduleStartMillis: null,
           intervalSec: interval,
-          lastPhotoAt: null,
         ),
         isEmpty,
       );

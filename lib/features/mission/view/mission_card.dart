@@ -25,11 +25,18 @@ enum MissionCardStatus {
   /// 判定範囲に入った(2回続けて範囲内)。「特典を引く」を出す。
   arrived,
 
+  /// 一度着いたが、いまは範囲の外にいる。戻れば引ける。
+  leftRange,
+
   /// ほかの人に先に取られた。
   takenByOther,
 
   /// 自分が取った。
   claimedByMe,
+
+  /// 自分が取ったが、特典の書き込みが済んでいない(取った直後に通信が
+  /// 切れた等)。「特典を受け取る」でやり直せる。
+  claimedWithoutReward,
 
   /// 「鬼に近づけ」に挑戦中。
   approachInProgress,
@@ -41,8 +48,9 @@ enum MissionCardStatus {
 /// カードの状態を決める。
 ///
 /// 取られたかどうかを最初に見る(取られた後に位置の話を出しても意味が
-/// 無いため)。次に権限、到着、GPSの順。到着は一度決まったら保つ
-/// ([advanceArrival])ので、到着後にGPSが弱くなってもボタンは消えない。
+/// 無いため)。次に権限、到着、GPSの順。到着した後は、いまの読み取りで
+/// 引けるかを[canClaimAccessPoint]で決める(範囲の外に出たら引けない。
+/// GPSが弱くなっただけなら引ける)。
 MissionCardStatus missionCardStatusOf({
   required Mission mission,
   required String? myUid,
@@ -58,16 +66,22 @@ MissionCardStatus missionCardStatusOf({
     case MissionType.accessPoint:
       final claimedBy = mission.claimedBy;
       if (claimedBy != null) {
-        return claimedBy == myUid
-            ? MissionCardStatus.claimedByMe
-            : MissionCardStatus.takenByOther;
+        if (claimedBy != myUid) return MissionCardStatus.takenByOther;
+        return mission.reward == null
+            ? MissionCardStatus.claimedWithoutReward
+            : MissionCardStatus.claimedByMe;
       }
       if (locationFailure == LocationFailure.locationPermission) {
         return MissionCardStatus.needsLocationPermission;
       }
-      final arrived =
-          progress.missionId == mission.id && progress.arrival.arrived;
-      if (arrived) return MissionCardStatus.arrived;
+      if (progress.missionId == mission.id && progress.arrival.arrived) {
+        if (canClaimAccessPoint(arrival: progress.arrival, reading: reading)) {
+          return MissionCardStatus.arrived;
+        }
+        if (reading.fix == AccessPointFix.outside) {
+          return MissionCardStatus.leftRange;
+        }
+      }
       return switch (reading.fix) {
         AccessPointFix.noFix => MissionCardStatus.locating,
         AccessPointFix.weakGps => MissionCardStatus.weakGps,
@@ -204,6 +218,8 @@ class MissionCard extends StatelessWidget {
     MissionCardStatus.arrived => 'アクセスポイントに着いた',
     MissionCardStatus.takenByOther => 'ほかの人に取られた',
     MissionCardStatus.claimedByMe => '特典を引いた',
+    MissionCardStatus.claimedWithoutReward => '特典をまだ受け取っていない',
+    MissionCardStatus.leftRange => '判定範囲の外に出た',
     MissionCardStatus.approachInProgress ||
     MissionCardStatus.approachAchieved => '鬼に近づけ',
     MissionCardStatus.locating ||
@@ -256,6 +272,21 @@ class MissionCard extends StatelessWidget {
           const _Notice(text: 'まだ誰も取っていない', dot: true),
           const SizedBox(height: 9),
           _footer('判定範囲（半径15m）の中にいる'),
+        ];
+      case MissionCardStatus.leftRange:
+        return [
+          const SizedBox(height: 9),
+          _distanceRow(),
+          const SizedBox(height: 9),
+          _footer('半径15m に戻ると 特典 を引ける'),
+        ];
+      case MissionCardStatus.claimedWithoutReward:
+        return const [
+          SizedBox(height: 6),
+          Text(
+            '先に取れたが、特典の書き込みが終わっていない。下のボタンで受け取れる',
+            style: TextStyle(fontSize: 12, height: 1.5, color: gameMuted),
+          ),
         ];
       case MissionCardStatus.takenByOther:
         final name = claimedByName;
@@ -525,7 +556,12 @@ class MissionClaimButton extends StatelessWidget {
     super.key,
     required this.onPressed,
     required this.isClaiming,
+    this.label = '特典を引く',
   });
+
+  /// ボタンの文言。取った後に特典の書き込みをやり直すときは
+  /// 「特典を受け取る」にする。
+  final String label;
 
   /// 押したとき。
   final VoidCallback? onPressed;
@@ -566,7 +602,7 @@ class MissionClaimButton extends StatelessWidget {
                     ),
                   )
                 : const Icon(Icons.card_giftcard),
-            label: const Text('特典を引く'),
+            label: Text(label),
           ),
         ),
         const SizedBox(height: 7),

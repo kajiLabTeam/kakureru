@@ -20,6 +20,11 @@ const _accessPoint = Mission(
   radiusM: 15,
 );
 
+const _arrived = MissionProgress(
+  missionId: 'm1',
+  arrival: (streak: 2, lastSampleAt: 2, arrived: true),
+);
+
 const _approach = Mission(
   id: 'a1',
   type: MissionType.approachDemon,
@@ -69,12 +74,18 @@ void main() {
     test('範囲内が1回だけではまだ到着にしない(2回続くまで)', () {
       expect(status(fix: AccessPointFix.inside), MissionCardStatus.approaching);
       expect(
-        status(
-          progress: const MissionProgress(
-            missionId: 'm1',
-            arrival: (streak: 2, lastSampleAt: 2, arrived: true),
-          ),
-        ),
+        status(fix: AccessPointFix.inside, progress: _arrived),
+        MissionCardStatus.arrived,
+      );
+    });
+
+    test('到着した後に範囲の外へ出たら「範囲の外に出た」で、引けない', () {
+      expect(status(progress: _arrived), MissionCardStatus.leftRange);
+    });
+
+    test('到着した後にGPSが弱くなっただけなら、引ける', () {
+      expect(
+        status(fix: AccessPointFix.weakGps, progress: _arrived),
         MissionCardStatus.arrived,
       );
     });
@@ -100,8 +111,21 @@ void main() {
         MissionCardStatus.takenByOther,
       );
       expect(
-        status(mission: _accessPoint.copyWith(claimedBy: 'me', claimedAt: 1)),
+        status(
+          mission: _accessPoint.copyWith(
+            claimedBy: 'me',
+            claimedAt: 1,
+            reward: RewardType.blockClues,
+          ),
+        ),
         MissionCardStatus.claimedByMe,
+      );
+    });
+
+    test('自分が取ったのに特典が書かれていなければ、受け取り直せる状態にする', () {
+      expect(
+        status(mission: _accessPoint.copyWith(claimedBy: 'me', claimedAt: 1)),
+        MissionCardStatus.claimedWithoutReward,
       );
     });
 
@@ -232,6 +256,19 @@ void main() {
     expect(size.width, greaterThanOrEqualTo(44));
     await tester.tap(button);
     expect(pressed, 1);
+  });
+
+  testWidgets('受け取り直すときは「特典を受け取る」と出す', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        MissionClaimButton(
+          label: '特典を受け取る',
+          isClaiming: false,
+          onPressed: () {},
+        ),
+      ),
+    );
+    expect(find.text('特典を受け取る'), findsOneWidget);
   });
 
   testWidgets('送信中の「特典を引く」は押せない', (tester) async {

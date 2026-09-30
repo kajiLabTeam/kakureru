@@ -12,6 +12,7 @@ _RoomEffect _$RoomEffectFromJson(Map<String, dynamic> json) => _RoomEffect(
   byUid: json['byUid'] as String,
   startedAt: (json['startedAt'] as num).toInt(),
   durationMs: (json['durationMs'] as num).toInt(),
+  skipSlot: (json['skipSlot'] as num?)?.toInt(),
 );
 
 Map<String, dynamic> _$RoomEffectToJson(_RoomEffect instance) =>
@@ -21,6 +22,7 @@ Map<String, dynamic> _$RoomEffectToJson(_RoomEffect instance) =>
       'byUid': instance.byUid,
       'startedAt': instance.startedAt,
       'durationMs': instance.durationMs,
+      'skipSlot': instance.skipSlot,
     };
 
 const _$RewardTypeEnumMap = {

@@ -75,6 +75,28 @@ void main() {
       final effect = _effects(db).values.single as Map<dynamic, dynamic>;
       expect(effect['type'], reward.raw);
       expect(effect['durationMs'], reward.duration.inMilliseconds);
+      // 効果のキーはミッションID(やり直しても重ならないように)。
+      expect(_effects(db).keys.single, 'm1');
+      expect(effect['startedAt'], 5000);
+    });
+
+    test('足元写真の特典なら、押した瞬間に決めた飛ばすスロットを書く', () async {
+      // skip_foot_photo を引く乱数の種を探す。
+      for (var seed = 0; seed < 50; seed++) {
+        if (drawReward(math.Random(seed)) != RewardType.skipFootPhoto) {
+          continue;
+        }
+        final db = _dbWithMission();
+        await MissionRepository(
+          db: db,
+          auth: FakeAuth('alice'),
+          random: math.Random(seed),
+          serverNow: () async => 5000,
+        ).claimMission(_roomId, 'm1', footPhotoSkipSlot: 3);
+        expect(db.read('rooms/$_roomId/effects/m1/skipSlot'), 3);
+        return;
+      }
+      fail('skip_foot_photo を引く種が見つからない');
     });
 
     test('もう取られていたら「ほかの人に取られた」で、何も書かない', () async {
@@ -115,6 +137,61 @@ void main() {
         throwsA(isA<MissionClaimUnavailableException>()),
       );
       expect(db.read('$_missionPath/claimedBy'), isNull);
+    });
+  });
+
+  group('completeClaim(取った後の特典の受け取り直し)', () {
+    test('取ったまま特典が書かれていなければ、受け取り直して効果を足す', () async {
+      // 取り合いには勝ったが、特典を書く前に通信が切れた状態。
+      final db = _dbWithMission();
+      db
+        ..write('$_missionPath/claimedBy', 'alice')
+        ..write('$_missionPath/claimedAt', 4000);
+
+      final reward = await _repo(db, 'alice').completeClaim(_roomId, 'm1');
+
+      expect(db.read('$_missionPath/reward'), reward.raw);
+      expect(_effects(db).keys.single, 'm1');
+    });
+
+    test('何度受け取り直しても、特典は変わらず効果も1件のまま', () async {
+      final db = _dbWithMission();
+      final first = await _repo(db, 'alice').claimMission(_roomId, 'm1');
+      final startedAt = db.read('rooms/$_roomId/effects/m1/startedAt');
+
+      final again = await MissionRepository(
+        db: db,
+        auth: FakeAuth('alice'),
+        random: math.Random(99),
+        serverNow: () async => 20000,
+      ).completeClaim(_roomId, 'm1');
+
+      expect(again, first.reward);
+      expect(_effects(db), hasLength(1));
+      // 残り時間も延びない(効果を書き直さない)。
+      expect(db.read('rooms/$_roomId/effects/m1/startedAt'), startedAt);
+    });
+
+    test('特典だけ書けて効果が書けていなければ、同じ特典で効果を足す', () async {
+      final db = _dbWithMission();
+      db
+        ..write('$_missionPath/claimedBy', 'alice')
+        ..write('$_missionPath/reward', 'big_demon_icon');
+
+      final reward = await _repo(db, 'alice').completeClaim(_roomId, 'm1');
+
+      expect(reward, RewardType.bigDemonIcon);
+      expect(db.read('rooms/$_roomId/effects/m1/type'), 'big_demon_icon');
+    });
+
+    test('ほかの人が取ったミッションは受け取れない', () async {
+      final db = _dbWithMission();
+      db.write('$_missionPath/claimedBy', 'bob');
+      await expectLater(
+        _repo(db, 'alice').completeClaim(_roomId, 'm1'),
+        throwsA(isA<MissionClaimUnavailableException>()),
+      );
+      expect(_effects(db), isEmpty);
     });
   });
 

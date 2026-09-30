@@ -122,10 +122,14 @@ class MissionRepository {
   /// サーバー側で直列にするので、2台が同時に押しても確定するのは1台だけで、
   /// 遅れた方はサーバーの値(`claimedBy` 入り)で呼び直されてabortする。
   ///
-  /// 取れたときだけ特典を抽選し、`missions/{missionId}/reward` と
-  /// `effects/{effectId}` を書く(`rooms/{roomId}` への一括書き込みは
-  /// ルール上できないので2回に分ける)。
-  Future<ClaimResult> claimMission(String roomId, String missionId) async {
+  /// 取れたときだけ特典を渡す([_grantReward])。[footPhotoSkipSlot]は、
+  /// 特典が「足元写真を1回まぬがれる」だったときに飛ばすスロット
+  /// (`footPhotoSlotToSkip`。押した瞬間の撮影バナーの状態で決める)。
+  Future<ClaimResult> claimMission(
+    String roomId,
+    String missionId, {
+    int? footPhotoSkipSlot,
+  }) async {
     final now = await _serverNowMillis();
     if (now == null) throw const MissionClaimUnavailableException();
     final uid = _uid;
@@ -146,18 +150,94 @@ class MissionRepository {
       return (outcome: ClaimOutcome.takenByOther, reward: null);
     }
 
-    final reward = drawReward(_random);
-    await missionRef.child('reward').set(reward.raw);
-    await _db.ref('rooms/$roomId/effects').push().set({
-      'type': reward.raw,
-      'byUid': uid,
-      'startedAt': ServerValue.timestamp,
-      'durationMs': reward.duration.inMilliseconds,
-    });
+    final reward = await _grantReward(
+      roomId,
+      missionId,
+      uid: uid,
+      nowMillis: now,
+      footPhotoSkipSlot: footPhotoSkipSlot,
+    );
     unawaited(
       _eventLog.log(roomId, type: GameEventType.missionClaimed, uid: uid),
     );
     return (outcome: ClaimOutcome.claimed, reward: reward);
+  }
+
+  /// 取れたのに特典の書き込みが済んでいないミッションの、特典を受け取り直す。
+  ///
+  /// [claimMission]のトランザクションが確定した後、特典を書く前に通信が
+  /// 切れたりアプリが落ちたりすると、「取ったのに効果が出ない」まま残る。
+  /// カードの「特典を受け取る」からここを呼んでやり直す。自分が取った
+  /// ミッションでなければ[MissionClaimUnavailableException]を投げる。
+  Future<RewardType> completeClaim(
+    String roomId,
+    String missionId, {
+    int? footPhotoSkipSlot,
+  }) async {
+    final now = await _serverNowMillis();
+    if (now == null) throw const MissionClaimUnavailableException();
+    final uid = _uid;
+    final claimedBy = await _db
+        .ref('rooms/$roomId/missions/$missionId/claimedBy')
+        .get();
+    if (claimedBy.value != uid) throw const MissionClaimUnavailableException();
+    return _grantReward(
+      roomId,
+      missionId,
+      uid: uid,
+      nowMillis: now,
+      footPhotoSkipSlot: footPhotoSkipSlot,
+    );
+  }
+
+  /// 特典を抽選し、`missions/{missionId}/reward` と `effects/{missionId}` を
+  /// 書く。**何度呼んでも結果は1つ**になるようにしてある:
+  ///
+  /// - `reward` は「まだ無いときだけ書く」トランザクション。既にあれば
+  ///   それを返す(やり直しで別の特典に引き直させない)
+  /// - 効果のキーをミッションIDにし、「まだ無いときだけ書く」トランザクション
+  ///   で書く(やり直しで効果が2件になったり、残り時間が延びたりしない)
+  ///
+  /// `rooms/{roomId}` への一括書き込みはルール上できないので、2か所を
+  /// 別々に書く。途中で止まっても、もう一度呼べば残りが書かれる。
+  Future<RewardType> _grantReward(
+    String roomId,
+    String missionId, {
+    required String uid,
+    required int nowMillis,
+    required int? footPhotoSkipSlot,
+  }) async {
+    final drawn = drawReward(_random);
+    final rewardResult = await _db
+        .ref('rooms/$roomId/missions/$missionId/reward')
+        .runTransaction(
+          (current) => current == null
+              ? Transaction.success(drawn.raw)
+              : Transaction.abort(),
+          applyLocally: false,
+        );
+    final reward =
+        RewardType.fromRaw(rewardResult.snapshot.value as String?) ?? drawn;
+
+    await _db
+        .ref('rooms/$roomId/effects/$missionId')
+        .runTransaction(
+          (current) => current != null
+              ? Transaction.abort()
+              : Transaction.success({
+                  'type': reward.raw,
+                  'byUid': uid,
+                  // トランザクションの中ではServerValueを使わず、補正済みの
+                  // サーバー時刻を入れる(claimMissionUpdateのclaimedAtと同じ)。
+                  'startedAt': nowMillis,
+                  'durationMs': reward.duration.inMilliseconds,
+                  if (reward == RewardType.skipFootPhoto &&
+                      footPhotoSkipSlot != null)
+                    'skipSlot': footPhotoSkipSlot,
+                }),
+          applyLocally: false,
+        );
+    return reward;
   }
 
   /// `path`直下の子を[parse]で読み、一覧として流す
