@@ -1,5 +1,7 @@
-/// ミッションの生成・期限・GPSの到着判定・先着1名の取り合いの純粋な計算。
+/// ミッションの生成・期限・GPSの到着判定・先着の取り合いの純粋な計算。
 /// RTDBやプラグインに依存しないため、実機なしで単体テストできる。
+///
+/// 時間の数値はここに書かず、`mission_timing.dart`に置く。
 library;
 
 import 'dart:math' as math;
@@ -7,18 +9,10 @@ import 'dart:math' as math;
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/mission/mission_timing.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/room/area_alert.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
-import 'package:kakureru/features/wifi/model/proximity_level.dart';
-import 'package:kakureru/features/wifi/model/wifi_proximity_entry.dart';
-import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
-
-/// 鬼の放出から1件目のミッションを出すまでの時間。
-const firstMissionDelay = Duration(seconds: 30);
-
-/// ミッションが終わって(期限切れ・誰かが取った)から次を出すまでの間隔。
-const missionInterval = Duration(seconds: 60);
 
 /// アクセスポイントの判定の半径(m)。
 const accessPointRadiusM = 15.0;
@@ -29,16 +23,19 @@ const maxUsableAccuracyM = 30.0;
 /// 範囲内がこの回数続いたら到着とする(GPSのブレを抑えるため)。
 const requiredConsecutiveInRange = 2;
 
-/// 新しい地点を、前回の地点からこれ以上離す(m)。
-const minMissionPointSeparationM = 50.0;
+/// 同じミッションの地点どうしを、これ以上離す(m)。
+const minSpotSeparationM = 50.0;
 
-/// 地点の候補を引き直す回数の上限。
-const _maxPointAttempts = 200;
+/// 地点の候補を引く回数。
+const _maxPointAttempts = 400;
 
 /// 2点間の距離(m)。企画どおり `Geolocator.distanceBetween` を使う
 /// (中身は純粋なDartの計算なので、テストからそのまま呼べる)。
 double distanceMeters(double lat1, double lng1, double lat2, double lng2) =>
     Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
+
+/// 地点の数。鬼の人数 + 1(逃走者どうしで取り合いになるよう、全員分は出さない)。
+int missionSpotCount({required int demonCount}) => demonCount + 1;
 
 /// 今のゲームのミッションだけを、出した順(古い順)に返す。
 ///
@@ -58,35 +55,49 @@ List<Mission> missionsOfCurrentGame(
 bool isMissionExpired(Mission mission, {required int nowMillis}) =>
     nowMillis >= mission.expiresAt;
 
-/// ミッションがまだ受けられるか。アクセスポイントは誰かが取ったら終わり、
-/// 「鬼に近づけ」は全員が挑めるので期限まで続く。
-bool isMissionActive(Mission mission, {required int nowMillis}) {
-  if (isMissionExpired(mission, nowMillis: nowMillis)) return false;
-  return switch (mission.type) {
-    MissionType.accessPoint => mission.claimedBy == null,
-    MissionType.approachDemon => true,
-  };
-}
+/// 地点がすべて取られたか。地点が無いミッションは「取られた」扱いにしない。
+bool areAllSpotsClaimed(Mission mission) =>
+    mission.spots.isNotEmpty && mission.spots.every((s) => s.claimedBy != null);
 
-/// ミッションが終わった時刻。取られていれば取られた時刻、そうでなければ期限。
+/// 地点がすべて取られて、期限より前に終わったか。
+bool isMissionFinishedEarly(Mission mission) =>
+    mission.finishedAt != null || areAllSpotsClaimed(mission);
+
+/// ミッションがまだ受けられるか(期限内で、空いている地点がある)。
+bool isMissionActive(Mission mission, {required int nowMillis}) =>
+    !isMissionExpired(mission, nowMillis: nowMillis) &&
+    !isMissionFinishedEarly(mission);
+
+/// ミッションが終わった時刻。すべて取られていればその時刻、そうでなければ期限。
 int missionEndedAt(Mission mission) {
-  final claimedAt = mission.claimedAt;
-  if (mission.claimedBy != null && claimedAt != null) {
-    return math.min(claimedAt, mission.expiresAt);
-  }
-  return mission.expiresAt;
+  final finishedAt =
+      mission.finishedAt ??
+      (areAllSpotsClaimed(mission)
+          ? mission.spots
+                .map((s) => s.claimedAt ?? mission.expiresAt)
+                .reduce(math.max)
+          : null);
+  return finishedAt == null
+      ? mission.expiresAt
+      : math.min(finishedAt, mission.expiresAt);
 }
 
-/// 取られたアクセスポイントのカード(「ほかの人に取られた」「特典を引いた」)
-/// を出しておく時間。期限(最長180秒)まで出し続けると、次のミッションが
-/// 出るまで終わったカードが地図を塞ぐため。
-const claimedCardDuration = Duration(seconds: 15);
+/// 空いている地点。
+List<MissionSpot> openSpots(Mission mission) =>
+    mission.spots.where((s) => s.claimedBy == null).toList();
 
-/// いま画面に出すミッション(今のゲームの最新1件)。期限が切れていれば、
-/// または取られてから[claimedCardDuration]たっていればnull。
+/// [uid]が取った地点。無ければnull(1人1地点まで)。
+MissionSpot? spotClaimedBy(Mission mission, String? uid) {
+  if (uid == null) return null;
+  return mission.spots.where((s) => s.claimedBy == uid).firstOrNull;
+}
+
+/// いま画面に出すミッション(今のゲームの最新1件)。
 ///
-/// 取られた直後のアクセスポイントは返す(「ほかの人に取られた」を
-/// 同じ場所に出すため)。
+/// - 期限が切れていればnull
+/// - 地点がすべて取られて早く終わったものは、終わってから
+///   [finishedMissionCardDuration]だけ出す(「ほかの人に取られた」を
+///   同じ場所に出すため)。その後はnull
 Mission? currentMission(
   List<Mission> missions, {
   required int? startedAt,
@@ -96,104 +107,113 @@ Mission? currentMission(
   if (current.isEmpty) return null;
   final latest = current.last;
   if (isMissionExpired(latest, nowMillis: nowMillis)) return null;
-  final claimedAt = latest.claimedAt;
-  if (latest.claimedBy != null &&
-      claimedAt != null &&
-      nowMillis >= claimedAt + claimedCardDuration.inMilliseconds) {
+  if (isMissionFinishedEarly(latest) &&
+      nowMillis >=
+          missionEndedAt(latest) + finishedMissionCardDuration.inMilliseconds) {
     return null;
   }
   return latest;
 }
 
-/// ホストの端末が、いま新しいミッションを書くべきか。
+/// 鬼の放出から見て、いま出ているはずの回(1始まり)。まだなら0。
+int dueMissionRound({required int releasedAt, required int nowMillis}) {
+  var round = 0;
+  for (var i = 0; i < missionDueDelays.length; i++) {
+    if (nowMillis >= releasedAt + missionDueDelays[i].inMilliseconds) {
+      round = i + 1;
+    }
+  }
+  return round;
+}
+
+/// ホストの端末が、いま書くべきミッションの回。書かないならnull。
 ///
-/// - 鬼の放出([releasedAt])から[firstMissionDelay]たったら1件目
-/// - 直前のミッションが終わって(期限切れ・誰かが取った)から
-///   [missionInterval]あけて次
-/// - 同時に出すのは1件だけ(受けられるものが残っていれば書かない)
-/// - ゲームが終わっていたら書かない
-bool shouldCreateMission({
+/// - 放出から[firstMissionDelay]で1回目、[secondMissionDelay]で2回目。
+///   3回目は無い([missionDueDelays]の長さまで)
+/// - 同時に出すのは1件だけ(受けられるものが残っていれば書かない)。
+///   そのため1回目が遅れて書かれると、2回目もずれる。たとえば放出から
+///   14:59に1回目を書くと期限は19:59なので、2回目は15分ではなく1回目が
+///   切れた直後(約20分)に出る。2件を重ねて出さないことを優先している
+/// - 同じ回を二度書かない。書きそびれた回は飛ばす(ホストが遅れて
+///   戻ってきたときに、1回目と2回目を続けて出さない)
+/// - ゲームが終わっていたら書かない(2回目の前に終われば2回目は出ない)
+int? missionRoundToCreate({
   required List<Mission> missions,
   required int? startedAt,
   required int? releasedAt,
   required int? endsAt,
   required int nowMillis,
 }) {
-  if (releasedAt == null) return false;
-  if (endsAt != null && nowMillis >= endsAt) return false;
+  if (releasedAt == null) return null;
+  if (endsAt != null && nowMillis >= endsAt) return null;
+  final due = dueMissionRound(releasedAt: releasedAt, nowMillis: nowMillis);
+  if (due == 0) return null;
   final current = missionsOfCurrentGame(missions, startedAt: startedAt);
-  if (current.isEmpty) {
-    return nowMillis >= releasedAt + firstMissionDelay.inMilliseconds;
-  }
   if (current.any((m) => isMissionActive(m, nowMillis: nowMillis))) {
-    return false;
+    return null;
   }
-  final lastEnded = current.map(missionEndedAt).reduce(math.max);
-  return nowMillis >= lastEnded + missionInterval.inMilliseconds;
+  final highest = current.fold(0, (max, m) => math.max(max, m.round));
+  if (highest >= due) return null;
+  return due;
 }
 
-/// 次に出すミッションの種類。エリアが無い(地点を置けない)ときは
-/// 「鬼に近づけ」だけにする。
-MissionType chooseMissionType({
-  required List<LatLng> area,
-  required math.Random random,
-}) {
-  if (area.length < 3) return MissionType.approachDemon;
-  return random.nextBool()
-      ? MissionType.accessPoint
-      : MissionType.approachDemon;
-}
-
-/// エリア[area]の中から、前回の地点[previous]から
-/// [minMissionPointSeparationM]以上離れた点をランダムに選ぶ。
+/// エリア[area]の中から、[count]個の地点をランダムに選ぶ。地点どうしは
+/// なるべく[minSpotSeparationM]以上離す。
 ///
 /// エリアの外接矩形から候補を引き、内側([isInsideArea])のものだけを使う。
-/// 引き直しの上限までに条件を満たす点が無ければ、内側の候補のうち前回から
-/// 一番遠いものにする(エリアが狭すぎて50m離せない場合でも出せるように)。
-/// エリアが3点未満、または内側の点が1つも引けなければnull。
-LatLng? pickMissionPoint({
+/// 引いた順に「選んだ地点すべてから50m以上」のものを取り、足りなければ
+/// 残りの候補のうち、選んだ地点から一番遠いものを足す(エリアが狭くて
+/// 50m離せないときでも出せるように)。
+///
+/// エリアが3点未満、または内側の点が1つも引けなければ空(ミッションは出ない)。
+List<LatLng> pickAccessPoints({
   required List<LatLng> area,
-  required LatLng? previous,
+  required int count,
   required math.Random random,
 }) {
-  if (area.length < 3) return null;
+  if (area.length < 3 || count <= 0) return const [];
   final minLat = area.map((p) => p.lat).reduce(math.min);
   final maxLat = area.map((p) => p.lat).reduce(math.max);
   final minLng = area.map((p) => p.lng).reduce(math.min);
   final maxLng = area.map((p) => p.lng).reduce(math.max);
 
-  LatLng? farthest;
-  var farthestDistance = -1.0;
+  final candidates = <LatLng>[];
   for (var i = 0; i < _maxPointAttempts; i++) {
     final candidate = LatLng(
       lat: minLat + (maxLat - minLat) * random.nextDouble(),
       lng: minLng + (maxLng - minLng) * random.nextDouble(),
     );
-    if (!isInsideArea(area: area, point: candidate)) continue;
-    if (previous == null) return candidate;
-    final distance = distanceMeters(
-      previous.lat,
-      previous.lng,
-      candidate.lat,
-      candidate.lng,
-    );
-    if (distance >= minMissionPointSeparationM) return candidate;
-    if (distance > farthestDistance) {
-      farthest = candidate;
-      farthestDistance = distance;
+    if (isInsideArea(area: area, point: candidate)) candidates.add(candidate);
+  }
+  if (candidates.isEmpty) return const [];
+
+  double nearest(LatLng p, List<LatLng> chosen) => chosen
+      .map((c) => distanceMeters(c.lat, c.lng, p.lat, p.lng))
+      .fold(double.infinity, math.min);
+
+  final chosen = <LatLng>[];
+  final rest = <LatLng>[];
+  for (final candidate in candidates) {
+    if (chosen.length < count &&
+        nearest(candidate, chosen) >= minSpotSeparationM) {
+      chosen.add(candidate);
+    } else {
+      rest.add(candidate);
     }
   }
-  return farthest;
-}
-
-/// 今のゲームで最後に出したアクセスポイントの地点。無ければnull。
-LatLng? lastMissionPoint(List<Mission> missionsOfGame) {
-  for (final mission in missionsOfGame.reversed) {
-    final lat = mission.lat;
-    final lng = mission.lng;
-    if (lat != null && lng != null) return LatLng(lat: lat, lng: lng);
+  while (chosen.length < count && rest.isNotEmpty) {
+    var bestIndex = 0;
+    var bestDistance = -1.0;
+    for (var i = 0; i < rest.length; i++) {
+      final d = nearest(rest[i], chosen);
+      if (d > bestDistance) {
+        bestIndex = i;
+        bestDistance = d;
+      }
+    }
+    chosen.add(rest.removeAt(bestIndex));
   }
-  return null;
+  return chosen;
 }
 
 /// GPSの読み取り1回ぶんの分類。
@@ -226,36 +246,57 @@ typedef AccessPointReading = ({
   int? sampleAt,
 });
 
-/// 自分の位置[location]とミッション[mission]から、1回ぶんの読み取りを作る。
+/// 位置も地点も無いときの読み取り。
+const AccessPointReading noAccessPointReading = (
+  fix: AccessPointFix.noFix,
+  distanceM: null,
+  accuracyM: null,
+  sampleAt: null,
+);
+
+/// 空いている地点のうち、[location]から一番近いもの。位置が無ければ
+/// 最初の空いている地点。空きが無ければnull。
+MissionSpot? nearestOpenSpot(Mission mission, UserLocation? location) {
+  final open = openSpots(mission);
+  if (open.isEmpty) return null;
+  if (location == null) return open.first;
+  MissionSpot? best;
+  var bestDistance = double.infinity;
+  for (final spot in open) {
+    final d = distanceMeters(
+      location.latitude,
+      location.longitude,
+      spot.lat,
+      spot.lng,
+    );
+    if (d < bestDistance) {
+      best = spot;
+      bestDistance = d;
+    }
+  }
+  return best;
+}
+
+/// 自分の位置[location]と地点[spot]から、1回ぶんの読み取りを作る。
 ///
 /// 精度が不明なときも判定しない(悪いかどうか分からないため)。距離は
 /// 判定しないときも出す(近いのに反応しない理由が分かるように)。
 AccessPointReading readAccessPoint({
-  required Mission mission,
+  required MissionSpot? spot,
   required UserLocation? location,
 }) {
-  final lat = mission.lat;
-  final lng = mission.lng;
-  if (location == null || lat == null || lng == null) {
-    return (
-      fix: AccessPointFix.noFix,
-      distanceM: null,
-      accuracyM: null,
-      sampleAt: null,
-    );
-  }
+  if (location == null || spot == null) return noAccessPointReading;
   final distance = distanceMeters(
     location.latitude,
     location.longitude,
-    lat,
-    lng,
+    spot.lat,
+    spot.lng,
   );
   final accuracy = location.accuracy;
-  final radius = mission.radiusM ?? accessPointRadiusM;
   final AccessPointFix fix;
   if (accuracy == null || accuracy > maxUsableAccuracyM) {
     fix = AccessPointFix.weakGps;
-  } else if (distance <= radius) {
+  } else if (distance <= spot.radiusM) {
     fix = AccessPointFix.inside;
   } else {
     fix = AccessPointFix.outside;
@@ -277,7 +318,7 @@ typedef ArrivalProgress = ({
   int? lastSampleAt,
 
   /// 一度でも到着したか(範囲内が[requiredConsecutiveInRange]回続いたか)。
-  /// そのミッションの間は保つが、これだけでは引けない。引けるかどうかは
+  /// その地点の間は保つが、これだけでは引けない。引けるかどうかは
   /// いまの読み取りと合わせて[canClaimAccessPoint]で決める。
   bool arrived,
 });
@@ -317,7 +358,7 @@ ArrivalProgress advanceArrival(
   );
 }
 
-/// いま「特典を引く」を押せるか。
+/// いま「ごほうびガチャを引く」を押せるか。
 ///
 /// 一度到着していて([ArrivalProgress.arrived])、**いまの読み取りでも範囲の
 /// 外に出ていない**ときだけ引ける。一度通っただけで、離れた場所から期限まで
@@ -338,109 +379,48 @@ bool canClaimAccessPoint({
   };
 }
 
-/// 先着1名のトランザクションの中身(`missions/{missionId}` に対して回す)。
+/// 先着のトランザクションの中身(`missions/{missionId}` に対して回す)。
 ///
 /// - 手元にキャッシュが無いと、最初はサーバーの値に関係なく[current]が
 ///   nullで呼ばれる。ここでabortするとサーバーの値で再実行されずに終わる
 ///   ため、nullのまま成功を返す(サーバーにミッションがあれば実際の値で
 ///   呼び直され、本当に無ければnullのまま確定する。`attachCatchPhoto`と同じ)
-/// - もう誰かが取っている、または期限が切れていればabort
-/// - それ以外は自分のuidと取った時刻を入れる
+/// - 期限切れ・終わっている・地点が無い・**その地点の `claimedBy` が
+///   nullでない**・自分が既にほかの地点を取っている、のどれかならabort
+/// - それ以外は地点に自分のuidと取った時刻を入れる。これですべての地点が
+///   埋まったら `finishedAt` も入れる(その場で終わる)
 ///
 /// [nowMillis]はサーバー時刻。`claimedAt`に`ServerValue.timestamp`を
 /// 使わないのは、トランザクションの中で使うと手元の仮の値と確定値が
 /// 食い違い、再実行の判定が不安定になるため。
-Transaction claimMissionUpdate(
+Transaction claimSpotUpdate(
   Object? current, {
+  required String spotId,
   required String uid,
   required int nowMillis,
 }) {
   if (current == null) return Transaction.success(null);
   if (current is! Map) return Transaction.abort();
-  if (current['claimedBy'] != null) return Transaction.abort();
   final expiresAt = current['expiresAt'];
   if (expiresAt is num && nowMillis >= expiresAt) return Transaction.abort();
+  if (current['finishedAt'] != null) return Transaction.abort();
+  final spots = current['spots'];
+  if (spots is! Map) return Transaction.abort();
+  final spot = spots[spotId];
+  if (spot is! Map || spot['claimedBy'] != null) return Transaction.abort();
+  if (spots.values.any((s) => s is Map && s['claimedBy'] == uid)) {
+    return Transaction.abort();
+  }
+  final nextSpots = {
+    ...spots,
+    spotId: {...spot, 'claimedBy': uid, 'claimedAt': nowMillis},
+  };
+  final allClaimed = nextSpots.values.every(
+    (s) => s is Map && s['claimedBy'] != null,
+  );
   return Transaction.success({
     ...current,
-    'claimedBy': uid,
-    'claimedAt': nowMillis,
+    'spots': nextSpots,
+    if (allClaimed) 'finishedAt': nowMillis,
   });
-}
-
-/// 「鬼に近づけ」の持ち越し状態。
-typedef ApproachProgress = ({
-  /// ミッション中に一度でも「反応なし」(どの鬼とも近いと出ていない)を見たか。
-  bool sawNoReaction,
-
-  /// 「反応なし」から「反応あり」に変わったか。
-  bool achieved,
-});
-
-/// まだ何も見ていない状態。
-const ApproachProgress initialApproach = (
-  sawNoReaction: false,
-  achieved: false,
-);
-
-/// Wi-Fiの判定1回ぶんを反映する。
-///
-/// 達成条件は**判定が「反応なし」から「反応あり」に変わること**。
-/// ミッションが出た時点で既に「反応あり」だった人は、一度「反応なし」を
-/// 経ないと達成しない(近くにいただけで達成にならないように)。
-/// [anyDemonClose]は既存の判定(`wifiProximityLevelsProvider`)で、
-/// どれかの鬼が `ProximityLevel.close` かどうか。
-ApproachProgress advanceApproach(
-  ApproachProgress previous, {
-  required bool anyDemonClose,
-}) {
-  if (previous.achieved) return previous;
-  if (!anyDemonClose) return (sawNoReaction: true, achieved: false);
-  return (
-    sawNoReaction: previous.sawNoReaction,
-    achieved: previous.sawNoReaction,
-  );
-}
-
-/// 「鬼に近づけ」のカードに出す、いまの数値。
-typedef WifiOverlapMetrics = ({
-  /// 自分と相手の両方に見えている物理AP(弱い電波を除いた後)の数。
-  int commonCount,
-
-  /// 自分に見えている物理APの数。
-  int selfCount,
-
-  /// 共通APのRSSI差の中央値(dB)。共通APが無ければnull。
-  double? medianDiffDbm,
-});
-
-/// 判定と同じ前処理([prepareForProximity])をしたうえで、カードに出す数値を
-/// 求める。判定そのものは既存の[calculateProximity]に任せ、ここでは変えない。
-WifiOverlapMetrics wifiOverlapMetrics(
-  Map<String, int> selfBssidRssi,
-  Map<String, int> targetBssidRssi,
-) {
-  final self = prepareForProximity(selfBssidRssi);
-  final target = prepareForProximity(targetBssidRssi);
-  return (
-    commonCount: self.keys.where(target.containsKey).length,
-    selfCount: self.length,
-    medianDiffDbm: calculateMedianRssiDiff(self, target),
-  );
-}
-
-/// [candidateUids]の順に見て、Wi-Fiの判定が「反応あり」(close)の最初の
-/// 相手。いなければnull。「鬼に近づけ」で、達成の判定に使われた鬼を
-/// 画面に出すために使う。
-String? firstCloseUid(
-  List<WifiProximityEntry> entries,
-  Iterable<String> candidateUids,
-) {
-  final close = {
-    for (final entry in entries)
-      if (entry.level == ProximityLevel.close) entry.uid,
-  };
-  for (final uid in candidateUids) {
-    if (close.contains(uid)) return uid;
-  }
-  return null;
 }

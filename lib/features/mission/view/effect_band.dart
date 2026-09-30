@@ -133,7 +133,7 @@ class ClueBlockedCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  '逃走者が特典を使った。そのあいだ Wi-Fi と気圧は見えない',
+                  '逃走者がごほうびを使った。そのあいだ Wi-Fi と気圧は見えない',
                   style: TextStyle(fontSize: 12, color: gameMuted),
                 ),
               ],

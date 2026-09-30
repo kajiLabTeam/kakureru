@@ -129,7 +129,7 @@ void main() {
 
       expect(find.text('確定'), findsOneWidget);
       expect(find.text('鬼の手がかりを止める'), findsOneWidget);
-      expect(find.text('鬼に効く'), findsOneWidget);
+      expect(find.text('鬼をジャマする'), findsOneWidget);
       expect(find.text('30秒'), findsOneWidget);
       expect(find.text('効果はもう出ている'), findsOneWidget);
       final button = tester.widget<FilledButton>(

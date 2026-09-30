@@ -241,3 +241,39 @@ Future<void> showCatchNotification(String message) {
     what: '捕獲の通知',
   );
 }
+
+/// ミッションのお知らせの通知ID。他の通知とは別に取る。
+const _missionNotificationId = 6;
+
+/// ミッションのお知らせ(出た・のこり1分・終わった)を、アプリを閉じている
+/// 逃走者の端末へ出す通知。アプリを開いているときは画面内のバナーにする
+/// (出し分けは`MissionController`)。
+///
+/// **音は鳴らさず、振動だけにする**(`playSound: false` /
+/// `enableVibration: true`)。鬼の近くに隠れているときに音で居場所が
+/// ばれないため。Androidのチャンネルの設定は一度作ると変えられないので、
+/// 音ありの既存チャンネルとは別の`kakureru_mission`にしている。
+/// 同じIDで出すので、次のお知らせは前のものに置き換わる。失敗しても
+/// ログに残すだけ。
+Future<void> showMissionNotification(String message) {
+  const androidDetails = AndroidNotificationDetails(
+    'kakureru_mission',
+    'ミッションの通知',
+    channelDescription: 'アクセスポイントのミッションを、音なし・振動だけで通知します',
+    importance: Importance.high,
+    priority: Priority.high,
+    playSound: false,
+    // 既定値と同じだが、振動だけで知らせることを明示するために書く。
+    // ignore: avoid_redundant_argument_values
+    enableVibration: true,
+  );
+  return _runOrLogFailure(
+    () => _plugin.show(
+      id: _missionNotificationId,
+      title: 'kakureru',
+      body: message,
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    ),
+    what: 'ミッションの通知',
+  );
+}

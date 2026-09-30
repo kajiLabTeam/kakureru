@@ -3,33 +3,45 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/mission/mission_rules.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
+import 'package:kakureru/features/mission/model/mission_notice.dart';
 import 'package:kakureru/features/mission/model/mission_progress.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/view/effect_band.dart';
 import 'package:kakureru/features/mission/view/mission_card.dart';
+import 'package:kakureru/features/mission/view/mission_notice_banner.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 
 const _accessPoint = Mission(
   id: 'm1',
-  type: MissionType.accessPoint,
+  round: 1,
   createdAt: 0,
-  expiresAt: 180000,
-  lat: 35,
-  lng: 137,
-  radiusM: 15,
+  expiresAt: 300000,
+  spots: [
+    MissionSpot(id: 's0', lat: 35, lng: 137, radiusM: 15),
+    MissionSpot(id: 's1', lat: 35.01, lng: 137, radiusM: 15),
+  ],
+);
+
+/// [_accessPoint]の地点[spotId]を[claimedBy]が取った状態にする。
+Mission _claimed(
+  String spotId,
+  String claimedBy, {
+  RewardType? reward,
+  Mission mission = _accessPoint,
+}) => mission.copyWith(
+  spots: [
+    for (final spot in mission.spots)
+      spot.id == spotId
+          ? spot.copyWith(claimedBy: claimedBy, claimedAt: 1, reward: reward)
+          : spot,
+  ],
 );
 
 const _arrived = MissionProgress(
   missionId: 'm1',
+  spotId: 's0',
   arrival: (streak: 2, lastSampleAt: 2, arrived: true),
-);
-
-const _approach = Mission(
-  id: 'a1',
-  type: MissionType.approachDemon,
-  createdAt: 0,
-  expiresAt: 120000,
 );
 
 AccessPointReading _reading(
@@ -57,6 +69,7 @@ void main() {
       locationFailure: failure,
       reading: _reading(fix),
       progress: progress,
+      targetSpotId: 's0',
     );
 
     test('位置情報の権限が無ければ「許可が必要」に差し替える', () {
@@ -102,44 +115,50 @@ void main() {
       );
     });
 
-    test('取られていれば、権限や位置より先に「取られた」を出す', () {
+    test('別の地点への到着は、いまいちばん近い地点には使わない', () {
       expect(
         status(
-          mission: _accessPoint.copyWith(claimedBy: 'other', claimedAt: 1),
+          fix: AccessPointFix.inside,
+          progress: _arrived.copyWith(spotId: 's1'),
+        ),
+        MissionCardStatus.approaching,
+      );
+    });
+
+    test('地点がすべて取られていれば、権限や位置より先に「取られた」を出す', () {
+      expect(
+        status(
+          mission: _claimed('s1', 'b', mission: _claimed('s0', 'a')),
           failure: LocationFailure.locationPermission,
         ),
         MissionCardStatus.takenByOther,
       );
       expect(
+        status(mission: _accessPoint.copyWith(finishedAt: 1)),
+        MissionCardStatus.takenByOther,
+      );
+    });
+
+    test('1つでも空いていれば、ほかの地点が取られても向かえる', () {
+      expect(
+        status(mission: _claimed('s1', 'other')),
+        MissionCardStatus.approaching,
+      );
+    });
+
+    test('自分が取った地点があれば「引いた」', () {
+      expect(
         status(
-          mission: _accessPoint.copyWith(
-            claimedBy: 'me',
-            claimedAt: 1,
-            reward: RewardType.blockClues,
-          ),
+          mission: _claimed('s1', 'me', reward: RewardType.blockClues),
         ),
         MissionCardStatus.claimedByMe,
       );
     });
 
-    test('自分が取ったのに特典が書かれていなければ、受け取り直せる状態にする', () {
+    test('自分が取ったのにごほうびが書かれていなければ、受け取り直せる状態にする', () {
       expect(
-        status(mission: _accessPoint.copyWith(claimedBy: 'me', claimedAt: 1)),
+        status(mission: _claimed('s0', 'me')),
         MissionCardStatus.claimedWithoutReward,
-      );
-    });
-
-    test('「鬼に近づけ」は達成したかどうかだけ', () {
-      expect(status(mission: _approach), MissionCardStatus.approachInProgress);
-      expect(
-        status(
-          mission: _approach,
-          progress: const MissionProgress(
-            missionId: 'a1',
-            approach: (sawNoReaction: true, achieved: true),
-          ),
-        ),
-        MissionCardStatus.approachAchieved,
       );
     });
   });
@@ -150,7 +169,7 @@ void main() {
       MissionCardStatus status, {
       Mission mission = _accessPoint,
       AccessPointReading? reading,
-      String? claimedByName,
+      RewardType? myReward,
     }) => tester.pumpWidget(
       _wrap(
         MissionCard(
@@ -158,7 +177,7 @@ void main() {
           status: status,
           reading: reading ?? _reading(AccessPointFix.outside),
           remainingMillis: 134000,
-          claimedByName: claimedByName,
+          myReward: myReward,
         ),
       ),
     );
@@ -166,9 +185,11 @@ void main() {
     testWidgets('向かっている間は「のこり N m」と「GPS ±N m」を出す', (tester) async {
       await pumpCard(tester, MissionCardStatus.approaching);
       expect(find.text('アクセスポイントへ行こう'), findsOneWidget);
-      expect(find.text('のこり 62m'), findsOneWidget);
+      expect(find.text('近いのは のこり 62m'), findsOneWidget);
+      expect(find.text('GPS '), findsOneWidget);
       expect(find.text('±8m'), findsOneWidget);
-      expect(find.text('先着1名'), findsOneWidget);
+      // 地点の数だけ先着で取れる。
+      expect(find.text('先着2人'), findsOneWidget);
       expect(find.text('02:14'), findsOneWidget);
     });
 
@@ -178,8 +199,8 @@ void main() {
         MissionCardStatus.weakGps,
         reading: _reading(AccessPointFix.weakGps, distance: 9, accuracy: 42),
       );
-      expect(find.textContaining('GPSの電波が弱い'), findsOneWidget);
-      expect(find.text('のこり 9m'), findsOneWidget);
+      expect(find.text('GPSの電波が弱い'), findsOneWidget);
+      expect(find.text('近いのは のこり 9m'), findsOneWidget);
       expect(find.text('±42m'), findsOneWidget);
     });
 
@@ -194,63 +215,53 @@ void main() {
       expect(find.text('まだ誰も取っていない'), findsOneWidget);
     });
 
-    testWidgets('取られたら「ほかの人に取られた」と取った人の名前', (tester) async {
+    testWidgets('すべて取られたら「ほかの人に取られた」', (tester) async {
       await pumpCard(
         tester,
         MissionCardStatus.takenByOther,
-        mission: _accessPoint.copyWith(claimedBy: 'x', claimedAt: 1),
-        claimedByName: 'あやな',
+        mission: _claimed('s1', 'b', mission: _claimed('s0', 'a')),
       );
       expect(find.text('ほかの人に取られた'), findsOneWidget);
-      expect(find.textContaining('あやな'), findsOneWidget);
     });
 
-    testWidgets('自分が取ったら特典と「鬼に効く／自分に効く」を出す', (tester) async {
+    testWidgets('自分が取ったらごほうびと「自分がトクする」を出す', (tester) async {
       await pumpCard(
         tester,
         MissionCardStatus.claimedByMe,
-        mission: _accessPoint.copyWith(
-          claimedBy: 'me',
-          claimedAt: 1,
-          reward: RewardType.skipFootPhoto,
-        ),
+        mission: _claimed('s0', 'me', reward: RewardType.skipFootPhoto),
+        myReward: RewardType.skipFootPhoto,
       );
       expect(find.text('足元写真を1回まぬがれる'), findsOneWidget);
-      expect(find.text('自分に効く'), findsOneWidget);
+      expect(find.text('自分がトクする'), findsOneWidget);
     });
 
-    testWidgets('「鬼に近づけ」は なし → あり と、捕まらない距離の注意を出す', (tester) async {
+    testWidgets('鬼に効くごほうびには「鬼をジャマする」を添える', (tester) async {
       await pumpCard(
         tester,
-        MissionCardStatus.approachInProgress,
-        mission: _approach,
+        MissionCardStatus.claimedByMe,
+        myReward: RewardType.blockClues,
       );
-      expect(find.text('鬼に近づけ'), findsOneWidget);
-      expect(find.text('全員が挑める'), findsOneWidget);
-      expect(find.text('なし'), findsOneWidget);
-      expect(find.text('あり'), findsOneWidget);
-      expect(find.text('捕まらない距離で。BLEが届くと捕まる'), findsOneWidget);
+      expect(find.text('鬼をジャマする'), findsOneWidget);
     });
 
-    testWidgets('「鬼に近づけ」を達成したら「達成した」だけを出す(報酬は無し)', (
-      tester,
-    ) async {
-      await pumpCard(
-        tester,
-        MissionCardStatus.approachAchieved,
-        mission: _approach,
+    testWidgets('絵文字を使わない', (tester) async {
+      await pumpCard(tester, MissionCardStatus.arrived);
+      final emoji = RegExp(
+        r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]',
+        unicode: true,
       );
-      expect(find.text('達成した'), findsOneWidget);
-      expect(find.textContaining('特典'), findsNothing);
+      for (final text in tester.widgetList<Text>(find.byType(Text))) {
+        expect(emoji.hasMatch(text.data ?? ''), isFalse, reason: text.data);
+      }
     });
   });
 
-  testWidgets('「特典を引く」は44px以上で、押すと呼ばれる', (tester) async {
+  testWidgets('「ごほうびガチャを引く」は44px以上で、押すと呼ばれる', (tester) async {
     var pressed = 0;
     await tester.pumpWidget(
       _wrap(MissionClaimButton(isClaiming: false, onPressed: () => pressed++)),
     );
-    final button = find.widgetWithText(FilledButton, '特典を引く');
+    final button = find.widgetWithText(FilledButton, 'ごほうびガチャを引く');
     final size = tester.getSize(button);
     expect(size.height, greaterThanOrEqualTo(44));
     expect(size.width, greaterThanOrEqualTo(44));
@@ -258,20 +269,20 @@ void main() {
     expect(pressed, 1);
   });
 
-  testWidgets('受け取り直すときは「特典を受け取る」と出す', (tester) async {
+  testWidgets('受け取り直すときは「ごほうびを受け取る」と出す', (tester) async {
     await tester.pumpWidget(
       _wrap(
         MissionClaimButton(
-          label: '特典を受け取る',
+          label: 'ごほうびを受け取る',
           isClaiming: false,
           onPressed: () {},
         ),
       ),
     );
-    expect(find.text('特典を受け取る'), findsOneWidget);
+    expect(find.text('ごほうびを受け取る'), findsOneWidget);
   });
 
-  testWidgets('送信中の「特典を引く」は押せない', (tester) async {
+  testWidgets('送信中の「ごほうびガチャを引く」は押せない', (tester) async {
     var pressed = 0;
     await tester.pumpWidget(
       _wrap(MissionClaimButton(isClaiming: true, onPressed: () => pressed++)),
@@ -311,18 +322,74 @@ void main() {
     });
   });
 
-  testWidgets('特典の画面は引いた特典と「鬼に効く」、ほかの特典を出す', (tester) async {
+  testWidgets('ごほうびの画面は引いたごほうびと「鬼をジャマする」、ほかのごほうびを出す', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(home: RewardPage(reward: RewardType.blockClues)),
     );
-    expect(find.text('特典をひいた！'), findsOneWidget);
+    expect(find.text('ごほうびをひいた！'), findsOneWidget);
     expect(find.text('鬼の手がかりを止める'), findsOneWidget);
     expect(find.text('30秒'), findsOneWidget);
     expect(find.text('鬼のアイコンを大きくする'), findsOneWidget);
     expect(find.text('足元写真を1回まぬがれる'), findsOneWidget);
-    // 引いた特典とほかの鬼に効く特典で2つ、自分に効くもので1つ。
-    expect(find.text('鬼に効く'), findsNWidgets(2));
-    expect(find.text('自分に効く'), findsOneWidget);
+    // 引いたごほうびとほかの鬼に効くごほうびで2つ、自分に効くもので1つ。
+    expect(find.text('鬼をジャマする'), findsNWidgets(2));
+    expect(find.text('自分がトクする'), findsOneWidget);
     expect(find.text('地図にもどる'), findsOneWidget);
+  });
+
+  group('デバッグ用の「着いたことにする」', () {
+    test('DEBUG_MISSIONを付けずに起動したら出さない(テストも付けていない)', () {
+      expect(debugMissionArrivalEnabled, isFalse);
+    });
+
+    testWidgets('既定のままでは何も描かない', (tester) async {
+      await tester.pumpWidget(
+        _wrap(MissionDebugArrivalButton(onPressed: () {})),
+      );
+      expect(find.text('着いたことにする'), findsNothing);
+    });
+
+    testWidgets('有効なら44px以上で出て、押すと呼ばれる', (tester) async {
+      var pressed = 0;
+      await tester.pumpWidget(
+        _wrap(
+          MissionDebugArrivalButton(enabled: true, onPressed: () => pressed++),
+        ),
+      );
+      final button = find.text('着いたことにする');
+      expect(
+        tester.getSize(find.byType(InkWell)).height,
+        greaterThanOrEqualTo(44),
+      );
+      await tester.tap(button);
+      expect(pressed, 1);
+    });
+  });
+
+  group('お知らせのバナー', () {
+    testWidgets('文言を出し、44px以上で、押すと呼ばれる', (tester) async {
+      var tapped = 0;
+      await tester.pumpWidget(
+        _wrap(
+          MissionNoticeBanner(
+            notice: const MissionNotice(
+              kind: MissionNoticeKind.created,
+              missionId: 'm1',
+              message: 'アクセスポイントへ行こう',
+            ),
+            onTap: () => tapped++,
+          ),
+        ),
+      );
+      expect(find.text('アクセスポイントへ行こう'), findsOneWidget);
+      expect(
+        tester.getSize(find.byType(MissionNoticeBanner)).height,
+        greaterThanOrEqualTo(44),
+      );
+      await tester.tap(find.byType(MissionNoticeBanner));
+      expect(tapped, 1);
+    });
   });
 }

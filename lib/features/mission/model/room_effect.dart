@@ -5,14 +5,14 @@ import 'package:kakureru/features/mission/model/reward_type.dart';
 part 'room_effect.freezed.dart';
 part 'room_effect.g.dart';
 
-/// RTDB `rooms/{roomId}/effects/{effectId}` 1件ぶん。特典を引いた瞬間に
+/// RTDB `rooms/{roomId}/effects/{effectId}` 1件ぶん。ごほうびを引いた瞬間に
 /// 1件足す(持ち歩かせない)。
 ///
 /// 効果をuidごとではなく**ルーム単位**に持つのは、鬼に効く効果を全員の
 /// 端末で同じ見え方にするため。`skip_foot_photo` だけは `byUid` の本人に効く。
 ///
-/// キー(`effectId`)は、その特典を引いたミッションのID。1つのミッションから
-/// 出る効果は1件だけなので、書き込みをやり直しても重ならない。
+/// キー(`effectId`)は `{ミッションID}_{地点ID}`(`missionEffectId`)。
+/// 1つの地点から出る効果は1件だけなので、書き込みをやり直しても重ならない。
 @freezed
 abstract class RoomEffect with _$RoomEffect {
   const factory RoomEffect({

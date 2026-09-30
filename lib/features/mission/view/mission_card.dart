@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:kakureru/core/utils/duration_format.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/mission/mission_rules.dart';
+import 'package:kakureru/features/mission/mission_timing.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/mission/model/mission_progress.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
@@ -22,74 +24,72 @@ enum MissionCardStatus {
   /// アクセスポイントへ向かっている。
   approaching,
 
-  /// 判定範囲に入った(2回続けて範囲内)。「特典を引く」を出す。
+  /// 判定範囲に入った(2回続けて範囲内)。「ごほうびガチャを引く」を出す。
   arrived,
 
   /// 一度着いたが、いまは範囲の外にいる。戻れば引ける。
   leftRange,
 
-  /// ほかの人に先に取られた。
+  /// 地点がすべてほかの人に取られた。
   takenByOther,
 
   /// 自分が取った。
   claimedByMe,
 
-  /// 自分が取ったが、特典の書き込みが済んでいない(取った直後に通信が
-  /// 切れた等)。「特典を受け取る」でやり直せる。
+  /// 自分が取ったが、ごほうびの書き込みが済んでいない(取った直後に通信が
+  /// 切れた等)。「ごほうびを受け取る」でやり直せる。
   claimedWithoutReward,
-
-  /// 「鬼に近づけ」に挑戦中。
-  approachInProgress,
-
-  /// 「鬼に近づけ」を達成した。
-  approachAchieved,
 }
 
 /// カードの状態を決める。
 ///
-/// 取られたかどうかを最初に見る(取られた後に位置の話を出しても意味が
-/// 無いため)。次に権限、到着、GPSの順。到着した後は、いまの読み取りで
-/// 引けるかを[canClaimAccessPoint]で決める(範囲の外に出たら引けない。
-/// GPSが弱くなっただけなら引ける)。
+/// 自分が取ったか・すべて取られたかを最初に見る(取られた後に位置の話を
+/// 出しても意味が無いため)。次に権限、到着、GPSの順。[reading]は
+/// いちばん近い空いている地点([nearestOpenSpot])との位置関係で、到着は
+/// その地点に対するもの([MissionProgress.spotId]が[targetSpotId]と同じ)
+/// だけを見る。到着した後は、いまの読み取りで引けるかを
+/// [canClaimAccessPoint]で決める(範囲の外に出たら引けない。GPSが弱く
+/// なっただけなら引ける)。
 MissionCardStatus missionCardStatusOf({
   required Mission mission,
   required String? myUid,
   required LocationFailure locationFailure,
   required AccessPointReading reading,
   required MissionProgress progress,
+  required String? targetSpotId,
 }) {
-  switch (mission.type) {
-    case MissionType.approachDemon:
-      return progress.approach.achieved
-          ? MissionCardStatus.approachAchieved
-          : MissionCardStatus.approachInProgress;
-    case MissionType.accessPoint:
-      final claimedBy = mission.claimedBy;
-      if (claimedBy != null) {
-        if (claimedBy != myUid) return MissionCardStatus.takenByOther;
-        return mission.reward == null
-            ? MissionCardStatus.claimedWithoutReward
-            : MissionCardStatus.claimedByMe;
-      }
-      if (locationFailure == LocationFailure.locationPermission) {
-        return MissionCardStatus.needsLocationPermission;
-      }
-      if (progress.missionId == mission.id && progress.arrival.arrived) {
-        if (canClaimAccessPoint(arrival: progress.arrival, reading: reading)) {
-          return MissionCardStatus.arrived;
-        }
-        if (reading.fix == AccessPointFix.outside) {
-          return MissionCardStatus.leftRange;
-        }
-      }
-      return switch (reading.fix) {
-        AccessPointFix.noFix => MissionCardStatus.locating,
-        AccessPointFix.weakGps => MissionCardStatus.weakGps,
-        AccessPointFix.outside ||
-        AccessPointFix.inside => MissionCardStatus.approaching,
-      };
+  if (spotClaimedBy(mission, myUid) case final mine?) {
+    return mine.reward == null
+        ? MissionCardStatus.claimedWithoutReward
+        : MissionCardStatus.claimedByMe;
   }
+  if (openSpots(mission).isEmpty || mission.finishedAt != null) {
+    return MissionCardStatus.takenByOther;
+  }
+  if (locationFailure == LocationFailure.locationPermission) {
+    return MissionCardStatus.needsLocationPermission;
+  }
+  if (progress.missionId == mission.id &&
+      targetSpotId != null &&
+      progress.spotId == targetSpotId &&
+      progress.arrival.arrived) {
+    if (canClaimAccessPoint(arrival: progress.arrival, reading: reading)) {
+      return MissionCardStatus.arrived;
+    }
+    if (reading.fix == AccessPointFix.outside) {
+      return MissionCardStatus.leftRange;
+    }
+  }
+  return switch (reading.fix) {
+    AccessPointFix.noFix => MissionCardStatus.locating,
+    AccessPointFix.weakGps => MissionCardStatus.weakGps,
+    AccessPointFix.outside ||
+    AccessPointFix.inside => MissionCardStatus.approaching,
+  };
 }
+
+/// 「半径15m」の「15m」。
+String get _radiusLabel => formatMeters(accessPointRadiusM);
 
 /// 残り時間(ミリ秒)を「02:14」の形にする。切り上げ。
 String formatMissionRemaining(int remainingMillis) =>
@@ -109,7 +109,7 @@ class MissionCard extends StatelessWidget {
     required this.status,
     required this.reading,
     required this.remainingMillis,
-    this.claimedByName,
+    this.myReward,
   });
 
   /// いま受けているミッション。
@@ -118,14 +118,14 @@ class MissionCard extends StatelessWidget {
   /// カードの状態。
   final MissionCardStatus status;
 
-  /// アクセスポイントとの位置関係(のこり N m・GPS ±N m)。
+  /// いちばん近い空いている地点との位置関係(のこり N m・GPS ±N m)。
   final AccessPointReading reading;
 
   /// 期限までの残り(ミリ秒)。
   final int remainingMillis;
 
-  /// 取った人の名前([MissionCardStatus.takenByOther]のとき)。
-  final String? claimedByName;
+  /// 自分が引いたごほうび([MissionCardStatus.claimedByMe]のとき)。
+  final RewardType? myReward;
 
   @override
   Widget build(BuildContext context) {
@@ -170,8 +170,7 @@ class MissionCard extends StatelessWidget {
   }
 
   Widget _header() {
-    final isApproach = mission.type == MissionType.approachDemon;
-    final urgent = remainingMillis < 60 * 1000;
+    final urgent = remainingMillis < missionLastMinuteWarning.inMilliseconds;
     return Row(
       children: [
         Container(
@@ -194,9 +193,9 @@ class MissionCard extends StatelessWidget {
         ),
         const SizedBox(width: 7),
         _Tag(
-          label: isApproach ? '全員が挑める' : '先着1名',
-          background: isApproach ? fugitiveSoft : missionSoft,
-          foreground: isApproach ? fugitiveDeep : missionInk,
+          label: '先着${mission.spots.length}人',
+          background: missionSoft,
+          foreground: missionInk,
         ),
         const Spacer(),
         const Icon(Icons.timer_outlined, size: 16, color: gameMuted),
@@ -217,13 +216,11 @@ class MissionCard extends StatelessWidget {
     MissionCardStatus.needsLocationPermission => '位置情報の許可が必要',
     MissionCardStatus.arrived => 'アクセスポイントに着いた',
     MissionCardStatus.takenByOther => 'ほかの人に取られた',
-    MissionCardStatus.claimedByMe => '特典を引いた',
-    MissionCardStatus.claimedWithoutReward => '特典をまだ受け取っていない',
+    MissionCardStatus.claimedByMe => 'ごほうびを引いた',
+    MissionCardStatus.claimedWithoutReward => 'ごほうびをまだ受け取っていない',
     MissionCardStatus.leftRange => '判定範囲の外に出た',
-    MissionCardStatus.approachInProgress ||
-    MissionCardStatus.approachAchieved => '鬼に近づけ',
+    MissionCardStatus.weakGps => 'GPSの電波が弱い',
     MissionCardStatus.locating ||
-    MissionCardStatus.weakGps ||
     MissionCardStatus.approaching => 'アクセスポイントへ行こう',
   };
 
@@ -245,7 +242,9 @@ class MissionCard extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: gameMuted),
           ),
           const SizedBox(height: 9),
-          _footer('半径15m に入ると 特典 を1つ引ける'),
+          _distanceRow(),
+          const SizedBox(height: 9),
+          _footer('半径$_radiusLabel に入ると ごほうび を1つ引ける'),
         ];
       case MissionCardStatus.weakGps:
         return [
@@ -257,50 +256,49 @@ class MissionCard extends StatelessWidget {
             icon: Icons.gps_not_fixed,
           ),
           const SizedBox(height: 9),
-          _footer('GPSの誤差が30m以内になると判定する'),
+          _footer('GPSの誤差が${formatMeters(maxUsableAccuracyM)}以内になると判定する'),
         ];
       case MissionCardStatus.approaching:
         return [
           const SizedBox(height: 9),
           _distanceRow(),
           const SizedBox(height: 9),
-          _footer('半径15m に入ると 特典 を1つ引ける'),
+          _footer('半径$_radiusLabel に入ると ごほうび を1つ引ける'),
         ];
       case MissionCardStatus.arrived:
         return [
           const SizedBox(height: 9),
           const _Notice(text: 'まだ誰も取っていない', dot: true),
           const SizedBox(height: 9),
-          _footer('判定範囲（半径15m）の中にいる'),
+          _distanceRow(),
+          const SizedBox(height: 9),
+          _footer('判定範囲（半径$_radiusLabel）の中にいる'),
         ];
       case MissionCardStatus.leftRange:
         return [
           const SizedBox(height: 9),
           _distanceRow(),
           const SizedBox(height: 9),
-          _footer('半径15m に戻ると 特典 を引ける'),
+          _footer('半径$_radiusLabel に戻ると ごほうび を引ける'),
         ];
       case MissionCardStatus.claimedWithoutReward:
         return const [
           SizedBox(height: 6),
           Text(
-            '先に取れたが、特典の書き込みが終わっていない。下のボタンで受け取れる',
+            '先に取れたが、ごほうびの書き込みが終わっていない。下のボタンで受け取れる',
             style: TextStyle(fontSize: 12, height: 1.5, color: gameMuted),
           ),
         ];
       case MissionCardStatus.takenByOther:
-        final name = claimedByName;
-        return [
-          const SizedBox(height: 6),
+        return const [
+          SizedBox(height: 6),
           Text(
-            name == null || name.isEmpty
-                ? '先に取られた。次のミッションを待とう'
-                : '$name が先に取った。次のミッションを待とう',
-            style: const TextStyle(fontSize: 12, color: gameMuted),
+            'アクセスポイントはすべて取られた。次のミッションを待とう',
+            style: TextStyle(fontSize: 12, color: gameMuted),
           ),
         ];
       case MissionCardStatus.claimedByMe:
-        final reward = mission.reward;
+        final reward = myReward;
         return [
           const SizedBox(height: 6),
           if (reward != null)
@@ -322,28 +320,9 @@ class MissionCard extends StatelessWidget {
             )
           else
             const Text(
-              '特典を引いています',
+              'ごほうびを引いています',
               style: TextStyle(fontSize: 12, color: gameMuted),
             ),
-        ];
-      case MissionCardStatus.approachInProgress:
-        return const [
-          SizedBox(height: 9),
-          _ApproachGoal(),
-          SizedBox(height: 9),
-          Text(
-            '捕まらない距離で。BLEが届くと捕まる',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: demonDeep,
-            ),
-          ),
-        ];
-      case MissionCardStatus.approachAchieved:
-        return const [
-          SizedBox(height: 9),
-          _Notice(text: '達成した', icon: Icons.check_circle),
         ];
     }
   }
@@ -355,7 +334,9 @@ class MissionCard extends StatelessWidget {
         const Icon(Icons.place, size: 18, color: missionDeep),
         const SizedBox(width: 7),
         Text(
-          distance == null ? 'のこり --' : 'のこり ${formatMeters(distance)}',
+          distance == null
+              ? '近いのは のこり --'
+              : '近いのは のこり ${formatMeters(distance)}',
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
@@ -386,44 +367,6 @@ class MissionCard extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 「Wi-Fi の反応を なし → あり に」の行。
-class _ApproachGoal extends StatelessWidget {
-  const _ApproachGoal();
-
-  @override
-  Widget build(BuildContext context) {
-    const label = TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.w700,
-      color: gameMuted,
-    );
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: gameBackground,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: const Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 8,
-        runSpacing: 4,
-        children: [
-          Text('Wi-Fi の反応を', style: label),
-          _Tag(
-            label: 'なし',
-            background: Colors.white,
-            foreground: gameMuted,
-            bordered: true,
-          ),
-          Icon(Icons.arrow_forward, size: 16, color: missionDeep),
-          _Tag(label: 'あり', background: missionSoft, foreground: missionInk),
-          Text('に', style: label),
-        ],
-      ),
     );
   }
 }
@@ -481,13 +424,11 @@ class _Tag extends StatelessWidget {
     required this.label,
     required this.background,
     required this.foreground,
-    this.bordered = false,
   });
 
   final String label;
   final Color background;
   final Color foreground;
-  final bool bordered;
 
   @override
   Widget build(BuildContext context) {
@@ -496,7 +437,6 @@ class _Tag extends StatelessWidget {
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(999),
-        border: bordered ? Border.all(color: gameBorder) : null,
       ),
       child: Text(
         label,
@@ -510,7 +450,8 @@ class _Tag extends StatelessWidget {
   }
 }
 
-/// 「鬼に効く」「自分に効く」のタグ。特典には必ず添える(特典カードと共通)。
+/// 「鬼をジャマする」「自分がトクする」のタグ。ごほうびには必ず添える
+/// (ごほうびのカードと共通)。
 class RewardTargetTag extends StatelessWidget {
   /// [target]に応じて文言と色を変える。
   const RewardTargetTag({super.key, required this.target, this.fontSize = 10});
@@ -542,13 +483,13 @@ class RewardTargetTag extends StatelessWidget {
   }
 }
 
-/// 「鬼に効く」「自分に効く」。
+/// 「鬼をジャマする」「自分がトクする」。
 String rewardTargetLabel(RewardTarget target) => switch (target) {
-  RewardTarget.demon => '鬼に効く',
-  RewardTarget.self => '自分に効く',
+  RewardTarget.demon => '鬼をジャマする',
+  RewardTarget.self => '自分がトクする',
 };
 
-/// 地図の下寄せに出す「特典を引く」ボタン(モック2)。押す場所は1か所で、
+/// 地図の下寄せに出す「ごほうびガチャを引く」ボタン(モック2)。押す場所は1か所で、
 /// 高さは44px以上(58)にする。
 class MissionClaimButton extends StatelessWidget {
   /// [onPressed]がnullの間は押せない(送信中など)。
@@ -556,11 +497,11 @@ class MissionClaimButton extends StatelessWidget {
     super.key,
     required this.onPressed,
     required this.isClaiming,
-    this.label = '特典を引く',
+    this.label = 'ごほうびガチャを引く',
   });
 
-  /// ボタンの文言。取った後に特典の書き込みをやり直すときは
-  /// 「特典を受け取る」にする。
+  /// ボタンの文言。取った後にごほうびの書き込みをやり直すときは
+  /// 「ごほうびを受け取る」にする。
   final String label;
 
   /// 押したとき。
@@ -622,4 +563,102 @@ class MissionClaimButton extends StatelessWidget {
       ],
     );
   }
+}
+
+/// 「着いたことにする」(デバッグ用)を出してよいか。
+///
+/// `flutter run --dart-define=DEBUG_MISSION=true` で起動したときだけtrue。
+/// リリースビルドでは定義があっても必ずfalse(本番で距離の判定を飛ばせない)。
+const bool debugMissionArrivalEnabled =
+    !kReleaseMode && bool.fromEnvironment('DEBUG_MISSION');
+
+/// カードの下に出す、デバッグ用の「着いたことにする」(点線の枠)。
+///
+/// 距離とGPSの精度の判定だけを飛ばし、取り合いのトランザクションは
+/// ふつうに走らせる(2台で同じ地点を同時に押す試験ができる)。
+/// [enabled]がfalseなら何も描かない。既定は[debugMissionArrivalEnabled]。
+class MissionDebugArrivalButton extends StatelessWidget {
+  /// [onPressed]がnullの間は押せない(送信中など)。
+  const MissionDebugArrivalButton({
+    super.key,
+    required this.onPressed,
+    this.enabled = debugMissionArrivalEnabled,
+  });
+
+  /// 押したとき。
+  final VoidCallback? onPressed;
+
+  /// 出すか。テストからだけ差し替える。
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled) return const SizedBox.shrink();
+    return CustomPaint(
+      painter: const _DashedBorderPainter(color: missionInk),
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onPressed,
+          child: const SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.bug_report_outlined, size: 18, color: missionInk),
+                SizedBox(width: 6),
+                Text(
+                  '着いたことにする',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: missionInk,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 角丸の点線の枠。
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter({required this.color});
+
+  final Color color;
+
+  static const _dash = 5.0;
+  static const _gap = 4.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(10)),
+      );
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        canvas.drawPath(
+          metric.extractPath(distance, distance + _dash),
+          paint,
+        );
+        distance += _dash + _gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

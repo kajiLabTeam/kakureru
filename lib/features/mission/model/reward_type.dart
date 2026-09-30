@@ -1,16 +1,17 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:kakureru/features/mission/mission_timing.dart';
 
-/// 特典が誰に効くか。カードには必ずこれを書く(鬼に効くものと自分に効く
-/// ものが混ざるため)。
+/// ごほうびが誰に効くか。カードには必ずこれを書く(鬼をジャマするものと
+/// 自分がトクするものが混ざるため)。
 enum RewardTarget {
-  /// 鬼に効く。効果はルーム全員の端末で同じ見え方にする。
+  /// 鬼をジャマする。効果はルーム全員の端末で同じ見え方にする。
   demon,
 
-  /// 引いた本人にだけ効く。
+  /// 引いた本人がトクする。
   self,
 }
 
-/// ミッションの特典。RTDBの `missions/{id}/reward` と
+/// ミッションのごほうび。RTDBの `missions/{id}/spots/{spotId}/reward` と
 /// `effects/{effectId}/type` に書く文字列を持つ。
 ///
 /// ハズレは作らない。抽選はクライアントで選んでよい(身内で遊ぶ前提)。
@@ -22,7 +23,7 @@ enum RewardType {
     title: '鬼の手がかりを止める',
     description: '30秒のあいだ、鬼は Wi-Fi と気圧を見られなくなる',
     target: RewardTarget.demon,
-    duration: Duration(seconds: 30),
+    duration: rewardEffectDuration,
   ),
 
   /// 30秒、逃走者の地図で鬼のピンを2倍にする。
@@ -31,7 +32,7 @@ enum RewardType {
     title: '鬼のアイコンを大きくする',
     description: '地図でひと目で分かるようになる',
     target: RewardTarget.demon,
-    duration: Duration(seconds: 30),
+    duration: rewardEffectDuration,
   ),
 
   /// 引いた本人の次の撮影タイムを1回飛ばす(回数ものなので時間は0)。
@@ -66,7 +67,7 @@ enum RewardType {
   /// 効いている時間。回数もの([skipFootPhoto])は0。
   final Duration duration;
 
-  /// [raw]から引く。知らない値ならnull(新しい版の端末が書いた特典など)。
+  /// [raw]から引く。知らない値ならnull(新しい版の端末が書いたごほうびなど)。
   static RewardType? fromRaw(String? raw) {
     for (final type in values) {
       if (type.raw == raw) return type;

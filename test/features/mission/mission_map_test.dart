@@ -11,7 +11,7 @@ const _demonUid = 'demon';
 
 Future<void> _pumpMap(
   WidgetTester tester, {
-  MissionMapPoint? missionPoint,
+  List<MissionMapPoint> missionPoints = const [],
   bool enlargeDemonIcon = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(360, 640));
@@ -29,7 +29,7 @@ Future<void> _pumpMap(
             UserLocation(uid: _myUid, latitude: 35, longitude: 137),
             UserLocation(uid: _demonUid, latitude: 35.001, longitude: 137),
           ],
-          missionPoint: missionPoint,
+          missionPoints: missionPoints,
           enlargeDemonIcon: enlargeDemonIcon,
         ),
       ),
@@ -47,19 +47,22 @@ double _scaleOf(WidgetTester tester, String label) {
 }
 
 void main() {
-  testWidgets('アクセスポイントの点と、判定範囲の破線の円を描く', (tester) async {
+  testWidgets('アクセスポイントの点と、判定範囲の破線の円を地点の数だけ描く', (tester) async {
     await _pumpMap(
       tester,
-      missionPoint: (lat: 35.0005, lng: 137.0, radiusM: 15),
+      missionPoints: const [
+        (lat: 35.0005, lng: 137.0, radiusM: 15),
+        (lat: 35.0010, lng: 137.0, radiusM: 15),
+      ],
     );
-    expect(find.text('アクセスポイント'), findsOneWidget);
+    expect(find.text('アクセスポイント'), findsNWidgets(2));
     final polygons = tester
         .widgetList<PolygonLayer>(find.byType(PolygonLayer))
         .expand((layer) => layer.polygons)
         .toList();
     expect(
       polygons.where((p) => p.borderColor == missionAccent),
-      hasLength(1),
+      hasLength(2),
     );
   });
 

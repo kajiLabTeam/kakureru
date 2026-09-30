@@ -15,9 +15,9 @@ T _$identity<T>(T value) => value;
 mixin _$MissionProgress {
 
 /// どのミッションの進み具合か。ミッションが無ければnull。
- String? get missionId;/// アクセスポイントの到着判定。
- ArrivalProgress get arrival;/// 「鬼に近づけ」の達成判定。
- ApproachProgress get approach;
+ String? get missionId;/// どの地点への到着判定か(いちばん近い、空いている地点)。
+ String? get spotId;/// アクセスポイントの到着判定。
+ ArrivalProgress get arrival;
 /// Create a copy of MissionProgress
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +28,16 @@ $MissionProgressCopyWith<MissionProgress> get copyWith => _$MissionProgressCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is MissionProgress&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.arrival, arrival) || other.arrival == arrival)&&(identical(other.approach, approach) || other.approach == approach));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MissionProgress&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.spotId, spotId) || other.spotId == spotId)&&(identical(other.arrival, arrival) || other.arrival == arrival));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,missionId,arrival,approach);
+int get hashCode => Object.hash(runtimeType,missionId,spotId,arrival);
 
 @override
 String toString() {
-  return 'MissionProgress(missionId: $missionId, arrival: $arrival, approach: $approach)';
+  return 'MissionProgress(missionId: $missionId, spotId: $spotId, arrival: $arrival)';
 }
 
 
@@ -48,7 +48,7 @@ abstract mixin class $MissionProgressCopyWith<$Res>  {
   factory $MissionProgressCopyWith(MissionProgress value, $Res Function(MissionProgress) _then) = _$MissionProgressCopyWithImpl;
 @useResult
 $Res call({
- String? missionId, ArrivalProgress arrival, ApproachProgress approach
+ String? missionId, String? spotId, ArrivalProgress arrival
 });
 
 
@@ -65,12 +65,12 @@ class _$MissionProgressCopyWithImpl<$Res>
 
 /// Create a copy of MissionProgress
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? missionId = freezed,Object? arrival = null,Object? approach = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? missionId = freezed,Object? spotId = freezed,Object? arrival = null,}) {
   return _then(_self.copyWith(
 missionId: freezed == missionId ? _self.missionId : missionId // ignore: cast_nullable_to_non_nullable
+as String?,spotId: freezed == spotId ? _self.spotId : spotId // ignore: cast_nullable_to_non_nullable
 as String?,arrival: null == arrival ? _self.arrival : arrival // ignore: cast_nullable_to_non_nullable
-as ArrivalProgress,approach: null == approach ? _self.approach : approach // ignore: cast_nullable_to_non_nullable
-as ApproachProgress,
+as ArrivalProgress,
   ));
 }
 
@@ -155,10 +155,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? missionId,  ArrivalProgress arrival,  ApproachProgress approach)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? missionId,  String? spotId,  ArrivalProgress arrival)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _MissionProgress() when $default != null:
-return $default(_that.missionId,_that.arrival,_that.approach);case _:
+return $default(_that.missionId,_that.spotId,_that.arrival);case _:
   return orElse();
 
 }
@@ -176,10 +176,10 @@ return $default(_that.missionId,_that.arrival,_that.approach);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? missionId,  ArrivalProgress arrival,  ApproachProgress approach)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? missionId,  String? spotId,  ArrivalProgress arrival)  $default,) {final _that = this;
 switch (_that) {
 case _MissionProgress():
-return $default(_that.missionId,_that.arrival,_that.approach);case _:
+return $default(_that.missionId,_that.spotId,_that.arrival);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -196,10 +196,10 @@ return $default(_that.missionId,_that.arrival,_that.approach);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? missionId,  ArrivalProgress arrival,  ApproachProgress approach)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? missionId,  String? spotId,  ArrivalProgress arrival)?  $default,) {final _that = this;
 switch (_that) {
 case _MissionProgress() when $default != null:
-return $default(_that.missionId,_that.arrival,_that.approach);case _:
+return $default(_that.missionId,_that.spotId,_that.arrival);case _:
   return null;
 
 }
@@ -211,15 +211,15 @@ return $default(_that.missionId,_that.arrival,_that.approach);case _:
 
 
 class _MissionProgress implements MissionProgress {
-  const _MissionProgress({this.missionId, this.arrival = initialArrival, this.approach = initialApproach});
+  const _MissionProgress({this.missionId, this.spotId, this.arrival = initialArrival});
   
 
 /// どのミッションの進み具合か。ミッションが無ければnull。
 @override final  String? missionId;
+/// どの地点への到着判定か(いちばん近い、空いている地点)。
+@override final  String? spotId;
 /// アクセスポイントの到着判定。
 @override@JsonKey() final  ArrivalProgress arrival;
-/// 「鬼に近づけ」の達成判定。
-@override@JsonKey() final  ApproachProgress approach;
 
 /// Create a copy of MissionProgress
 /// with the given fields replaced by the non-null parameter values.
@@ -231,16 +231,16 @@ _$MissionProgressCopyWith<_MissionProgress> get copyWith => __$MissionProgressCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _MissionProgress&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.arrival, arrival) || other.arrival == arrival)&&(identical(other.approach, approach) || other.approach == approach));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _MissionProgress&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.spotId, spotId) || other.spotId == spotId)&&(identical(other.arrival, arrival) || other.arrival == arrival));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,missionId,arrival,approach);
+int get hashCode => Object.hash(runtimeType,missionId,spotId,arrival);
 
 @override
 String toString() {
-  return 'MissionProgress(missionId: $missionId, arrival: $arrival, approach: $approach)';
+  return 'MissionProgress(missionId: $missionId, spotId: $spotId, arrival: $arrival)';
 }
 
 
@@ -251,7 +251,7 @@ abstract mixin class _$MissionProgressCopyWith<$Res> implements $MissionProgress
   factory _$MissionProgressCopyWith(_MissionProgress value, $Res Function(_MissionProgress) _then) = __$MissionProgressCopyWithImpl;
 @override @useResult
 $Res call({
- String? missionId, ArrivalProgress arrival, ApproachProgress approach
+ String? missionId, String? spotId, ArrivalProgress arrival
 });
 
 
@@ -268,12 +268,12 @@ class __$MissionProgressCopyWithImpl<$Res>
 
 /// Create a copy of MissionProgress
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? missionId = freezed,Object? arrival = null,Object? approach = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? missionId = freezed,Object? spotId = freezed,Object? arrival = null,}) {
   return _then(_MissionProgress(
 missionId: freezed == missionId ? _self.missionId : missionId // ignore: cast_nullable_to_non_nullable
+as String?,spotId: freezed == spotId ? _self.spotId : spotId // ignore: cast_nullable_to_non_nullable
 as String?,arrival: null == arrival ? _self.arrival : arrival // ignore: cast_nullable_to_non_nullable
-as ArrivalProgress,approach: null == approach ? _self.approach : approach // ignore: cast_nullable_to_non_nullable
-as ApproachProgress,
+as ArrivalProgress,
   ));
 }
 

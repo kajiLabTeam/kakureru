@@ -1,4 +1,4 @@
-/// 特典の効果(`effects`)の残り時間・有効かどうか・足元写真を飛ばす
+/// ごほうびの効果(`effects`)の残り時間・有効かどうか・足元写真を飛ばす
 /// スロットの純粋な計算。
 ///
 /// 残り時間は**端末の時計ではなくサーバー時刻**で数える。`startedAt` は
@@ -77,7 +77,7 @@ List<RoomEffect> activeTimedEffects(
 ///
 /// 引いた瞬間に1回だけ決めて `effects/{id}/skipSlot` に書く。後から
 /// `lastPhotoAt` を見て計算し直すと、引いた後に撮り直したときに飛ばす回が
-/// 撮影済みのスロットへずれて、特典が無駄になるため。[isDue]はアップロード
+/// 撮影済みのスロットへずれて、ごほうびが無駄になるため。[isDue]はアップロード
 /// 中の撮影も含めた撮影バナーの判定(`PhotoCaptureState.isDue`)を渡す。
 /// 撮影スケジュールが未確定([scheduleStartMillis]がnull)ならnull。
 int? footPhotoSlotToSkip({
