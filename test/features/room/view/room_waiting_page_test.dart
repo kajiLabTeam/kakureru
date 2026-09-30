@@ -597,7 +597,7 @@ void main() {
       ),
     );
 
-    testWidgets('未設定ならOFFで出る', (tester) async {
+    testWidgets('未設定ならONで出る(テザリング前提の人が多いため)', (tester) async {
       await _pumpWaitingPage(
         tester,
         roomRepo: _FakeRoomRepository(),
@@ -605,10 +605,10 @@ void main() {
       );
 
       expect(find.text('テザリングで接続している'), findsOneWidget);
-      expect(tetheringSwitch(tester).value, isFalse);
+      expect(tetheringSwitch(tester).value, isTrue);
     });
 
-    testWidgets('自分がONにしていればONで出る', (tester) async {
+    testWidgets('自分がOFFにしていればOFFで出る', (tester) async {
       await _pumpWaitingPage(
         tester,
         roomRepo: _FakeRoomRepository(),
@@ -620,8 +620,29 @@ void main() {
               displayName: 'ホスト',
               isHost: true,
               pressureSensorAvailable: true,
-              usesTethering: true,
+              usesTethering: false,
             ),
+          ],
+        ),
+      );
+
+      expect(tetheringSwitch(tester).value, isFalse);
+    });
+
+    testWidgets('他の人がOFFにしても、自分のトグルは変わらない', (tester) async {
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(),
+        initialRoom: _room(
+          users: const [
+            RoomUser(
+              id: _myUid,
+              displayName: 'ホスト',
+              isHost: true,
+              pressureSensorAvailable: true,
+            ),
+            RoomUser(id: 'other', displayName: '参加者', usesTethering: false),
           ],
         ),
       );
@@ -629,28 +650,7 @@ void main() {
       expect(tetheringSwitch(tester).value, isTrue);
     });
 
-    testWidgets('他の人がONでも、自分のトグルはOFFのまま', (tester) async {
-      await _pumpWaitingPage(
-        tester,
-        roomRepo: _FakeRoomRepository(),
-        pressureViewModel: _FakePressureViewModel(),
-        initialRoom: _room(
-          users: const [
-            RoomUser(
-              id: _myUid,
-              displayName: 'ホスト',
-              isHost: true,
-              pressureSensorAvailable: true,
-            ),
-            RoomUser(id: 'other', displayName: '参加者', usesTethering: true),
-          ],
-        ),
-      );
-
-      expect(tetheringSwitch(tester).value, isFalse);
-    });
-
-    testWidgets('押すとONを書き込む', (tester) async {
+    testWidgets('押すとOFFを書き込む', (tester) async {
       final repo = _FakeRoomRepository();
       await _pumpWaitingPage(
         tester,
@@ -669,7 +669,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(repo.usesTetheringWrites, [true]);
+      expect(repo.usesTetheringWrites, [false]);
     });
 
     testWidgets('送信が終わらない間もスイッチは押せ、押し直せる', (tester) async {
@@ -692,7 +692,7 @@ void main() {
               displayName: 'ホスト',
               isHost: true,
               pressureSensorAvailable: true,
-              usesTethering: true,
+              usesTethering: false,
             ),
           ],
         ),
@@ -701,12 +701,12 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(tetheringSwitch(tester).value, isTrue);
+      expect(tetheringSwitch(tester).value, isFalse);
       expect(tetheringSwitch(tester).onChanged, isNotNull);
       await tester.tap(find.byWidget(tetheringSwitch(tester)));
       await tester.pump();
 
-      expect(repo.usesTetheringWrites, [true, false]);
+      expect(repo.usesTetheringWrites, [false, true]);
     });
   });
 

@@ -16,7 +16,8 @@ T _$identity<T>(T value) => value;
 mixin _$RoomUser {
 
  String get id; String get displayName; bool get isHost;@JsonKey(unknownEnumValue: UserRole.fugitive) UserRole get role; double? get pressureOffset; bool? get pressureSensorAvailable;/// 待機画面の「テザリングで接続している」の自己申告(issue #142)。
-/// 未設定はOFF扱い。再戦でも保持する。
+/// 未設定は[defaultUsesTethering](ON)扱い。再戦でも保持する。
+/// 判定には[isTethering]を使う。
  bool? get usesTethering; int? get becameDemonAt; int? get lastPhotoAt; int get joinedAt;/// 退出したら`false`になる。未設定(この項目ができる前のデータ)は
 /// 参加中とみなす。
  bool? get online;/// 退出した時刻(サーバー時刻のミリ秒)。
@@ -235,7 +236,8 @@ class _RoomUser extends RoomUser {
 @override final  double? pressureOffset;
 @override final  bool? pressureSensorAvailable;
 /// 待機画面の「テザリングで接続している」の自己申告(issue #142)。
-/// 未設定はOFF扱い。再戦でも保持する。
+/// 未設定は[defaultUsesTethering](ON)扱い。再戦でも保持する。
+/// 判定には[isTethering]を使う。
 @override final  bool? usesTethering;
 @override final  int? becameDemonAt;
 @override final  int? lastPhotoAt;

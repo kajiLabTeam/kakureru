@@ -358,7 +358,7 @@ class RoomWaitingPage extends HookConsumerWidget {
                   child: _TetheringRow(
                     roomId: roomId,
                     usesTethering: room.users.any(
-                      (u) => u.id == myUid && (u.usesTethering ?? false),
+                      (u) => u.id == myUid && u.isTethering,
                     ),
                   ),
                 ),

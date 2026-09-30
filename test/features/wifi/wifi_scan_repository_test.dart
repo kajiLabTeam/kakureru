@@ -206,7 +206,7 @@ void main() {
       expect(reads, 0);
     });
 
-    test('自己申告が未設定ならOFF扱い', () async {
+    test('自己申告が未設定ならON扱い(テザリング前提の人が多いため)', () async {
       final db = rtdbWith();
       final repo = WifiScanRepository(
         db: db,
@@ -216,7 +216,22 @@ void main() {
 
       await repo.sendScan(roomId, scan);
 
+      expect(sent(db)['hotspotBssid'], hotspot);
+      expect(sent(db)['bssidRssi'], {'ap1': -60, 'ap2': -65});
+    });
+
+    test('未設定のままでも、構内Wi-Fi(固定AP)につないでいれば何も共有しない', () async {
+      final db = rtdbWith();
+      final repo = WifiScanRepository(
+        db: db,
+        auth: FakeAuth(),
+        readConnectedBssid: () async => '00:1a:2b:3c:4d:5e',
+      );
+
+      await repo.sendScan(roomId, scan);
+
       expect(sent(db)['hotspotBssid'], isNull);
+      expect(sent(db)['bssidRssi'], scan);
     });
 
     test('スキャンのたびに自己申告を読み直す(最初のスキャンから効く)', () async {

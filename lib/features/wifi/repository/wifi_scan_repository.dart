@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:kakureru/core/utils/rtdb_write.dart';
+import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
 import 'package:kakureru/features/wifi/repository/proximity_calculator.dart';
 import 'package:network_info_plus/network_info_plus.dart';
@@ -38,7 +39,7 @@ class WifiScanRepository {
   /// 直近に読めた自分の`users/{uid}/usesTethering`(待機画面の自己申告。
   /// issue #142)。値の持ち主はRTDBで、ここは読めなかったときの代わりに
   /// 覚えておくだけ。
-  bool _lastUsesTethering = false;
+  bool _lastUsesTethering = defaultUsesTethering;
 
   /// 直近に取れた自分のホットスポットのBSSID。1回取れなかっただけ(一瞬の
   /// 切断・構内Wi-Fiへのつなぎ替え等)で自分のホットスポットが`bssidRssi`に
@@ -176,11 +177,14 @@ class WifiScanRepository {
           .ref('rooms/$roomId/users/$_uid/usesTethering')
           .get()
           .timeout(_usesTetheringReadTimeout);
-      final usesTethering = snapshot.value == true;
+      final value = snapshot.value;
+      final usesTethering = value is bool ? value : defaultUsesTethering;
       if (session == _session) _lastUsesTethering = usesTethering;
       return usesTethering;
     } on Object catch (e) {
       debugPrint('[WifiScanRepository] usesTetheringを読めない: $e');
+      // [session]が古くても直前の値をそのまま返してよい。呼び出し側
+      // ([_currentHotspotBssid])が直後に`session != _session`で捨てるため。
       return _lastUsesTethering;
     }
   }
@@ -221,7 +225,7 @@ class WifiScanRepository {
     _scanTimer?.cancel();
     _scanTimer = null;
     _session++;
-    _lastUsesTethering = false;
+    _lastUsesTethering = defaultUsesTethering;
     _lastHotspotBssid = null;
     _resultsSub?.cancel();
     _resultsSub = null;
