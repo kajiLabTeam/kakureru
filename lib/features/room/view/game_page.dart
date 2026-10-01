@@ -569,7 +569,13 @@ class GamePage extends HookConsumerWidget {
       );
       if (choice == null || !context.mounted) return;
 
+      // reportCatchの書き込みはRTDBのローカルリスナーへ即座に流れるため、
+      // 送信が終わるのを待っている間に逃走者が0人になり、captureOpenを
+      // 立てる前にGameAlertsが結果画面への遷移を走らせてしまう
+      // (issue #154)。送信を始める時点から遷移を止め、失敗/二重押しで
+      // 撮影画面を開かないときは解除する。
       String? catchId;
+      captureOpen.value = true;
       final result = await catchAction.run(() async {
         catchId = await ref
             .read(roomRepositoryProvider)
@@ -605,7 +611,6 @@ class GamePage extends HookConsumerWidget {
                 orElse: () => (uid: choice.uid, name: '???'),
               )
               .name;
-          captureOpen.value = true;
           await Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => CatchCapturePage(
@@ -618,6 +623,8 @@ class GamePage extends HookConsumerWidget {
           );
           if (context.mounted) captureOpen.value = false;
         case AsyncActionStatus.failed:
+          // 撮影画面を開かずに終わるので、止めていた遷移を解除する。
+          captureOpen.value = false;
           // 何の操作が失敗したのかは残す(SnackBarは画面の文脈から離れた
           // 場所に出るため)。原因の説明だけをuserFacingErrorMessageに任せ、
           // 例外そのものは埋め込まない(issue #95)。
@@ -630,7 +637,9 @@ class GamePage extends HookConsumerWidget {
             ),
           );
         case AsyncActionStatus.skipped:
-          // 前の送信がまだ終わっていないだけなので、何も出さない。
+          // 前の送信がまだ終わっていないだけなので、何も出さない
+          // (止めていた遷移は前の送信の方で解除される)。
+          captureOpen.value = false;
           break;
       }
     }
