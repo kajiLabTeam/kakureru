@@ -289,6 +289,17 @@ class GamePage extends HookConsumerWidget {
     final myLastPhotoAt = myUid == null
         ? null
         : findUser(room?.users ?? const [], myUid)?.lastPhotoAt;
+    // 特典「足元写真を1回まぬがれる」で飛ばすスロット。撮影プロンプトと
+    // 写真一覧(まぬがれたスロットも撮った扱いにする。issue #157)の両方で使う。
+    final skippedPhotoSlots = skippedFootPhotoSlots(
+      effects: roomEffects,
+      myUid: myUid,
+      scheduleStartMillis: photoScheduleStartMillis(
+        releasedAt: room?.releasedAt,
+        intervalSec: photoIntervalSec,
+      ),
+      intervalSec: photoIntervalSec,
+    );
     final photoCapture = usePhotoCaptureController(
       context,
       roomId: roomId,
@@ -299,16 +310,7 @@ class GamePage extends HookConsumerWidget {
       lastPhotoAt: myLastPhotoAt,
       // 鬼も逃走者も撮る(issue #140)。
       notifyWhenDue: takesFootPhotos(roleOf(room?.users ?? const [], myUid)),
-      // 特典「足元写真を1回まぬがれる」で飛ばすスロット。
-      skippedSlots: skippedFootPhotoSlots(
-        effects: roomEffects,
-        myUid: myUid,
-        scheduleStartMillis: photoScheduleStartMillis(
-          releasedAt: room?.releasedAt,
-          intervalSec: photoIntervalSec,
-        ),
-        intervalSec: photoIntervalSec,
-      ),
+      skippedSlots: skippedPhotoSlots,
     );
 
     // GPSの実測(getPositionStream)は初回の測位に時間がかかる(コールドスタート)。
@@ -1213,6 +1215,7 @@ class GamePage extends HookConsumerWidget {
                                 catchPhotos: galleryCatchPhotos,
                                 nowMillis: now,
                                 photoCapture: photoCapture,
+                                skippedSlots: skippedPhotoSlots,
                               ),
                             ],
                           ),
