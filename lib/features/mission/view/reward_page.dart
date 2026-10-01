@@ -269,6 +269,7 @@ IconData rewardIcon(RewardType reward) => switch (reward) {
   RewardType.blockClues => Icons.wifi_off,
   RewardType.bigDemonIcon => Icons.zoom_out_map,
   RewardType.skipFootPhoto => Icons.no_photography_outlined,
+  RewardType.enlargeSelfIcon => Icons.personal_injury_outlined,
 };
 
 class _RewardIcon extends StatelessWidget {
@@ -279,19 +280,19 @@ class _RewardIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDemon = reward.target == RewardTarget.demon;
+    final (background, foreground) = switch (reward.target) {
+      RewardTarget.demon => (demonSoft, demonDeep),
+      RewardTarget.self => (selfSoft, const Color(0xFF2F5FC4)),
+      RewardTarget.selfMiss => (missSoft, missDeep),
+    };
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: isDemon ? demonSoft : selfSoft,
+        color: background,
         borderRadius: BorderRadius.circular(size * 0.27),
       ),
-      child: Icon(
-        rewardIcon(reward),
-        size: size * 0.5,
-        color: isDemon ? demonDeep : const Color(0xFF2F5FC4),
-      ),
+      child: Icon(rewardIcon(reward), size: size * 0.5, color: foreground),
     );
   }
 }

@@ -17,8 +17,11 @@ enum GachaPhase {
   /// 金のカプセルが落ちて2回弾む。脈打って光り、タップを待つ。
   capsule,
 
-  /// 確定。白く弾ける → 虹の輪・紙吹雪・「確定」のハンコ → 特典カード。
+  /// 確定(当たり)。白く弾ける → 虹の輪・紙吹雪・「確定」のハンコ → 特典カード。
   confirmed,
+
+  /// ハズレ。激熱を出さず、赤い「残念」で短く終わる。
+  missed,
 }
 
 /// ハンドルを回す段の長さ。
@@ -27,8 +30,12 @@ const gachaTurningDuration = Duration(milliseconds: 1500);
 /// 激熱の段の長さ。
 const gachaHeatDuration = Duration(milliseconds: 1400);
 
-/// 確定の段の、ハンコと特典カードが出そろうまでの長さ。
+/// 確定(当たり)の段の、ハンコと特典カードが出そろうまでの長さ。
 const gachaConfirmDuration = Duration(milliseconds: 1100);
+
+/// ハズレの段の、「残念」と特典カードが出そろうまでの長さ。当たりより
+/// 短くする(待たされた末のハズレを長引かせない)。
+const gachaMissedDuration = Duration(milliseconds: 700);
 
 /// ハンドルの回転数(ハンドルを回す段の間に回る数)。
 const gachaKnobTurns = 3;
@@ -44,9 +51,11 @@ const gachaRedLampDelay = Duration(milliseconds: 550);
 
 /// 時間で進む段(ハンドル・激熱)の、始まってから[elapsed]たったときの段。
 /// 時間で進むのはカプセルまで。カプセルから先はタップでしか進まない。
-GachaPhase gachaPhaseAt(Duration elapsed) {
+///
+/// [isMiss]ならハズレなので激熱を出さず、ハンドルのあとすぐカプセルに進む。
+GachaPhase gachaPhaseAt(Duration elapsed, {bool isMiss = false}) {
   if (elapsed < gachaTurningDuration) return GachaPhase.turning;
-  if (elapsed < gachaTurningDuration + gachaHeatDuration) {
+  if (!isMiss && elapsed < gachaTurningDuration + gachaHeatDuration) {
     return GachaPhase.heat;
   }
   return GachaPhase.capsule;
@@ -70,7 +79,8 @@ GachaTapAction gachaTapAction(GachaPhase phase) => switch (phase) {
   GachaPhase.capsule => GachaTapAction.open,
   GachaPhase.turning ||
   GachaPhase.heat ||
-  GachaPhase.confirmed => GachaTapAction.skipToEnd,
+  GachaPhase.confirmed ||
+  GachaPhase.missed => GachaTapAction.skipToEnd,
 };
 
 /// きたい度のランプが何個点いているか(1〜3)。ハンドルを回し始めてから

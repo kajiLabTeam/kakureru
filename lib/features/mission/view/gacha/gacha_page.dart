@@ -71,6 +71,8 @@ class GachaPage extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMiss = reward.isMiss;
+    final finalPhase = isMiss ? GachaPhase.missed : GachaPhase.confirmed;
     final phase = useState(GachaPhase.turning);
 
     // ハンドル〜激熱までの時間(この2段だけは時間で進む)。
@@ -125,6 +127,18 @@ class GachaPage extends HookWidget {
           unawaited(lines.repeat());
           unawaited(rainbow.repeat());
           unawaited(confetti.repeat());
+          confirm.duration = gachaConfirmDuration;
+          if (animateConfirm) {
+            unawaited(confirm.forward(from: 0));
+          } else {
+            confirm.value = 1;
+          }
+        case GachaPhase.missed:
+          intro.stop();
+          shake.stop();
+          drop.value = 1;
+          pulse.stop();
+          confirm.duration = gachaMissedDuration;
           if (animateConfirm) {
             unawaited(confirm.forward(from: 0));
           } else {
@@ -135,10 +149,13 @@ class GachaPage extends HookWidget {
 
     // 始まったらすぐハンドルを回す(特典はもう引いてあるので待たせない)。
     useEffect(() {
+      intro.duration = isMiss
+          ? gachaTurningDuration
+          : gachaTurningDuration + gachaHeatDuration;
       void onIntro() {
-        if (phase.value == GachaPhase.confirmed) return;
+        if (phase.value == finalPhase) return;
         final elapsed = intro.duration! * intro.value;
-        final next = gachaPhaseAt(elapsed);
+        final next = gachaPhaseAt(elapsed, isMiss: isMiss);
         if (next.index > phase.value.index) enterPhase(next);
       }
 
@@ -150,15 +167,15 @@ class GachaPage extends HookWidget {
     }, const []);
 
     void onTap() {
-      if (phase.value == GachaPhase.confirmed && confirm.isCompleted) return;
+      if (phase.value == finalPhase && confirm.isCompleted) return;
       switch (gachaTapAction(phase.value)) {
         case GachaTapAction.open:
-          enterPhase(GachaPhase.confirmed);
+          enterPhase(finalPhase);
         case GachaTapAction.skipToEnd:
-          if (phase.value == GachaPhase.confirmed) {
+          if (phase.value == finalPhase) {
             confirm.value = 1;
           } else {
-            enterPhase(GachaPhase.confirmed, animateConfirm: false);
+            enterPhase(finalPhase, animateConfirm: false);
           }
       }
     }
@@ -166,11 +183,11 @@ class GachaPage extends HookWidget {
     return PopScope(
       // 演出の途中で戻ると、どの特典だったか分からないまま閉じてしまう。
       // 戻る操作は「最後まで飛ばす」にする。
-      canPop: phase.value == GachaPhase.confirmed && confirm.isCompleted,
+      canPop: phase.value == finalPhase && confirm.isCompleted,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         // canPopはbuildの時点の値なので、出そろった直後はまだfalseのことがある。
-        if (phase.value == GachaPhase.confirmed && confirm.isCompleted) {
+        if (phase.value == finalPhase && confirm.isCompleted) {
           Navigator.of(context).pop();
           return;
         }
@@ -210,7 +227,7 @@ class GachaPage extends HookWidget {
                     // 確定の段では、上に重ねたカードの側にボタンを出す。
                     // 下の案内が透けて見えないよう、ここは空けておく。
                     Visibility.maintain(
-                      visible: phase.value != GachaPhase.confirmed,
+                      visible: phase.value != finalPhase,
                       child: _Bottom(
                         phase: phase.value,
                         pulse: pulse,
@@ -232,6 +249,10 @@ class GachaPage extends HookWidget {
                     rainbow: rainbow,
                     confetti: confetti,
                   ),
+                ),
+              if (phase.value == GachaPhase.missed)
+                Positioned.fill(
+                  child: _MissedOverlay(reward: reward, confirm: confirm),
                 ),
             ],
           ),
@@ -285,7 +306,7 @@ class _Header extends StatelessWidget {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  '特典ガチャ',
+                  'かくれるガチャ',
                   style: TextStyle(
                     fontFamily: gachaFontFamily,
                     fontSize: 25,

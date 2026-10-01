@@ -27,6 +27,12 @@ const demonDeep = Color(0xFFC0343A);
 /// 「自分がトクする」のタグの地。
 const selfSoft = Color(0xFFE8EEF9);
 
+/// 「自分がソンする」(ハズレ)のタグの地。
+const missSoft = Color(0xFFF1E4E4);
+
+/// 「自分がソンする」(ハズレ)の文字・アイコン。
+const missDeep = Color(0xFF8A4B4B);
+
 /// 逃走者の緑の淡い地。
 const fugitiveSoft = Color(0xFFE9F0EA);
 

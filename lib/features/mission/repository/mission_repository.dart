@@ -284,9 +284,18 @@ class MissionRepository {
   }
 }
 
-/// ごほうびを1つ引く。3種類から等確率。ハズレは無い。
-RewardType drawReward(math.Random random) =>
-    RewardType.values[random.nextInt(RewardType.values.length)];
+/// ごほうびを1つ引く。各[RewardType.oddsPercent]に従った重み付き抽選
+/// (当たり3種で合計[rewardWinningOddsPercent]%を均等に、ハズレが
+/// [rewardMissOddsPercent]%)。
+RewardType drawReward(math.Random random) {
+  final roll = random.nextDouble() * 100;
+  var cumulative = 0.0;
+  for (final type in RewardType.values) {
+    cumulative += type.oddsPercent;
+    if (roll < cumulative) return type;
+  }
+  return RewardType.values.last;
+}
 
 /// 地点idの頭(`s0`, `s1`, …)。
 const missionSpotIdPrefix = 's';

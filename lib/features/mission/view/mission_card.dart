@@ -464,11 +464,15 @@ class RewardTargetTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDemon = target == RewardTarget.demon;
+    final (background, foreground) = switch (target) {
+      RewardTarget.demon => (demonSoft, demonDeep),
+      RewardTarget.self => (selfSoft, const Color(0xFF2F5FC4)),
+      RewardTarget.selfMiss => (missSoft, missDeep),
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: isDemon ? demonSoft : selfSoft,
+        color: background,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -476,17 +480,18 @@ class RewardTargetTag extends StatelessWidget {
         style: TextStyle(
           fontSize: fontSize,
           fontWeight: FontWeight.w700,
-          color: isDemon ? demonDeep : const Color(0xFF2F5FC4),
+          color: foreground,
         ),
       ),
     );
   }
 }
 
-/// 「鬼をジャマする」「自分がトクする」。
+/// 「鬼をジャマする」「自分がトクする」「自分がソンする」。
 String rewardTargetLabel(RewardTarget target) => switch (target) {
   RewardTarget.demon => '鬼をジャマする',
   RewardTarget.self => '自分がトクする',
+  RewardTarget.selfMiss => '自分がソンする',
 };
 
 /// 地図の下寄せに出す「ごほうびガチャを引く」ボタン(モック2)。押す場所は1か所で、
