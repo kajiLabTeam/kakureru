@@ -87,4 +87,29 @@ void main() {
 
     expect(find.text('まぬがれました'), findsOneWidget);
   });
+
+  testWidgets('そのスロットで自分も実際に撮っていれば、'
+      '「まぬがれました」枠は二重に出ない', (tester) async {
+    const myPhotoInSlot0 = RoomPhoto(
+      id: 'p2',
+      uid: 'me',
+      takenAt: startedAt + 50000,
+    );
+    await pump(
+      tester,
+      photos: [othersPhotoInSlot0, myPhotoInSlot0],
+      skippedSlots: {0},
+    );
+
+    expect(find.text('まぬがれました'), findsNothing);
+  });
+
+  testWidgets('まだ始まっていない未来のスロットをまぬがれていても、'
+      'その時間が来るまで一覧に出さない', (tester) async {
+    // nowMillis=900000はスロット2。次に引いた直後は current+1(スロット3)
+    // を飛ばすスロットとして渡しうる(footPhotoSlotToSkip参照)。
+    await pump(tester, photos: const [], skippedSlots: {3});
+
+    expect(find.text('まぬがれました'), findsNothing);
+  });
 }

@@ -97,15 +97,26 @@ class PhotoGalleryPage extends StatelessWidget {
             startedAt: startedAt,
             intervalSec: intervalSec,
           );
+    final currentSlot = startedAt == null
+        ? null
+        : currentPhotoSlotIndex(
+            startedAt: startedAt,
+            nowMillis: nowMillis,
+            intervalSec: intervalSec,
+          );
 
     // まぬがれたスロットは、誰も写真を撮っていなくても(=セクションが
-    // 無くても)自分の「まぬがれました」枠だけは見せる。
+    // 無くても)自分の「まぬがれました」枠だけは見せる。ただし、まだ
+    // 始まっていない未来のスロット(次に引いた直後は`current + 1`になりうる。
+    // `footPhotoSlotToSkip`参照)は、その時間になるまで一覧に出さない。
     final sectionSlots = {for (final s in photoSections) s.slotIndex};
     final sections =
         [
           ...photoSections,
           for (final slot in skippedSlots)
-            if (!sectionSlots.contains(slot))
+            if (currentSlot != null &&
+                slot <= currentSlot &&
+                !sectionSlots.contains(slot))
               PhotoGallerySection(slotIndex: slot, photos: const []),
         ]..sort((a, b) => b.slotIndex.compareTo(a.slotIndex));
 
@@ -115,12 +126,6 @@ class PhotoGalleryPage extends StatelessWidget {
         children: withHeader([_GalleryGuide(intervalSec: intervalSec)]),
       );
     }
-
-    final currentSlot = currentPhotoSlotIndex(
-      startedAt: startedAt,
-      nowMillis: nowMillis,
-      intervalSec: intervalSec,
-    );
 
     Widget buildSection(PhotoGallerySection section) {
       final isCurrentSlot = section.slotIndex == currentSlot;
