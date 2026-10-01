@@ -94,6 +94,7 @@ List<MissionSpot> openSpots(Mission mission) =>
 /// 後は、地図に何も残らないよう空リストを返す。
 List<MissionSpot> visibleMissionSpots(Mission mission, {String? myUid}) {
   if (isMissionFinishedEarly(mission)) return [];
+  if (myUid == null) return mission.spots;
   return mission.spots.where((s) => s.claimedBy != myUid).toList();
 }
 

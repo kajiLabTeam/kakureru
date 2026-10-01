@@ -153,6 +153,19 @@ void main() {
       );
     });
 
+    test('visibleMissionSpotsはmyUidが無ければ全地点を除外せず返す', () {
+      final mission = _mission(
+        spots: [
+          _spot(id: 's0', claimedBy: 'other', claimedAt: 1000),
+          _spot(id: 's1'),
+        ],
+      );
+      expect(
+        visibleMissionSpots(mission).map((s) => s.id),
+        ['s0', 's1'],
+      );
+    });
+
     test('visibleMissionSpotsはミッションが早期終了したら空(カード猶予中も含む)', () {
       final finishedEarly = _mission(
         spots: [
