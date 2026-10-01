@@ -67,3 +67,37 @@ class MissionNoticeBanner extends StatelessWidget {
     );
   }
 }
+
+/// [MissionNoticeBanner]をしばらく出した後に畳む、小さい丸アイコン
+/// (issue #155)。タップで[MissionNoticeBanner]へ戻す。
+///
+/// 地図を隠す面積を減らすための代替表示であって、お知らせ自体は消さない
+/// (Riverpod側の状態はそのまま。畳む/開くはGamePageのhooksだけで切り替える)。
+class MissionNoticeIcon extends StatelessWidget {
+  /// タップで[onTap]。
+  const MissionNoticeIcon({super.key, required this.onTap});
+
+  /// タップしたとき(再展開する)。
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: missionDeep,
+        shape: const CircleBorder(),
+        elevation: 6,
+        shadowColor: const Color(0x401B1B19),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: const Padding(
+            padding: EdgeInsets.all(10),
+            child: Icon(Icons.flag, size: 18, color: Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -12,6 +12,7 @@ import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/mission/effect_rules.dart';
 import 'package:kakureru/features/mission/mission_rules.dart';
+import 'package:kakureru/features/mission/mission_timing.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/repository/mission_repository.dart';
@@ -417,6 +418,29 @@ class GamePage extends HookConsumerWidget {
     final missionReading = mission == null
         ? null
         : readAccessPoint(spot: missionTargetSpot, location: myLocation);
+
+    // ミッションのお知らせバナーを、出してしばらくしたら小さいアイコンに
+    // 畳む(issue #155)。開閉そのものは画面内で完結する一時状態なので
+    // hooksで持つ(AGENTS.md規約)。新しいお知らせが来たら(keyが変わったら)
+    // 展開し直し、[missionBannerDuration]後にまた畳む。
+    final missionBannerCollapsed = useState(false);
+    useEffect(() {
+      if (missionBanner == null) return null;
+      missionBannerCollapsed.value = false;
+      final timer = Timer(missionBannerDuration, () {
+        missionBannerCollapsed.value = true;
+      });
+      return timer.cancel;
+    }, [missionBanner?.key]);
+
+    // ミッションのカードを折りたたんでいるか(issue #155。地図を隠す
+    // 面積を減らす)。これも画面内で完結する一時状態なのでhooksで持つ。
+    // 新しいミッションが始まったら開いた状態に戻す。
+    final missionCardExpanded = useState(true);
+    useEffect(() {
+      missionCardExpanded.value = true;
+      return null;
+    }, [mission?.id]);
 
     // 特典が「足元写真を1回まぬがれる」だったときに飛ばすスロット。押した
     // 瞬間の撮影バナーの状態で決め、効果に書いておく(後から撮り直しても
@@ -943,15 +967,23 @@ class GamePage extends HookConsumerWidget {
                                       myUid: myUid,
                                       cachedPosition: cachedPosition.value,
                                       gameArea: room.setting.gameArea,
-                                      // 空いている地点だけを出す(取られた地点へ
-                                      // 向かわせない)。
+                                      // 地図に出し続ける地点を[visibleMissionSpots]
+                                      // に任せる(issue #155。自分が取った
+                                      // 地点を除き、ミッションが終わったら
+                                      // 何も残さない判定はmission_rules.dart
+                                      // 側の純粋関数でテストする)。
                                       missionPoints: [
                                         if (mission != null)
-                                          for (final spot in openSpots(mission))
+                                          for (final spot
+                                              in visibleMissionSpots(
+                                                mission,
+                                                myUid: myUid,
+                                              ))
                                             (
                                               lat: spot.lat,
                                               lng: spot.lng,
                                               radiusM: spot.radiusM,
+                                              claimed: spot.claimedBy != null,
                                             ),
                                       ],
                                       enlargeDemonIcon: enlargeDemonIcon,
@@ -970,6 +1002,10 @@ class GamePage extends HookConsumerWidget {
                                         reading: missionReading,
                                         remainingMillis:
                                             mission.expiresAt - now,
+                                        expanded: missionCardExpanded.value,
+                                        onToggleExpanded: () =>
+                                            missionCardExpanded.value =
+                                                !missionCardExpanded.value,
                                         myReward: myMissionSpot?.reward,
                                       ),
                                     ),
@@ -1217,26 +1253,38 @@ class GamePage extends HookConsumerWidget {
                             ],
                           ),
                           // ミッションのお知らせ(逃走者だけ・アプリを開いて
-                          // いるとき)。タップで地図のミッションのカードへ。
+                          // いるとき)。出してしばらくすると小さいアイコンに
+                          // 畳む(issue #155)。展開したバナーをタップすると
+                          // 地図のミッションのカードへ、畳んだアイコンを
+                          // タップすると展開し直すだけ(Riverpod側は触らない)。
                           if (missionBanner case final notice?)
                             Positioned(
                               left: 12,
                               right: 12,
                               top: 8,
-                              child: MissionNoticeBanner(
-                                notice: notice,
-                                onTap: () {
-                                  ref
-                                      .read(missionBannerProvider.notifier)
-                                      .dismiss();
-                                  pageIndex.value = 0;
-                                  pageController.animateToPage(
-                                    0,
-                                    duration: const Duration(milliseconds: 200),
-                                    curve: Curves.easeInOut,
-                                  );
-                                },
-                              ),
+                              child: missionBannerCollapsed.value
+                                  ? MissionNoticeIcon(
+                                      onTap: () =>
+                                          missionBannerCollapsed.value = false,
+                                    )
+                                  : MissionNoticeBanner(
+                                      notice: notice,
+                                      onTap: () {
+                                        ref
+                                            .read(
+                                              missionBannerProvider.notifier,
+                                            )
+                                            .dismiss();
+                                        pageIndex.value = 0;
+                                        pageController.animateToPage(
+                                          0,
+                                          duration: const Duration(
+                                            milliseconds: 200,
+                                          ),
+                                          curve: Curves.easeInOut,
+                                        );
+                                      },
+                                    ),
                             ),
                           // 取り消しの期限を過ぎた捕獲の全員への知らせ
                           // (issue #140)。地図の上に重ね、タップで写真タブを開く。

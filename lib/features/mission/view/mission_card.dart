@@ -109,6 +109,8 @@ class MissionCard extends StatelessWidget {
     required this.status,
     required this.reading,
     required this.remainingMillis,
+    required this.expanded,
+    required this.onToggleExpanded,
     this.myReward,
   });
 
@@ -123,6 +125,13 @@ class MissionCard extends StatelessWidget {
 
   /// 期限までの残り(ミリ秒)。
   final int remainingMillis;
+
+  /// 開いている(本文まで出す)か、見出しだけに畳んでいるか。畳む/開くの
+  /// 状態自体はGamePageのhooksが持つ(issue #155。地図を隠す面積を減らす)。
+  final bool expanded;
+
+  /// 見出しをタップしたとき(畳む/開くを切り替える)。
+  final VoidCallback onToggleExpanded;
 
   /// 自分が引いたごほうび([MissionCardStatus.claimedByMe]のとき)。
   final RewardType? myReward;
@@ -153,17 +162,19 @@ class MissionCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _header(),
-          const SizedBox(height: 9),
-          Text(
-            _title(),
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              height: 1.4,
-              color: gameInk,
+          if (expanded) ...[
+            const SizedBox(height: 9),
+            Text(
+              _title(),
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                height: 1.4,
+                color: gameInk,
+              ),
             ),
-          ),
-          ..._body(),
+            ..._body(),
+          ],
         ],
       ),
     );
@@ -171,44 +182,53 @@ class MissionCard extends StatelessWidget {
 
   Widget _header() {
     final urgent = remainingMillis < missionLastMinuteWarning.inMilliseconds;
-    return Row(
-      children: [
-        Container(
-          width: 22,
-          height: 22,
-          decoration: BoxDecoration(
-            color: missionDeep,
-            borderRadius: BorderRadius.circular(7),
+    return InkWell(
+      onTap: onToggleExpanded,
+      borderRadius: BorderRadius.circular(8),
+      child: Row(
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: missionDeep,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: const Icon(Icons.flag, size: 14, color: Colors.white),
           ),
-          child: const Icon(Icons.flag, size: 14, color: Colors.white),
-        ),
-        const SizedBox(width: 7),
-        const Text(
-          'ミッション',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: gameInk,
+          const SizedBox(width: 7),
+          const Text(
+            'ミッション',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: gameInk,
+            ),
           ),
-        ),
-        const SizedBox(width: 7),
-        _Tag(
-          label: '先着${mission.spots.length}人',
-          background: missionSoft,
-          foreground: missionInk,
-        ),
-        const Spacer(),
-        const Icon(Icons.timer_outlined, size: 16, color: gameMuted),
-        const SizedBox(width: 4),
-        Text(
-          formatMissionRemaining(remainingMillis),
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: urgent ? demonDeep : gameInk,
+          const SizedBox(width: 7),
+          _Tag(
+            label: '先着${mission.spots.length}人',
+            background: missionSoft,
+            foreground: missionInk,
           ),
-        ),
-      ],
+          const Spacer(),
+          const Icon(Icons.timer_outlined, size: 16, color: gameMuted),
+          const SizedBox(width: 4),
+          Text(
+            formatMissionRemaining(remainingMillis),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: urgent ? demonDeep : gameInk,
+            ),
+          ),
+          Icon(
+            expanded ? Icons.expand_less : Icons.expand_more,
+            size: 18,
+            color: gameMuted,
+          ),
+        ],
+      ),
     );
   }
 

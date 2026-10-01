@@ -170,6 +170,8 @@ void main() {
       Mission mission = _accessPoint,
       AccessPointReading? reading,
       RewardType? myReward,
+      bool expanded = true,
+      VoidCallback? onToggleExpanded,
     }) => tester.pumpWidget(
       _wrap(
         MissionCard(
@@ -177,6 +179,8 @@ void main() {
           status: status,
           reading: reading ?? _reading(AccessPointFix.outside),
           remainingMillis: 134000,
+          expanded: expanded,
+          onToggleExpanded: onToggleExpanded ?? () {},
           myReward: myReward,
         ),
       ),
@@ -242,6 +246,24 @@ void main() {
         myReward: RewardType.blockClues,
       );
       expect(find.text('鬼をジャマする'), findsOneWidget);
+    });
+
+    testWidgets('折りたたむと本文を出さず、タップすると開閉を切り替える', (tester) async {
+      var toggled = 0;
+      await pumpCard(
+        tester,
+        MissionCardStatus.approaching,
+        expanded: false,
+        onToggleExpanded: () => toggled++,
+      );
+      expect(find.text('アクセスポイントへ行こう'), findsNothing);
+      expect(find.text('近いのは のこり 62m'), findsNothing);
+      // 見出し(「ミッション」「先着N人」「残り時間」)は畳んでいても出す。
+      expect(find.text('ミッション'), findsOneWidget);
+      expect(find.text('先着2人'), findsOneWidget);
+
+      await tester.tap(find.text('ミッション'));
+      expect(toggled, 1);
     });
 
     testWidgets('絵文字を使わない', (tester) async {
@@ -389,6 +411,15 @@ void main() {
         greaterThanOrEqualTo(44),
       );
       await tester.tap(find.byType(MissionNoticeBanner));
+      expect(tapped, 1);
+    });
+
+    testWidgets('畳んだアイコンは押すと呼ばれる', (tester) async {
+      var tapped = 0;
+      await tester.pumpWidget(
+        _wrap(MissionNoticeIcon(onTap: () => tapped++)),
+      );
+      await tester.tap(find.byIcon(Icons.flag));
       expect(tapped, 1);
     });
   });
