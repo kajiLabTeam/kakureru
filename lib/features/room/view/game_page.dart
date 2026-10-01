@@ -572,11 +572,15 @@ class GamePage extends HookConsumerWidget {
       // reportCatchの書き込みはRTDBのローカルリスナーへ即座に流れるため、
       // 送信が終わるのを待っている間に逃走者が0人になり、captureOpenを
       // 立てる前にGameAlertsが結果画面への遷移を走らせてしまう
-      // (issue #154)。送信を始める時点から遷移を止め、失敗/二重押しで
-      // 撮影画面を開かないときは解除する。
+      // (issue #154)。送信を始める時点(=実際に実行されるときだけ)から
+      // 遷移を止め、失敗したときは解除する。catchAction.run自身が
+      // 二重押しを弾く(先勝ち)ため、ここでは渡したクロージャの中でのみ
+      // captureOpenを立てる。外側で立てると、二重押しで弾かれた
+      // (=skippedの)呼び出しが、進行中の本物の呼び出しのcaptureOpenを
+      // 誤って解除してしまう。
       String? catchId;
-      captureOpen.value = true;
       final result = await catchAction.run(() async {
+        captureOpen.value = true;
         catchId = await ref
             .read(roomRepositoryProvider)
             .reportCatch(roomId, fugitiveUid: choice.uid);
@@ -637,9 +641,10 @@ class GamePage extends HookConsumerWidget {
             ),
           );
         case AsyncActionStatus.skipped:
-          // 前の送信がまだ終わっていないだけなので、何も出さない
-          // (止めていた遷移は前の送信の方で解除される)。
-          captureOpen.value = false;
+          // 前の送信がまだ終わっていないだけなので、何も出さない。
+          // このクロージャ自体が実行されていないため、captureOpenには
+          // 触れない(触れると進行中の本物の呼び出しの遷移止めを
+          // 誤って解除してしまう)。
           break;
       }
     }
