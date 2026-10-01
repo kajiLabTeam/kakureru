@@ -54,9 +54,37 @@ UserLocation _at(double lat, {double? accuracy = 5, int updatedAt = 1}) =>
     );
 
 void main() {
-  test('地点の数は鬼の人数 + 1', () {
-    expect(missionSpotCount(demonCount: 1), 2);
-    expect(missionSpotCount(demonCount: 3), 4);
+  test('1回目の地点数は参加人数 - 1', () {
+    expect(
+      missionSpotCount(round: 1, demonCount: 1, participantCount: 5),
+      4,
+    );
+    expect(
+      missionSpotCount(round: 1, demonCount: 3, participantCount: 8),
+      7,
+    );
+  });
+
+  test('1回目の地点数は参加人数が少なくても0以下にならない', () {
+    expect(
+      missionSpotCount(round: 1, demonCount: 1, participantCount: 1),
+      1,
+    );
+    expect(
+      missionSpotCount(round: 1, demonCount: 1, participantCount: 0),
+      1,
+    );
+  });
+
+  test('2回目以降の地点数は鬼の人数 + 1', () {
+    expect(
+      missionSpotCount(round: 2, demonCount: 1, participantCount: 5),
+      2,
+    );
+    expect(
+      missionSpotCount(round: 2, demonCount: 3, participantCount: 8),
+      4,
+    );
   });
 
   group('missionsOfCurrentGame', () {
@@ -153,7 +181,7 @@ void main() {
           nowMillis: now,
         );
 
-    test('放出前・放出から5分未満は書かない、5分で1回目', () {
+    test('放出前・放出から3分未満は書かない、3分で1回目', () {
       expect(
         missionRoundToCreate(
           missions: const [],
@@ -164,52 +192,52 @@ void main() {
         ),
         isNull,
       );
-      expect(round(const [], releasedAt + 5 * min - 1), isNull);
-      expect(round(const [], releasedAt + 5 * min), 1);
+      expect(round(const [], releasedAt + 3 * min - 1), isNull);
+      expect(round(const [], releasedAt + 3 * min), 1);
     });
 
-    test('1回目が終わっていれば、15分で2回目', () {
-      final first = _mission(createdAt: releasedAt + 5 * min);
-      expect(round([first], releasedAt + 15 * min - 1), isNull);
-      expect(round([first], releasedAt + 15 * min), 2);
+    test('1回目が終わっていれば、10分で2回目', () {
+      final first = _mission(createdAt: releasedAt + 3 * min);
+      expect(round([first], releasedAt + 10 * min - 1), isNull);
+      expect(round([first], releasedAt + 10 * min), 2);
     });
 
     test('3回目は無い', () {
-      final first = _mission(createdAt: releasedAt + 5 * min);
+      final first = _mission(createdAt: releasedAt + 3 * min);
       final second = _mission(
         id: 'm2',
         round: 2,
-        createdAt: releasedAt + 15 * min,
+        createdAt: releasedAt + 10 * min,
       );
       expect(round([first, second], releasedAt + 60 * min), isNull);
     });
 
     test('受けられるミッションが残っていれば書かない(同時に1件だけ)', () {
-      final active = _mission(createdAt: releasedAt + 14 * min);
-      expect(round([active], releasedAt + 15 * min), isNull);
+      final active = _mission(createdAt: releasedAt + 9 * min);
+      expect(round([active], releasedAt + 10 * min), isNull);
     });
 
     test('2回目の前にゲームが終われば2回目は出ない', () {
-      final first = _mission(createdAt: releasedAt + 5 * min);
+      final first = _mission(createdAt: releasedAt + 3 * min);
       expect(
         round(
           [first],
-          releasedAt + 15 * min,
-          endsAt: releasedAt + 12 * min,
+          releasedAt + 10 * min,
+          endsAt: releasedAt + 8 * min,
         ),
         isNull,
       );
     });
 
     test('1回目が遅れて書かれたら、2回目はその期限が切れるまで待つ', () {
-      // 放出から14:59に1回目。期限は19:59なので15分では2回目を書かない。
-      final late = _mission(createdAt: releasedAt + 14 * min + 59 * 1000);
-      expect(round([late], releasedAt + 15 * min), isNull);
+      // 放出から9:59に1回目。期限は14:59なので10分では2回目を書かない。
+      final late = _mission(createdAt: releasedAt + 9 * min + 59 * 1000);
+      expect(round([late], releasedAt + 10 * min), isNull);
       expect(round([late], late.expiresAt), 2);
     });
 
     test('書きそびれた1回目は飛ばし、2回目だけを書く', () {
-      expect(round(const [], releasedAt + 16 * min), 2);
+      expect(round(const [], releasedAt + 11 * min), 2);
     });
   });
 

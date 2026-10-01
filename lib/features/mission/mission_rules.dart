@@ -34,8 +34,25 @@ const _maxPointAttempts = 400;
 double distanceMeters(double lat1, double lng1, double lat2, double lng2) =>
     Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
 
-/// 地点の数。鬼の人数 + 1(逃走者どうしで取り合いになるよう、全員分は出さない)。
-int missionSpotCount({required int demonCount}) => demonCount + 1;
+/// 1回目の地点数の下限。参加人数が少ないときに0以下にならないようにする。
+const minFirstMissionSpotCount = 1;
+
+/// 地点の数。回によって変える。
+///
+/// - 1回目: 参加人数 - 1。まだ全員が捕まっていないので、地点を多めに
+///   置いて全員が動くようにする([minFirstMissionSpotCount]を下限とする)
+/// - 2回目以降: 鬼の人数 + 1(逃走者どうしで取り合いになるよう、全員分は
+///   出さない)。すでに捕まっている人がいるので、このままでよい
+int missionSpotCount({
+  required int round,
+  required int demonCount,
+  required int participantCount,
+}) {
+  if (round == 1) {
+    return math.max(minFirstMissionSpotCount, participantCount - 1);
+  }
+  return demonCount + 1;
+}
 
 /// 今のゲームのミッションだけを、出した順(古い順)に返す。
 ///

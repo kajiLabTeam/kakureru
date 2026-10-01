@@ -2,17 +2,17 @@
 /// (ほかのファイルに秒数・分数を直接書かない)。
 ///
 /// 企画(1段目)の決まりごと:
-/// - 1回目は鬼の放出から5分後、2回目は15分後。3回目は無い
+/// - 1回目は鬼の放出から3分後、2回目は10分後。3回目は無い
 /// - 制限時間は5分。同時に出すのは1件だけ
 /// - 地点がすべて取られたら、その場で終わる
 /// - 2回目の前にゲームが終わったら、2回目は出ない
 library;
 
 /// 鬼の放出から1回目のミッションを出すまで。
-const firstMissionDelay = Duration(minutes: 5);
+const firstMissionDelay = Duration(minutes: 3);
 
 /// 鬼の放出から2回目のミッションを出すまで。
-const secondMissionDelay = Duration(minutes: 15);
+const secondMissionDelay = Duration(minutes: 10);
 
 /// 回ごとの「放出から出すまで」。`missionDueDelays[0]`が1回目。
 /// 長さがそのまま回数の上限になる(3回目は出さない)。

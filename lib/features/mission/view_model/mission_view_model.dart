@@ -269,7 +269,11 @@ class MissionController extends Notifier<MissionProgress> {
           .createMission(
             roomId,
             area: room.setting.gameArea,
-            spotCount: missionSpotCount(demonCount: demonCount),
+            spotCount: missionSpotCount(
+              round: round,
+              demonCount: demonCount,
+              participantCount: room.users.length,
+            ),
             round: round,
             nowMillis: nowMillis,
           )

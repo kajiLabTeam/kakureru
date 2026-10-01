@@ -94,12 +94,12 @@ void main() {
   }
 
   group('ミッションの生成', () {
-    test('ホストの端末だけが、放出から5分で1件だけ書く(地点は鬼の人数 + 1)', () {
+    test('ホストの端末だけが、放出から3分で1件だけ書く(地点は参加人数 - 1)', () {
       fakeAsync((async) {
         final repository = _RecordingRepository();
         final container = containerWith(
           myUid: hostUid,
-          room: roomWith(releasedAgoSec: 5 * 60 + 1),
+          room: roomWith(releasedAgoSec: 3 * 60 + 1),
           repository: repository,
         );
         container.read(missionControllerProvider.notifier).start(roomId);
@@ -115,7 +115,7 @@ void main() {
         final repository = _RecordingRepository();
         final container = containerWith(
           myUid: fugitiveUid,
-          room: roomWith(releasedAgoSec: 5 * 60 + 1),
+          room: roomWith(releasedAgoSec: 3 * 60 + 1),
           repository: repository,
         );
         container.read(missionControllerProvider.notifier).start(roomId);
@@ -124,12 +124,12 @@ void main() {
       });
     });
 
-    test('放出から5分たつまでは書かない', () {
+    test('放出から3分たつまでは書かない', () {
       fakeAsync((async) {
         final repository = _RecordingRepository();
         final container = containerWith(
           myUid: hostUid,
-          room: roomWith(releasedAgoSec: 4 * 60 + 50),
+          room: roomWith(releasedAgoSec: 2 * 60 + 50),
           repository: repository,
         );
         container.read(missionControllerProvider.notifier).start(roomId);
