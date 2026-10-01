@@ -314,11 +314,38 @@ void main() {
       expect(find.text('のこり 0:18'), findsOneWidget);
     });
 
-    test('鬼には誰に止められているかが分かる言い方にする', () {
+    test('鬼には誰に止められているかは分からない言い方にする', () {
       expect(
         effectBandText(RewardType.blockClues, viewerRole: UserRole.demon),
-        '逃走者に手がかりを止められている',
+        '逃走者のごほうびで止められている',
       );
+    });
+
+    testWidgets('drawerNameがあれば「(名前) のごほうび：…」を出す(逃走者視点)', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          const EffectBand(
+            type: RewardType.blockClues,
+            viewerRole: UserRole.fugitive,
+            remainingMillis: 18000,
+            drawerName: 'みお',
+          ),
+        ),
+      );
+      expect(find.text('みお のごほうび：鬼の手がかりを止めている'), findsOneWidget);
+    });
+
+    testWidgets('drawerNameが無ければ名前を出さない(鬼視点ではnullを渡す想定)', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          const EffectBand(
+            type: RewardType.blockClues,
+            viewerRole: UserRole.demon,
+            remainingMillis: 18000,
+          ),
+        ),
+      );
+      expect(find.text('逃走者のごほうびで止められている'), findsOneWidget);
     });
   });
 

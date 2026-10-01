@@ -29,6 +29,7 @@ Widget buildLocationMapForTest({
   List<LatLng> gameArea = const [],
   List<MissionMapPoint> missionPoints = const [],
   bool enlargeDemonIcon = false,
+  Set<String> enlargedUserUids = const {},
 }) {
   return GameLocationMap(
     locations: locations,
@@ -38,6 +39,7 @@ Widget buildLocationMapForTest({
     gameArea: gameArea,
     missionPoints: missionPoints,
     enlargeDemonIcon: enlargeDemonIcon,
+    enlargedUserUids: enlargedUserUids,
   );
 }
 
@@ -68,6 +70,7 @@ class GameLocationMap extends HookWidget {
     required this.gameArea,
     this.missionPoints = const [],
     this.enlargeDemonIcon = false,
+    this.enlargedUserUids = const {},
   });
 
   /// 地図に出す位置。自分から見えていい相手の分だけが渡ってくる。
@@ -92,6 +95,11 @@ class GameLocationMap extends HookWidget {
   /// 鬼のピンを[enlargedDemonIconScale]倍にするか(ごほうび `big_demon_icon`)。
   /// 自分のピンは大きくしない。
   final bool enlargeDemonIcon;
+
+  /// ハズレ `enlarge_self_icon` を引いていて、鬼の地図でピンを
+  /// [enlargedDemonIconScale]倍にする対象の逃走者uid。鬼側の画面にだけ
+  /// 渡される想定(逃走者には自分のピンを拡大して見せない)。
+  final Set<String> enlargedUserUids;
 
   @override
   Widget build(BuildContext context) {
@@ -385,10 +393,12 @@ class GameLocationMap extends HookWidget {
     );
 
     // ごほうび `big_demon_icon` の間は、鬼のピンをアイコンの中心を起点に拡大する。
-    // Transformはレイアウトを変えないので、重なりの判定や座標合わせは
-    // 元の大きさのまま動く。
+    // ハズレ `enlarge_self_icon` を引いた逃走者がいれば、鬼の地図でその
+    // 人のピンも同じように拡大する。Transformはレイアウトを変えないので、
+    // 重なりの判定や座標合わせは元の大きさのまま動く。
     final enlarged =
-        enlargeDemonIcon && !isSelf && targetRole == UserRole.demon;
+        (enlargeDemonIcon && !isSelf && targetRole == UserRole.demon) ||
+        enlargedUserUids.contains(location.uid);
     final marker = Marker(
       // どの役割から見ても実座標に置く(issue #118でグリッドを廃止)。
       point: latlong.LatLng(location.latitude, location.longitude),

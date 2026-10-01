@@ -85,9 +85,12 @@ void main() {
 
     test('取れたらごほうびを地点とeffectsの両方に書く', () async {
       final db = _dbWithMission();
-      final result = await _repo(
-        db,
-        'alice',
+      // seed=2は時間制のごほうび(block_clues)を引く種(durationMsの検証用)。
+      final result = await MissionRepository(
+        db: db,
+        auth: FakeAuth('alice'),
+        random: math.Random(2),
+        serverNow: () async => 5000,
       ).claimMission(_roomId, 'm1', 's0');
 
       expect(result.outcome, ClaimOutcome.claimed);

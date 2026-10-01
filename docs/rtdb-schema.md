@@ -103,13 +103,13 @@ rooms/
             radiusM         判定の半径(15)
             claimedBy       先に取った人のuid。未取得は無し。1地点に1人、1人1地点まで
             claimedAt       取った時刻(サーバー時刻のミリ秒)
-            reward          取った人が引いたごほうび("block_clues" | "big_demon_icon" | "skip_foot_photo")。引く前は無し
+            reward          取った人が引いたごほうび("block_clues" | "big_demon_icon" | "skip_foot_photo" | "enlarge_self_icon")。引く前は無し
     effects/
       {effectId}/           ごほうびの効果。引いた瞬間に1件足す(ルーム単位。キーは "{missionId}_{spotId}"。下の「ミッションとごほうび」参照)
-        type                "block_clues" | "big_demon_icon" | "skip_foot_photo"
+        type                "block_clues" | "big_demon_icon" | "skip_foot_photo" | "enlarge_self_icon"
         byUid               引いた人のuid
         startedAt           発動した時刻(サーバー時刻のミリ秒)
-        durationMs          効いている時間(30000)。skip_foot_photo は 0(回数もの)
+        durationMs          効いている時間(30000)。skip_foot_photo は 0(回数もの)。enlarge_self_icon も30000
         skipSlot            skip_foot_photo で飛ばす撮影スロットの番号(skip_foot_photo のみ。次の1回だけ)
     taunts/
       {tauntId}/            (予約。まだ書かない)逃走者から鬼への挑発
@@ -379,11 +379,22 @@ npm test
 - **お知らせは逃走者にだけ、音なし・振動だけ**: 出た・のこり1分・終わったの3種類(`dueMissionNotices`)。アプリを開いていれば画面上のバナー、閉じていればOSの通知(チャンネル `kakureru_mission`、`playSound: false`)
 - **デバッグ用**: `flutter run --dart-define=DEBUG_MISSION=true` で起動したときだけ「着いたことにする」が出る(距離の判定だけ飛ばし、トランザクションはふつうに走る)。リリースビルドでは出ない
 
-**効果はuidごとではなくルーム単位**に持つ。鬼に効く効果(`block_clues` / `big_demon_icon`)は全員の端末で同じ見え方にする必要があるため。`skip_foot_photo` だけは `byUid` の本人に効く。
+**かくれるガチャの中身と確率**(`RewardType`、`lib/features/mission/model/reward_type.dart`)。当たり3種で合計80%(`rewardWinningOddsPercent`)を均等に分け(各 `rewardWinningOddsPercentEach` ≒ 26.67%)、残り20%(`rewardMissOddsPercent`)がハズレ1種。抽選は `MissionRepository.drawReward` が `RewardType.values` の `oddsPercent` を順に積み上げた累積分布で引く。
+
+| raw | 当/ハズレ | 確率 | 内容 |
+| --- | --- | --- | --- |
+| `block_clues` | 当たり | 約26.67% | 30秒、鬼の端末で Wi-Fi と気圧の手がかりを隠す |
+| `big_demon_icon` | 当たり | 約26.67% | 30秒、逃走者の地図で鬼のピンを2倍にする |
+| `skip_foot_photo` | 当たり | 約26.67% | 次の足元写真の撮影タイムを1回まぬがれる(回数もの) |
+| `enlarge_self_icon` | ハズレ | 20% | 30秒、鬼の地図で引いた本人のピンを2倍にする(鬼から見つけやすくなる) |
+
+**効果は基本ルーム単位**に持つ。鬼に効く効果(`block_clues` / `big_demon_icon`)は全員の端末で同じ見え方にする必要があるため。`skip_foot_photo` と `enlarge_self_icon` は `byUid` の本人に効く個人向けの効果。
 
 - 残り時間は `startedAt + durationMs` から**サーバー時刻**で数える(端末の時計がずれていても全員の帯が揃う)
 - `skip_foot_photo` は、引いた時点で撮影タイムが来ていてまだ撮っていなければ(撮影バナーが出ていれば)そのスロット、そうでなければ次のスロットを1回だけ飛ばす。**引いた瞬間に決めて `skipSlot` に書く**(`footPhotoSlotToSkip`)。読む側で `lastPhotoAt` から計算し直すと、引いた後に撮り直したときに飛ばす回が撮影済みのスロットへずれるため。飛ばしたスロットの写真一覧は、撮っていない扱いのままぼかしになる
-- `block_clues` が効いている間、鬼の端末では手がかりカードとチップのWi-Fiの判定を隠し、最初に選ぶ相手も「Wi-Fiで最も近い相手」にしない(選ばれるチップで誰が近いかが分かってしまうため)
+- `block_clues` が効いている間、鬼の端末では手がかりカードとチップのWi-Fiの判定を隠し、最初に選ぶ相手も「Wi-Fiで最も近い相手」にしない(選ばれるチップで誰が近いかが分かってしまうため)。代わりに「逃走者のごほうびで止められている のこり X:XX」と残り時間だけ出し、**誰が引いたかは鬼に見せない**(位置が特定できてしまうため)
+- `enlarge_self_icon`(ハズレ)は、引いた本人には「あなたのアイコンが大きくなっている のこり X:XX」と個人向けの帯で知らせ、鬼の地図ではその人のピンだけを `big_demon_icon` と同じ倍率(`enlargedDemonIconScale`)で大きく出す。複数人が同時に引くこともあるため、鬼側はその時点で有効な全員のuidを集めて個別に拡大する(1件だけに絞らない)
+- 逃走者から見える `block_clues` / `big_demon_icon` の帯には、引いた人の表示名を付ける(例:「みお のごほうび：鬼の手がかりを止めている」)。鬼の効果は全員に見えるものなので名前を出しても位置は漏れない
 - `restartRoom` は `missions` / `effects` を消さないので、読む側は `meta/startedAt` 以降のものだけに絞る
 
 **ルールは暫定**: `missions` / `effects` は `photos` / `events` と同じく認証済みなら誰でも読み書きできる。締め直し(`claimedBy` を一度しか書けなくする、`effects` を取った本人しか書けなくする等)は別のissueで行う。

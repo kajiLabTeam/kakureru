@@ -76,6 +76,77 @@ void main() {
         ['now'],
       );
     });
+
+    test('activeTimedEffectsはenlarge_self_icon(本人にだけ出す帯)を含めない', () {
+      final enlarge = _effect(
+        id: 'e',
+        type: RewardType.enlargeSelfIcon,
+      );
+      expect(
+        activeTimedEffects([enlarge], serverNowMillis: 100000),
+        isEmpty,
+      );
+    });
+  });
+
+  group('enlarge_self_icon(ハズレ)', () {
+    test('activeEnlargeSelfIconEffectForは自分が引いた分だけ返す', () {
+      final mine = _effect(
+        id: 'mine',
+        type: RewardType.enlargeSelfIcon,
+      );
+      final other = _effect(
+        id: 'other',
+        type: RewardType.enlargeSelfIcon,
+        byUid: 'other',
+      );
+      expect(
+        activeEnlargeSelfIconEffectFor(
+          [mine, other],
+          uid: 'me',
+          serverNowMillis: 110000,
+        )?.id,
+        'mine',
+      );
+    });
+
+    test('activeEnlargeSelfIconEffectForはuidが無ければnull', () {
+      final mine = _effect(type: RewardType.enlargeSelfIcon);
+      expect(
+        activeEnlargeSelfIconEffectFor(
+          [mine],
+          uid: null,
+          serverNowMillis: 100000,
+        ),
+        isNull,
+      );
+    });
+
+    test('activeEnlargeSelfIconUidsは効いている全員のuidを返す(鬼の地図用)', () {
+      final a = _effect(
+        id: 'a',
+        type: RewardType.enlargeSelfIcon,
+        byUid: 'alice',
+      );
+      final b = _effect(
+        id: 'b',
+        type: RewardType.enlargeSelfIcon,
+        byUid: 'bob',
+      );
+      final expired = _effect(
+        id: 'c',
+        type: RewardType.enlargeSelfIcon,
+        byUid: 'carol',
+        startedAt: 0,
+      );
+      expect(
+        activeEnlargeSelfIconUids(
+          [a, b, expired],
+          serverNowMillis: 110000,
+        ),
+        {'alice', 'bob'},
+      );
+    });
   });
 
   group('skip_foot_photo は次の1回だけ効く', () {

@@ -849,6 +849,20 @@ class GamePage extends HookConsumerWidget {
                           serverNowMillis: now,
                         ) !=
                         null;
+                // ハズレ「あなたのアイコンが大きくなる」。鬼の地図で、引いた
+                // 逃走者のピンを2倍にする(鬼側だけに渡す。逃走者には渡さない)。
+                final enlargedFugitiveUids = myRole == UserRole.demon
+                    ? activeEnlargeSelfIconUids(
+                        roomEffects,
+                        serverNowMillis: now,
+                      )
+                    : const <String>{};
+                // 自分がハズレを引いていれば、本人向けの通知に使う。
+                final myEnlargeSelfIconEffect = activeEnlargeSelfIconEffectFor(
+                  roomEffects,
+                  uid: myUid,
+                  serverNowMillis: now,
+                );
                 final missionStatus = mission == null || missionReading == null
                     ? null
                     : missionCardStatusOf(
@@ -882,6 +896,22 @@ class GamePage extends HookConsumerWidget {
                         viewerRole: myRole,
                         remainingMillis: effectRemainingMillis(
                           effect,
+                          serverNowMillis: now,
+                        ),
+                        // 誰が引いたかは逃走者にだけ伝える(鬼に伝えると
+                        // 居場所の特定につながるため)。
+                        drawerName: myRole == UserRole.fugitive
+                            ? findUser(room.users, effect.byUid)?.displayName
+                            : null,
+                      ),
+                    // ハズレ「あなたのアイコンが大きくなる」は本人にだけ出す
+                    // 個人向けの帯(他の帯と違い全員共通では出さない)。
+                    if (myEnlargeSelfIconEffect != null)
+                      EffectBand(
+                        type: RewardType.enlargeSelfIcon,
+                        viewerRole: myRole,
+                        remainingMillis: effectRemainingMillis(
+                          myEnlargeSelfIconEffect,
                           serverNowMillis: now,
                         ),
                       ),
@@ -943,6 +973,7 @@ class GamePage extends HookConsumerWidget {
                                       myUid: myUid,
                                       cachedPosition: cachedPosition.value,
                                       gameArea: room.setting.gameArea,
+                                      enlargedUserUids: enlargedFugitiveUids,
                                       // 空いている地点だけを出す(取られた地点へ
                                       // 向かわせない)。
                                       missionPoints: [

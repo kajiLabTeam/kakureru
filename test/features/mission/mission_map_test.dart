@@ -8,11 +8,13 @@ import 'package:kakureru/features/room/view/game/game_location_map.dart';
 
 const _myUid = 'me';
 const _demonUid = 'demon';
+const _otherUid = 'other';
 
 Future<void> _pumpMap(
   WidgetTester tester, {
   List<MissionMapPoint> missionPoints = const [],
   bool enlargeDemonIcon = false,
+  Set<String> enlargedUserUids = const {},
 }) async {
   await tester.binding.setSurfaceSize(const Size(360, 640));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -24,13 +26,16 @@ Future<void> _pumpMap(
           users: const [
             RoomUser(id: _myUid, displayName: 'わたし'),
             RoomUser(id: _demonUid, displayName: 'おに', role: UserRole.demon),
+            RoomUser(id: _otherUid, displayName: 'みお'),
           ],
           locations: const [
             UserLocation(uid: _myUid, latitude: 35, longitude: 137),
             UserLocation(uid: _demonUid, latitude: 35.001, longitude: 137),
+            UserLocation(uid: _otherUid, latitude: 35.002, longitude: 137),
           ],
           missionPoints: missionPoints,
           enlargeDemonIcon: enlargeDemonIcon,
+          enlargedUserUids: enlargedUserUids,
         ),
       ),
     ),
@@ -100,5 +105,20 @@ void main() {
   testWidgets('効果が無ければ鬼のピンは元の大きさ', (tester) async {
     await _pumpMap(tester);
     expect(_scaleOf(tester, 'おに（鬼）'), 1);
+  });
+
+  testWidgets('ハズレ(enlarge_self_icon)を引いた逃走者は、鬼の地図でピンが2倍', (
+    tester,
+  ) async {
+    await _pumpMap(tester, enlargedUserUids: {_otherUid});
+    expect(_scaleOf(tester, 'みお（逃走者）'), enlargedDemonIconScale);
+    // 引いていない自分・鬼は元の大きさのまま。
+    expect(_scaleOf(tester, '自分（逃走者）'), 1);
+    expect(_scaleOf(tester, 'おに（鬼）'), 1);
+  });
+
+  testWidgets('enlargedUserUidsに無ければ逃走者のピンは元の大きさ', (tester) async {
+    await _pumpMap(tester);
+    expect(_scaleOf(tester, 'みお（逃走者）'), 1);
   });
 }

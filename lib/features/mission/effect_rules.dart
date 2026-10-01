@@ -61,13 +61,46 @@ RoomEffect? activeEffectOf(
 }
 
 /// いま効いている、時間で効く効果の一覧(地図の上の帯に出すもの)。
+///
+/// `enlarge_self_icon`(ハズレ)は除く。これは `byUid` の本人にだけ出す
+/// 個人向けの表示のため、ここでは全体から1件だけ選んでしまうと複数の
+/// 逃走者が同時に引いたときに他の人の分が隠れてしまう([activeEnlargeSelfIconEffectFor]を使うこと)。
 List<RoomEffect> activeTimedEffects(
   List<RoomEffect> effects, {
   required int serverNowMillis,
 }) => [
   for (final type in RewardType.values)
-    ?activeEffectOf(effects, type, serverNowMillis: serverNowMillis),
+    if (type != RewardType.enlargeSelfIcon)
+      ?activeEffectOf(effects, type, serverNowMillis: serverNowMillis),
 ];
+
+/// [uid]が引いた `enlarge_self_icon` のうち、いま効いているもの。無ければ
+/// null。本人向けの帯(「あなたのアイコンが大きくなっている」)に使う。
+RoomEffect? activeEnlargeSelfIconEffectFor(
+  List<RoomEffect> effects, {
+  required String? uid,
+  required int serverNowMillis,
+}) {
+  if (uid == null) return null;
+  return activeEffectOf(
+    effects.where((e) => e.byUid == uid).toList(),
+    RewardType.enlargeSelfIcon,
+    serverNowMillis: serverNowMillis,
+  );
+}
+
+/// いま `enlarge_self_icon` が効いている逃走者のuid一覧。鬼の地図でその
+/// 逃走者のピンを大きくする対象を決めるために使う(複数人が同時に効いて
+/// いることもあるため、1件に絞らず集合で返す)。
+Set<String> activeEnlargeSelfIconUids(
+  List<RoomEffect> effects, {
+  required int serverNowMillis,
+}) => {
+  for (final effect in effects)
+    if (effect.type == RewardType.enlargeSelfIcon &&
+        isEffectActive(effect, serverNowMillis: serverNowMillis))
+      effect.byUid,
+};
 
 /// `skip_foot_photo` を引いた瞬間に、どの撮影スロットを飛ばすかを決める。
 ///

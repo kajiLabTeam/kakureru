@@ -5,12 +5,13 @@ import 'package:kakureru/features/mission/view/gacha/gacha_page.dart';
 import 'package:kakureru/features/mission/view/gacha/gacha_phase.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
 
-Future<void> _pumpGacha(WidgetTester tester) async {
+Future<void> _pumpGacha(
+  WidgetTester tester, {
+  RewardType reward = RewardType.blockClues,
+}) async {
   await tester.binding.setSurfaceSize(const Size(393, 852));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    const MaterialApp(home: GachaPage(reward: RewardType.blockClues)),
-  );
+  await tester.pumpWidget(MaterialApp(home: GachaPage(reward: reward)));
 }
 
 /// ゲーム画面と同じく[GachaPage.show]で重ねて開く。返す関数は
@@ -93,6 +94,26 @@ void main() {
     test('紙吹雪は10枚まで', () {
       expect(gachaConfettiCount, lessThanOrEqualTo(10));
     });
+
+    test('ハズレ(isMiss)は激熱を出さず、ハンドルのあとすぐカプセルに進む', () {
+      expect(
+        gachaPhaseAt(const Duration(milliseconds: 1499), isMiss: true),
+        GachaPhase.turning,
+      );
+      expect(
+        gachaPhaseAt(const Duration(milliseconds: 1500), isMiss: true),
+        GachaPhase.capsule,
+      );
+      // 当たりなら同じ時刻はまだ激熱のはず(ハズレとの違いの確認)。
+      expect(
+        gachaPhaseAt(const Duration(milliseconds: 1500)),
+        GachaPhase.heat,
+      );
+    });
+
+    test('missedの段もタップで最後まで飛ばせる', () {
+      expect(gachaTapAction(GachaPhase.missed), GachaTapAction.skipToEnd);
+    });
   });
 
   group('GachaPage', () {
@@ -118,6 +139,25 @@ void main() {
       expect(find.text('確定'), findsOneWidget);
       await tester.pump(gachaConfirmDuration);
       expect(find.text('鬼の手がかりを止める'), findsOneWidget);
+    });
+
+    testWidgets('ハズレは激熱を出さず、短い演出で赤い「残念」になる', (tester) async {
+      await _pumpGacha(tester, reward: RewardType.enlargeSelfIcon);
+      expect(find.text('まわしてる…'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 1600));
+      // ハズレは激熱を出さない。
+      expect(find.text('激熱'), findsNothing);
+      expect(find.text('カプセルを開ける'), findsOneWidget);
+
+      await tester.tap(find.text('カプセルを開ける'));
+      await tester.pump();
+      expect(find.text('確定'), findsNothing);
+      expect(find.text('残念'), findsOneWidget);
+
+      await tester.pump(gachaMissedDuration);
+      expect(find.text('ハズレ'), findsOneWidget);
+      expect(find.text('効果はもう出ている'), findsOneWidget);
     });
 
     testWidgets('ハンドルの途中でタップ1回すると、特典カードまで飛ばせる', (tester) async {

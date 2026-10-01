@@ -1227,6 +1227,172 @@ class _ConfirmedOverlay extends StatelessWidget {
   }
 }
 
+/// ハズレの段。当たり([_ConfirmedOverlay])と違い、虹の輪・紙吹雪・
+/// 「確定」のハンコは出さず、赤い「残念」のスタンプで短く終わる
+/// (待たされた末のハズレを当たりと同じ豪華さで引き延ばさない)。
+class _MissedOverlay extends StatelessWidget {
+  const _MissedOverlay({required this.reward, required this.confirm});
+
+  final RewardType reward;
+  final AnimationController confirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final seconds = reward.duration.inSeconds;
+    return ColoredBox(
+      color: const Color(0xF00A0806),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 赤い「残念」のスタンプが斜めに飛び込む。
+              AnimatedBuilder(
+                animation: confirm,
+                builder: (context, child) {
+                  final t = _interval(confirm.value, 0, 0.5);
+                  final scale = 2.4 - 1.4 * Curves.easeOutBack.transform(t);
+                  return Opacity(
+                    opacity: t,
+                    child: Transform.rotate(
+                      angle: -6 * math.pi / 180,
+                      child: Transform.scale(scale: scale, child: child),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7A2226),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _red, width: 3),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x99B0272C), blurRadius: 22),
+                    ],
+                  ),
+                  child: const Text(
+                    '残念',
+                    style: TextStyle(
+                      fontFamily: gachaFontFamily,
+                      fontSize: 40,
+                      height: 1,
+                      letterSpacing: 4,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // 特典カードは当たりと同じ見た目で出す(ハズレも何が起きて
+              // いるかは必ず伝える)。
+              AnimatedBuilder(
+                animation: confirm,
+                builder: (context, child) {
+                  final t = _interval(confirm.value, 0.25, 0.8);
+                  final eased = Curves.easeOutBack.transform(t);
+                  return Opacity(
+                    opacity: t,
+                    child: Transform.translate(
+                      offset: Offset(0, 16 * (1 - eased)),
+                      child: child,
+                    ),
+                  );
+                },
+                child: Container(
+                  width: math.min(330, size.width - 32),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B1510),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _red, width: 2),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x4DB0272C), blurRadius: 32),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _DarkTag(
+                            label: rewardTargetLabel(reward.target),
+                            background: _red,
+                            foreground: Colors.white,
+                          ),
+                          const SizedBox(width: 7),
+                          _DarkTag(
+                            label: seconds > 0 ? '$seconds秒' : '1回',
+                            background: gachaGold,
+                            foreground: const Color(0xFF241A0B),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        reward.title,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: gachaFontFamily,
+                          fontSize: 22,
+                          height: 1.4,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        reward.description,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          height: 1.7,
+                          color: Color(0xFFCFC6B4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              FadeTransition(
+                opacity: CurvedAnimation(
+                  parent: confirm,
+                  curve: const Interval(0.8, 1),
+                ),
+                child: const Text(
+                  '効果はもう出ている',
+                  style: TextStyle(fontSize: 11, color: _muted),
+                ),
+              ),
+            ],
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 24,
+            child: SafeArea(
+              top: false,
+              child: AnimatedBuilder(
+                animation: confirm,
+                builder: (context, _) => _GachaButton(
+                  label: '特典の中身を見る',
+                  onPressed: confirm.isCompleted
+                      ? () => Navigator.of(context).pop(true)
+                      : null,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DarkTag extends StatelessWidget {
   const _DarkTag({
     required this.label,
