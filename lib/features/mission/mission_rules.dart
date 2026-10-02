@@ -34,8 +34,22 @@ const _maxPointAttempts = 400;
 double distanceMeters(double lat1, double lng1, double lat2, double lng2) =>
     Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
 
-/// 地点の数。鬼の人数 + 1(逃走者どうしで取り合いになるよう、全員分は出さない)。
-int missionSpotCount({required int demonCount}) => demonCount + 1;
+/// 回ごとの地点の数の上限。`missionSpotCounts[0]`が1回目。
+/// 序盤は多めに置いて全員が動くようにし、最後の回は絞って取り合いにする。
+/// 長さは[missionDueDelays]と揃える。
+const List<int> missionSpotCounts = [4, 4, 3];
+
+/// [round]回目(1始まり)の地点の数。
+///
+/// [missionSpotCounts]の値を上限に、いまの逃走者の人数([fugitiveCount])
+/// より多くは置かない。1人1地点までなので、それより多い地点は誰も取れず、
+/// 「すべて取られたらその場で終わる」も起きなくなるため。逃走者がいなくても
+/// 0個にはしない(範囲外の回は最後の回と同じ上限にする)。
+int missionSpotCount({required int round, required int fugitiveCount}) {
+  final max =
+      missionSpotCounts[(round - 1).clamp(0, missionSpotCounts.length - 1)];
+  return fugitiveCount.clamp(1, max);
+}
 
 /// 今のゲームのミッションだけを、出した順(古い順)に返す。
 ///
@@ -86,6 +100,18 @@ int missionEndedAt(Mission mission) {
 List<MissionSpot> openSpots(Mission mission) =>
     mission.spots.where((s) => s.claimedBy == null).toList();
 
+/// 地図に出し続ける地点(issue #155)。
+///
+/// 自分が取った地点はもう向かう必要が無いため出さない。ほかの人が取った
+/// 地点は「埋まった」と分かるよう出し続ける(呼び出し側で色を落として描く)。
+/// ただしミッションが終わった(全地点が取られてのカード表示猶予中を含む)
+/// 後は、地図に何も残らないよう空リストを返す。
+List<MissionSpot> visibleMissionSpots(Mission mission, {String? myUid}) {
+  if (isMissionFinishedEarly(mission)) return [];
+  if (myUid == null) return mission.spots;
+  return mission.spots.where((s) => s.claimedBy != myUid).toList();
+}
+
 /// [uid]が取った地点。無ければnull(1人1地点まで)。
 MissionSpot? spotClaimedBy(Mission mission, String? uid) {
   if (uid == null) return null;
@@ -128,15 +154,15 @@ int dueMissionRound({required int releasedAt, required int nowMillis}) {
 
 /// ホストの端末が、いま書くべきミッションの回。書かないならnull。
 ///
-/// - 放出から[firstMissionDelay]で1回目、[secondMissionDelay]で2回目。
-///   3回目は無い([missionDueDelays]の長さまで)
+/// - 放出から[firstMissionDelay]で1回目、[secondMissionDelay]で2回目、
+///   [thirdMissionDelay]で3回目。4回目は無い([missionDueDelays]の長さまで)
 /// - 同時に出すのは1件だけ(受けられるものが残っていれば書かない)。
 ///   そのため1回目が遅れて書かれると、2回目もずれる。たとえば放出から
-///   14:59に1回目を書くと期限は19:59なので、2回目は15分ではなく1回目が
-///   切れた直後(約20分)に出る。2件を重ねて出さないことを優先している
+///   9:59に1回目を書くと期限は14:59なので、2回目は10分ではなく1回目が
+///   切れた直後(約15分)に出る。2件を重ねて出さないことを優先している
 /// - 同じ回を二度書かない。書きそびれた回は飛ばす(ホストが遅れて
 ///   戻ってきたときに、1回目と2回目を続けて出さない)
-/// - ゲームが終わっていたら書かない(2回目の前に終われば2回目は出ない)
+/// - ゲームが終わっていたら書かない(次の回の前に終わればその回は出ない)
 int? missionRoundToCreate({
   required List<Mission> missions,
   required int? startedAt,

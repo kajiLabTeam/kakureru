@@ -6,6 +6,15 @@
       "request": "launch",
       "type": "dart",
       "toolArgs": ["--dart-define-from-file=dart_defines.json"]
+    },
+    {
+      "name": "kakureru (ミッションのデバッグ)",
+      "request": "launch",
+      "type": "dart",
+      "toolArgs": [
+        "--dart-define-from-file=dart_defines.json",
+        "--dart-define=DEBUG_MISSION=true"
+      ]
     }
   ]
 }
