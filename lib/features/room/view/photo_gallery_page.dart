@@ -110,15 +110,14 @@ class PhotoGalleryPage extends StatelessWidget {
     // 始まっていない未来のスロット(次に引いた直後は`current + 1`になりうる。
     // `footPhotoSlotToSkip`参照)は、その時間になるまで一覧に出さない。
     final sectionSlots = {for (final s in photoSections) s.slotIndex};
-    final sections =
-        [
-          ...photoSections,
-          for (final slot in skippedSlots)
-            if (currentSlot != null &&
-                slot <= currentSlot &&
-                !sectionSlots.contains(slot))
-              PhotoGallerySection(slotIndex: slot, photos: const []),
-        ]..sort((a, b) => b.slotIndex.compareTo(a.slotIndex));
+    final sections = [
+      ...photoSections,
+      for (final slot in skippedSlots)
+        if (currentSlot != null &&
+            slot <= currentSlot &&
+            !sectionSlots.contains(slot))
+          PhotoGallerySection(slotIndex: slot, photos: const []),
+    ]..sort((a, b) => b.slotIndex.compareTo(a.slotIndex));
 
     if (startedAt == null || sections.isEmpty) {
       return ListView(
