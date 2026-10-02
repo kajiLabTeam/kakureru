@@ -94,7 +94,7 @@ void main() {
   }
 
   group('ミッションの生成', () {
-    test('ホストの端末だけが、放出から3分で1件だけ書く(地点は参加人数 - 1)', () {
+    test('ホストの端末だけが、放出から3分で1件だけ書く(地点は逃走者の人数まで)', () {
       fakeAsync((async) {
         final repository = _RecordingRepository();
         final container = containerWith(
