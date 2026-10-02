@@ -248,7 +248,7 @@ void main() {
       expect(find.text('鬼をジャマする'), findsOneWidget);
     });
 
-    testWidgets('折りたたむと本文を出さず、タップすると開閉を切り替える', (tester) async {
+    testWidgets('畳むと旗のマークだけを左に出し、タップで開き直す', (tester) async {
       var toggled = 0;
       await pumpCard(
         tester,
@@ -258,12 +258,31 @@ void main() {
       );
       expect(find.text('アクセスポイントへ行こう'), findsNothing);
       expect(find.text('近いのは のこり 62m'), findsNothing);
-      // 見出し(「ミッション」「先着N人」「残り時間」)は畳んでいても出す。
-      expect(find.text('ミッション'), findsOneWidget);
-      expect(find.text('先着2人'), findsOneWidget);
+      // 見出しの帯も残さず、旗のマークだけにする。
+      expect(find.text('ミッション'), findsNothing);
+      expect(find.text(formatMissionRemaining(134000)), findsNothing);
+      final flag = find.bySemanticsLabel('ミッションを開く');
+      final size = tester.getSize(flag);
+      expect(size.width, greaterThanOrEqualTo(44));
+      expect(size.width, lessThan(60));
+      // 左上に寄せる。
+      expect(tester.getTopLeft(flag).dx, lessThan(20));
 
-      await tester.tap(find.text('ミッション'));
+      await tester.tap(flag);
       expect(toggled, 1);
+    });
+
+    testWidgets('開いているカードはどこを1回タップしても畳む', (tester) async {
+      var toggled = 0;
+      await pumpCard(
+        tester,
+        MissionCardStatus.approaching,
+        onToggleExpanded: () => toggled++,
+      );
+      await tester.tap(find.text('アクセスポイントへ行こう'));
+      expect(toggled, 1);
+      await tester.tap(find.text('ミッション'));
+      expect(toggled, 2);
     });
 
     testWidgets('絵文字を使わない', (tester) async {
@@ -402,6 +421,7 @@ void main() {
               message: 'アクセスポイントへ行こう',
             ),
             onTap: () => tapped++,
+            onDismissed: () {},
           ),
         ),
       );
@@ -412,6 +432,57 @@ void main() {
       );
       await tester.tap(find.byType(MissionNoticeBanner));
       expect(tapped, 1);
+    });
+
+    testWidgets('右へスライドすると消え、地図へ移る方は呼ばない', (tester) async {
+      var tapped = 0;
+      var dismissed = 0;
+      await tester.pumpWidget(
+        _wrap(
+          MissionNoticeBanner(
+            notice: const MissionNotice(
+              kind: MissionNoticeKind.created,
+              missionId: 'm1',
+              message: 'アクセスポイントへ行こう',
+            ),
+            onTap: () => tapped++,
+            onDismissed: () => dismissed++,
+          ),
+        ),
+      );
+      await tester.fling(
+        find.byType(MissionNoticeBanner),
+        const Offset(400, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+      expect(dismissed, 1);
+      expect(tapped, 0);
+    });
+
+    testWidgets('左へスライドしても消えない', (tester) async {
+      var dismissed = 0;
+      await tester.pumpWidget(
+        _wrap(
+          MissionNoticeBanner(
+            notice: const MissionNotice(
+              kind: MissionNoticeKind.created,
+              missionId: 'm1',
+              message: 'アクセスポイントへ行こう',
+            ),
+            onTap: () {},
+            onDismissed: () => dismissed++,
+          ),
+        ),
+      );
+      await tester.fling(
+        find.byType(MissionNoticeBanner),
+        const Offset(-400, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+      expect(dismissed, 0);
+      expect(find.text('アクセスポイントへ行こう'), findsOneWidget);
     });
 
     testWidgets('畳んだアイコンは押すと呼ばれる', (tester) async {

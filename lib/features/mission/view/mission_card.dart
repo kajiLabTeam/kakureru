@@ -139,6 +139,21 @@ class MissionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final highlighted = status == MissionCardStatus.arrived;
+    if (!expanded) return _collapsed(highlighted: highlighted);
+    // カードのどこを1回タップしても、左上の旗のマークへ畳む(issue #155の
+    // 追加要望)。カードの中に押せる部品は無いので、全体で受けてよい。
+    return Semantics(
+      button: true,
+      label: 'ミッションをたたむ',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onToggleExpanded,
+        child: _expandedCard(highlighted: highlighted),
+      ),
+    );
+  }
+
+  Widget _expandedCard({required bool highlighted}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -182,52 +197,88 @@ class MissionCard extends StatelessWidget {
 
   Widget _header() {
     final urgent = remainingMillis < missionLastMinuteWarning.inMilliseconds;
-    return InkWell(
-      onTap: onToggleExpanded,
-      borderRadius: BorderRadius.circular(8),
-      child: Row(
-        children: [
-          Container(
-            width: 22,
-            height: 22,
-            decoration: BoxDecoration(
-              color: missionDeep,
-              borderRadius: BorderRadius.circular(7),
+    return Row(
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: missionDeep,
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: const Icon(Icons.flag, size: 14, color: Colors.white),
+        ),
+        const SizedBox(width: 7),
+        const Text(
+          'ミッション',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: gameInk,
+          ),
+        ),
+        const SizedBox(width: 7),
+        _Tag(
+          label: '先着${mission.spots.length}人',
+          background: missionSoft,
+          foreground: missionInk,
+        ),
+        const Spacer(),
+        const Icon(Icons.timer_outlined, size: 16, color: gameMuted),
+        const SizedBox(width: 4),
+        Text(
+          formatMissionRemaining(remainingMillis),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: urgent ? demonDeep : gameInk,
+          ),
+        ),
+        const SizedBox(width: 6),
+        // 畳めることが分かるように「−」を出しておく(押せるのはカード全体)。
+        Container(
+          width: 28,
+          height: 28,
+          decoration: const BoxDecoration(
+            color: missionSoft,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.remove, size: 18, color: missionInk),
+        ),
+      ],
+    );
+  }
+
+  /// 畳んだときの、左上の旗のマーク。タップで開き直す。
+  ///
+  /// 着いたとき([MissionCardStatus.arrived])は縁を色付きにして、畳んだ
+  /// ままでも気づけるようにする。
+  Widget _collapsed({required bool highlighted}) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      heightFactor: 1,
+      child: Semantics(
+        button: true,
+        label: 'ミッションを開く',
+        child: Material(
+          color: missionDeep,
+          elevation: 6,
+          shadowColor: const Color(0x401B1B19),
+          shape: CircleBorder(
+            side: highlighted
+                ? const BorderSide(color: missionAccent, width: 3)
+                : BorderSide.none,
+          ),
+          child: InkWell(
+            onTap: onToggleExpanded,
+            customBorder: const CircleBorder(),
+            child: const SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(Icons.flag, size: 22, color: Colors.white),
             ),
-            child: const Icon(Icons.flag, size: 14, color: Colors.white),
           ),
-          const SizedBox(width: 7),
-          const Text(
-            'ミッション',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: gameInk,
-            ),
-          ),
-          const SizedBox(width: 7),
-          _Tag(
-            label: '先着${mission.spots.length}人',
-            background: missionSoft,
-            foreground: missionInk,
-          ),
-          const Spacer(),
-          const Icon(Icons.timer_outlined, size: 16, color: gameMuted),
-          const SizedBox(width: 4),
-          Text(
-            formatMissionRemaining(remainingMillis),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: urgent ? demonDeep : gameInk,
-            ),
-          ),
-          Icon(
-            expanded ? Icons.expand_less : Icons.expand_more,
-            size: 18,
-            color: gameMuted,
-          ),
-        ],
+        ),
       ),
     );
   }

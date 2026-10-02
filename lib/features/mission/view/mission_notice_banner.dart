@@ -5,6 +5,7 @@ import 'package:kakureru/features/room/view/game/game_palette.dart';
 
 /// アプリを開いているときに出す、ミッションのお知らせ(逃走者だけ)。
 /// タップで地図のミッションのカードへ移る(呼び出し側が[onTap]で移す)。
+/// 右へスライドすると消える([onDismissed])。
 ///
 /// 通知の許可が無くても出す(OSの通知とは別物のため)。
 class MissionNoticeBanner extends StatelessWidget {
@@ -13,6 +14,7 @@ class MissionNoticeBanner extends StatelessWidget {
     super.key,
     required this.notice,
     required this.onTap,
+    required this.onDismissed,
   });
 
   /// 出すお知らせ。
@@ -21,8 +23,20 @@ class MissionNoticeBanner extends StatelessWidget {
   /// タップしたとき。
   final VoidCallback onTap;
 
+  /// 右へスライドして消したとき(お知らせを片付ける)。
+  final VoidCallback onDismissed;
+
   @override
   Widget build(BuildContext context) {
+    return Dismissible(
+      key: ValueKey(notice.key),
+      direction: DismissDirection.startToEnd,
+      onDismissed: (_) => onDismissed(),
+      child: _banner(),
+    );
+  }
+
+  Widget _banner() {
     return Material(
       color: Colors.white,
       elevation: 6,
@@ -73,6 +87,7 @@ class MissionNoticeBanner extends StatelessWidget {
 ///
 /// 地図を隠す面積を減らすための代替表示であって、お知らせ自体は消さない
 /// (Riverpod側の状態はそのまま。畳む/開くはGamePageのhooksだけで切り替える)。
+/// 左上はミッションのカードを畳んだ旗のマークが出る場所なので、右に寄せる。
 class MissionNoticeIcon extends StatelessWidget {
   /// タップで[onTap]。
   const MissionNoticeIcon({super.key, required this.onTap});
@@ -83,7 +98,7 @@ class MissionNoticeIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Align(
-      alignment: Alignment.centerLeft,
+      alignment: Alignment.centerRight,
       child: Material(
         color: missionDeep,
         shape: const CircleBorder(),

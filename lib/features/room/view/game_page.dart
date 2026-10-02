@@ -1299,6 +1299,11 @@ class GamePage extends HookConsumerWidget {
                                           curve: Curves.easeInOut,
                                         );
                                       },
+                                      // 右へスライドしたら、地図へは移らず
+                                      // お知らせだけ片付ける。
+                                      onDismissed: () => ref
+                                          .read(missionBannerProvider.notifier)
+                                          .dismiss(),
                                     ),
                             ),
                           // 取り消しの期限を過ぎた捕獲の全員への知らせ
