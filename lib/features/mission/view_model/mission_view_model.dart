@@ -259,7 +259,10 @@ class MissionController extends Notifier<MissionProgress> {
       nowMillis: nowMillis,
     );
     if (round == null) return;
-    final demonCount = room.users.where((u) => u.role == UserRole.demon).length;
+    // 捕まった人は役が鬼に変わるので、役が逃走者の人だけを数えればよい。
+    final fugitiveCount = room.users
+        .where((u) => u.role == UserRole.fugitive)
+        .length;
     _creating = true;
     _lastCreatedAt = nowMillis;
     final generation = _generation;
@@ -269,7 +272,10 @@ class MissionController extends Notifier<MissionProgress> {
           .createMission(
             roomId,
             area: room.setting.gameArea,
-            spotCount: missionSpotCount(demonCount: demonCount),
+            spotCount: missionSpotCount(
+              round: round,
+              fugitiveCount: fugitiveCount,
+            ),
             round: round,
             nowMillis: nowMillis,
           )
