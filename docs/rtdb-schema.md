@@ -93,12 +93,12 @@ rooms/
         indoor              屋内ならtrue(catchのみ)
     missions/
       {missionId}/          逃走者だけが受けるお題(アクセスポイント)。ホストの端末が書く(下の「ミッションとごほうび」参照)
-        round               何回目か(1 = 放出から5分 / 2 = 放出から15分。3回目は無い)
+        round               何回目か(1 = 放出から3分 / 2 = 放出から10分 / 3 = 放出から25分。4回目は無い)
         createdAt           ServerValue.timestamp
         expiresAt           作った時刻 + 制限時間(5分)。ホストのサーバー時刻の補正値から計算する
         finishedAt          すべての地点が取られて早く終わった時刻(サーバー時刻のミリ秒)。期限切れで終わったときは無し
         spots/
-          {spotId}/         アクセスポイント1か所("s0", "s1", …)。数は鬼の人数 + 1、互いに50m以上離す
+          {spotId}/         アクセスポイント1か所("s0", "s1", …)。数は1回目4・2回目4・3回目3を上限に、そのときの逃走者の人数まで。互いに50m以上離す
             lat / lng       地点
             radiusM         判定の半径(15)
             claimedBy       先に取った人のuid。未取得は無し。1地点に1人、1人1地点まで
@@ -271,7 +271,7 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 以前は逃走者の自己申告(「鬼になる」)で `catches` を書いていたため `demonUserId` が特定できずnullだった。いまは鬼が「捕まえた」を押して書くので、`demonUserId` には必ず鬼のuidが入る(古いデータのnullは読み取り側で許容している)。
 
-1. 鬼が `RoomRepository.reportCatch` で `catches/{catchId}` を書く。`users/{uid}` は本人しか書けないため、逃走者の役割はここでは変えない
+1. 鬼が「捕まえた」で相手と屋内/屋外を選び、撮影画面で**写真を撮った時点で** `RoomRepository.reportCatch` で `catches/{catchId}` を書く(撮らずに戻ったら何も書かず、選択からやり直す)。写真APIが未設定の環境では撮影画面を出さず、選択した時点で書く。`users/{uid}` は本人しか書けないため、逃走者の役割はここでは変えない
 2. 捕まった本人の端末が `catches` を購読していて、自分宛ての捕獲を見つけたら `acceptCaught` で自分の `role` を `DEMON` にする(`useCaughtByDemon`)
 3. 捕まった本人は `caughtAt` から10秒(`lib/features/room/catch_rules.dart` の `catchUndoWindow`)の間だけ `undoCatch` で取り消せる。**捕獲を先に消し、役割を後で `FUGITIVE` に戻す**(逆だと、戻った瞬間に残っている捕獲を見てまた鬼になる)。写真が付いていれば `catchPhotos/{photoId}` も消す。さらに削除がサーバーに届いた後、その `catchId` を指す `catchPhotos` を探し直して消す(下の「取り消しと写真送信の行き違い」参照)
 4. 期限を過ぎた捕獲だけを、各端末が「AがBを捕まえた」と全員に知らせる。期限はサーバー時刻で判定する
@@ -365,9 +365,9 @@ npm test
 
 **ミッションはホストの端末が作る**(サーバーが無いため)。`MissionController`(`lib/features/mission/view_model/mission_view_model.dart`)が `GameAlerts` と同じく画面と無関係に1秒ごとに回り、ホスト(`meta/hostUserId`)の端末だけが `missionRoundToCreate`(`lib/features/mission/mission_rules.dart`)を見て書く。時刻の定数は `lib/features/mission/mission_timing.dart` に1か所にまとめてある。
 
-- 鬼の放出(`releasedAt`)から5分で1回目、15分で2回目。3回目は無い。ゲームが先に終わったら2回目も出さない
+- 鬼の放出(`releasedAt`)から3分で1回目、10分で2回目、25分で3回目。4回目は無い。ゲームが先に終わったらその先の回は出さない
 - 同時に出すのは1件だけ。制限時間は5分。すべての地点が取られたらその場で終わる(`finishedAt`)
-- 地点の数は鬼の人数 + 1。エリアの中からランダムに、互いに50m以上離して選ぶ
+- 地点の数は1回目4・2回目4・3回目3(`missionSpotCounts`)を上限に、そのときの逃走者の人数まで(最低1)。1人1地点までなので、それより多く置いても取れない。エリアの中からランダムに、互いに50m以上離して選ぶ
 - ホストのアプリが落ちている間はミッションが出ない(ゲームは続く)
 - 書いた直後に購読へ戻ってくるまでの二重書き込みは、端末側で5秒の間隔を置いて防いでいる。ホストが2台に増えることはない(`hostUserId` は1人)ので、ルールでの排他はしていない
 

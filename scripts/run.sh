@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # `flutter run` のラッパー。CARTO_API_KEY・PHOTO_API_BASE_URL(dart_defines.json)を毎回手で
 # --dart-define-from-file 付きで指定しなくて済むようにするためのもの。
-# 使い方: ./scripts/run.sh [flutter runに渡す追加引数、例: -d <device>]
+# 使い方: ./scripts/run.sh [--mission-debug] [flutter runに渡す追加引数、例: -d <device>]
+#   --mission-debug: --dart-define=DEBUG_MISSION=true を足す(ミッションカードの下に
+#                    「着いたことにする」が出る。リリースビルドでは出ない)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -16,4 +18,13 @@ else
   echo "  cp dart_defines.example.json $defines_file で作成し、CARTO_API_KEY と PHOTO_API_BASE_URL を設定してください(README参照)。" >&2
 fi
 
-exec flutter "${args[@]}" "$@"
+# --mission-debug だけ抜き取り、残りはそのまま flutter run に渡す。
+for arg in "$@"; do
+  if [[ "$arg" == "--mission-debug" ]]; then
+    args+=("--dart-define=DEBUG_MISSION=true")
+  else
+    args+=("$arg")
+  fi
+done
+
+exec flutter "${args[@]}"
