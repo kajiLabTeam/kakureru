@@ -153,6 +153,47 @@ void main() {
       expect(spotClaimedBy(mission, 'other'), isNull);
       expect(spotClaimedBy(mission, null), isNull);
     });
+
+    test('visibleMissionSpotsは自分が取った地点を除き、ほかの地点は取られていても残す', () {
+      final mission = _mission(
+        spots: [
+          _spot(id: 's0', claimedBy: 'me', claimedAt: 1000),
+          _spot(id: 's1', claimedBy: 'other', claimedAt: 2000),
+          _spot(id: 's2'),
+        ],
+      );
+      expect(
+        visibleMissionSpots(mission, myUid: 'me').map((s) => s.id),
+        ['s1', 's2'],
+      );
+    });
+
+    test('visibleMissionSpotsはmyUidが無ければ全地点を除外せず返す', () {
+      final mission = _mission(
+        spots: [
+          _spot(id: 's0', claimedBy: 'other', claimedAt: 1000),
+          _spot(id: 's1'),
+        ],
+      );
+      expect(
+        visibleMissionSpots(mission).map((s) => s.id),
+        ['s0', 's1'],
+      );
+    });
+
+    test('visibleMissionSpotsはミッションが早期終了したら空(カード猶予中も含む)', () {
+      final finishedEarly = _mission(
+        spots: [
+          _spot(id: 's0', claimedBy: 'other', claimedAt: 1000),
+          _spot(id: 's1', claimedBy: 'another', claimedAt: 1000),
+        ],
+      );
+      expect(areAllSpotsClaimed(finishedEarly), isTrue);
+      expect(visibleMissionSpots(finishedEarly, myUid: 'me'), isEmpty);
+
+      final cancelled = _mission(finishedAt: 5000);
+      expect(visibleMissionSpots(cancelled, myUid: 'me'), isEmpty);
+    });
   });
 
   group('missionRoundToCreate(出すタイミング)', () {

@@ -109,6 +109,8 @@ class MissionCard extends StatelessWidget {
     required this.status,
     required this.reading,
     required this.remainingMillis,
+    required this.expanded,
+    required this.onToggleExpanded,
     this.myReward,
   });
 
@@ -124,12 +126,34 @@ class MissionCard extends StatelessWidget {
   /// 期限までの残り(ミリ秒)。
   final int remainingMillis;
 
+  /// 開いている(本文まで出す)か、見出しだけに畳んでいるか。畳む/開くの
+  /// 状態自体はGamePageのhooksが持つ(issue #155。地図を隠す面積を減らす)。
+  final bool expanded;
+
+  /// 見出しをタップしたとき(畳む/開くを切り替える)。
+  final VoidCallback onToggleExpanded;
+
   /// 自分が引いたごほうび([MissionCardStatus.claimedByMe]のとき)。
   final RewardType? myReward;
 
   @override
   Widget build(BuildContext context) {
     final highlighted = status == MissionCardStatus.arrived;
+    if (!expanded) return _collapsed(highlighted: highlighted);
+    // カードのどこを1回タップしても、左上の旗のマークへ畳む(issue #155の
+    // 追加要望)。カードの中に押せる部品は無いので、全体で受けてよい。
+    return Semantics(
+      button: true,
+      label: 'ミッションをたたむ',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onToggleExpanded,
+        child: _expandedCard(highlighted: highlighted),
+      ),
+    );
+  }
+
+  Widget _expandedCard({required bool highlighted}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -153,17 +177,19 @@ class MissionCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _header(),
-          const SizedBox(height: 9),
-          Text(
-            _title(),
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              height: 1.4,
-              color: gameInk,
+          if (expanded) ...[
+            const SizedBox(height: 9),
+            Text(
+              _title(),
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                height: 1.4,
+                color: gameInk,
+              ),
             ),
-          ),
-          ..._body(),
+            ..._body(),
+          ],
         ],
       ),
     );
@@ -208,7 +234,52 @@ class MissionCard extends StatelessWidget {
             color: urgent ? demonDeep : gameInk,
           ),
         ),
+        const SizedBox(width: 6),
+        // 畳めることが分かるように「−」を出しておく(押せるのはカード全体)。
+        Container(
+          width: 28,
+          height: 28,
+          decoration: const BoxDecoration(
+            color: missionSoft,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.remove, size: 18, color: missionInk),
+        ),
       ],
+    );
+  }
+
+  /// 畳んだときの、左上の旗のマーク。タップで開き直す。
+  ///
+  /// 着いたとき([MissionCardStatus.arrived])は縁を色付きにして、畳んだ
+  /// ままでも気づけるようにする。
+  Widget _collapsed({required bool highlighted}) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      heightFactor: 1,
+      child: Semantics(
+        button: true,
+        label: 'ミッションを開く',
+        child: Material(
+          color: missionDeep,
+          elevation: 6,
+          shadowColor: const Color(0x401B1B19),
+          shape: CircleBorder(
+            side: highlighted
+                ? const BorderSide(color: missionAccent, width: 3)
+                : BorderSide.none,
+          ),
+          child: InkWell(
+            onTap: onToggleExpanded,
+            customBorder: const CircleBorder(),
+            child: const SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(Icons.flag, size: 22, color: Colors.white),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

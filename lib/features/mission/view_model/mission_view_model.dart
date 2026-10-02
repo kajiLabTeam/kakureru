@@ -86,27 +86,23 @@ final Provider<MissionAlertSink> missionAlertSinkProvider = Provider(
 );
 
 /// アプリを開いているときに、地図の上へ出すミッションのお知らせ(バナー)。
-/// 出していなければnull。[missionBannerDuration]で自動で消える。
+/// 出していなければnull。
+///
+/// 出してからしばらくは展開したバナー、その後は小さいアイコンに畳んで
+/// 出し続ける(issue #155。タップで再展開できる)。その開閉自体は画面内で
+/// 完結する一時状態なので、ここでは持たずGamePage側のhooksで持つ
+/// (AGENTS.mdの規約)。ここが持つのはお知らせの中身(いつ消すか)だけ。
 class MissionBannerController extends Notifier<MissionNotice?> {
-  Timer? _timer;
-
   @override
-  MissionNotice? build() {
-    ref.onDispose(() => _timer?.cancel());
-    return null;
-  }
+  MissionNotice? build() => null;
 
   /// バナーを出す(前のものは置き換える)。
   void show(MissionNotice notice) {
-    _timer?.cancel();
     state = notice;
-    _timer = Timer(missionBannerDuration, dismiss);
   }
 
-  /// バナーを消す(タップしたとき・時間切れ)。
+  /// バナーを消す(展開したバナーをタップしたとき)。
   void dismiss() {
-    _timer?.cancel();
-    _timer = null;
     if (state != null) state = null;
   }
 }

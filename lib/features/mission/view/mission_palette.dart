@@ -18,6 +18,10 @@ const missionInk = Color(0xFF6B5310);
 /// 判定範囲の円の塗り。
 const missionRangeFill = Color(0x1FC98A1E);
 
+/// ほかの人に取られた地点の判定範囲の塗り(issue #155。色を落として
+/// 「埋まった」ことを示す)。
+const missionRangeClaimedFill = Color(0x1F6B6A64);
+
 /// 「鬼をジャマする」のタグの地と文字。
 const demonSoft = Color(0xFFFBEBEB);
 

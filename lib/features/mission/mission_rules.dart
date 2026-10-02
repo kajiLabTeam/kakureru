@@ -100,6 +100,18 @@ int missionEndedAt(Mission mission) {
 List<MissionSpot> openSpots(Mission mission) =>
     mission.spots.where((s) => s.claimedBy == null).toList();
 
+/// 地図に出し続ける地点(issue #155)。
+///
+/// 自分が取った地点はもう向かう必要が無いため出さない。ほかの人が取った
+/// 地点は「埋まった」と分かるよう出し続ける(呼び出し側で色を落として描く)。
+/// ただしミッションが終わった(全地点が取られてのカード表示猶予中を含む)
+/// 後は、地図に何も残らないよう空リストを返す。
+List<MissionSpot> visibleMissionSpots(Mission mission, {String? myUid}) {
+  if (isMissionFinishedEarly(mission)) return [];
+  if (myUid == null) return mission.spots;
+  return mission.spots.where((s) => s.claimedBy != myUid).toList();
+}
+
 /// [uid]が取った地点。無ければnull(1人1地点まで)。
 MissionSpot? spotClaimedBy(Mission mission, String? uid) {
   if (uid == null) return null;
