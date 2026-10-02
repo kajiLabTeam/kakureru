@@ -271,7 +271,7 @@ Phase 1 は Cloud Functions を使わずクライアント側だけで実装す�
 
 以前は逃走者の自己申告(「鬼になる」)で `catches` を書いていたため `demonUserId` が特定できずnullだった。いまは鬼が「捕まえた」を押して書くので、`demonUserId` には必ず鬼のuidが入る(古いデータのnullは読み取り側で許容している)。
 
-1. 鬼が `RoomRepository.reportCatch` で `catches/{catchId}` を書く。`users/{uid}` は本人しか書けないため、逃走者の役割はここでは変えない
+1. 鬼が「捕まえた」で相手と屋内/屋外を選び、撮影画面で**写真を撮った時点で** `RoomRepository.reportCatch` で `catches/{catchId}` を書く(撮らずに戻ったら何も書かず、選択からやり直す)。写真APIが未設定の環境では撮影画面を出さず、選択した時点で書く。`users/{uid}` は本人しか書けないため、逃走者の役割はここでは変えない
 2. 捕まった本人の端末が `catches` を購読していて、自分宛ての捕獲を見つけたら `acceptCaught` で自分の `role` を `DEMON` にする(`useCaughtByDemon`)
 3. 捕まった本人は `caughtAt` から10秒(`lib/features/room/catch_rules.dart` の `catchUndoWindow`)の間だけ `undoCatch` で取り消せる。**捕獲を先に消し、役割を後で `FUGITIVE` に戻す**(逆だと、戻った瞬間に残っている捕獲を見てまた鬼になる)。写真が付いていれば `catchPhotos/{photoId}` も消す。さらに削除がサーバーに届いた後、その `catchId` を指す `catchPhotos` を探し直して消す(下の「取り消しと写真送信の行き違い」参照)
 4. 期限を過ぎた捕獲だけを、各端末が「AがBを捕まえた」と全員に知らせる。期限はサーバー時刻で判定する
