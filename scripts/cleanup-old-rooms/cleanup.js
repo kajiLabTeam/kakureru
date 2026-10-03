@@ -21,7 +21,12 @@ export function parseArgs(argv) {
     } else if (arg === '--days') {
       opts.days = Number(argv[++i]);
     } else if (arg === '--database-url') {
-      opts.databaseURL = argv[++i];
+      // 値の付け忘れで環境変数のDBへ黙ってフォールバックしないよう、必ず弾く。
+      const value = argv[++i];
+      if (!value || value.startsWith('--')) {
+        throw new Error('--database-url にはURLを指定してください');
+      }
+      opts.databaseURL = value;
     } else {
       throw new Error(`不明な引数: ${arg}`);
     }
@@ -102,7 +107,13 @@ export async function run({ argv, env, db, nowMs = Date.now(), log = console.log
   let deleted = 0;
   for (const e of stale) {
     // ルームとコードを1回の更新で消す(片方だけ残る状態を作らない)。
-    await db.ref().update(deletionPaths(e));
+    try {
+      await db.ref().update(deletionPaths(e));
+    } catch (err) {
+      // 途中で止まると部分削除になる。どこまで消えたか分かるようにする(再実行すれば残りだけ消える)。
+      log(`  失敗 rooms/${e.roomId}: ${err.message}(ここまでに${deleted}件削除済み。中断します)`);
+      throw err;
+    }
     deleted++;
   }
   log(`${deleted}件削除しました。`);

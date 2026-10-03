@@ -13,6 +13,12 @@ test('parseArgs: 既定はdry-runで7日', () => {
   assert.equal(parseArgs(['--days', '30']).days, 30);
 });
 
+test('parseArgs: --database-url は値が無ければ拒否する', () => {
+  assert.equal(parseArgs(['--database-url', 'https://x']).databaseURL, 'https://x');
+  assert.throws(() => parseArgs(['--database-url']));
+  assert.throws(() => parseArgs(['--database-url', '--apply']));
+});
+
 test('parseArgs: 不正な引数は拒否する', () => {
   assert.throws(() => parseArgs(['--days', '0']));
   assert.throws(() => parseArgs(['--days', 'abc']));
@@ -43,17 +49,33 @@ test('deletionPaths: ルームとコードを同時に消す', () => {
   assert.deepEqual(paths, { 'rooms/r': null, 'roomCodes/1234': null });
 });
 
-function fakeDb({ rooms, codes }) {
+function fakeDb({ rooms, codes, failOn }) {
   const updates = [];
+  const codeReads = [];
+  const cutoffs = [];
   const snap = (v) => ({ val: () => v });
   return {
     updates,
+    codeReads,
+    cutoffs,
     ref(path) {
-      if (path === undefined) return { update: async (u) => void updates.push(u) };
+      if (path === undefined) {
+        return {
+          update: async (u) => {
+            if (failOn && failOn in u) throw new Error('boom');
+            updates.push(u);
+          },
+        };
+      }
       if (path === 'rooms') {
-        return { orderByChild: () => ({ endAt: () => ({ get: async () => snap(rooms) }) }) };
+        return {
+          orderByChild: () => ({
+            endAt: (c) => (cutoffs.push(c), { get: async () => snap(rooms) }),
+          }),
+        };
       }
       const code = path.replace('roomCodes/', '');
+      codeReads.push(code);
       return { child: () => ({ get: async () => snap(codes[code] ?? null) }) };
     },
   };
@@ -74,4 +96,39 @@ test('run: --apply でルームとコードを削除する', async () => {
   const r = await run({ argv: ['--apply'], env: {}, db, nowMs: NOW, log: () => {} });
   assert.equal(r.deleted, 1);
   assert.deepEqual(db.updates, [{ 'rooms/old': null, 'roomCodes/1111': null }]);
+});
+
+test('run: クエリのcutoffは「今 - 日数」', async () => {
+  const db = fakeDb({ rooms: {}, codes: {} });
+  await run({ argv: ['--days', '3'], env: {}, db, nowMs: NOW, log: () => {} });
+  assert.deepEqual(db.cutoffs, [NOW - 3 * DAY]);
+});
+
+test('run: 同じコードを指す複数ルームでもroomCodesの読み出しは1回で、持ち主のルームだけがコードを消す', async () => {
+  const db = fakeDb({
+    rooms: { a: room(10, '1111'), b: room(11, '1111') },
+    codes: { 1111: 'b' },
+  });
+  await run({ argv: ['--apply'], env: {}, db, nowMs: NOW, log: () => {} });
+  assert.deepEqual(db.codeReads, ['1111']);
+  assert.deepEqual(db.updates, [{ 'rooms/a': null }, { 'rooms/b': null, 'roomCodes/1111': null }]);
+});
+
+test('run: roomCodeが文字列でないルームも、ルームだけ消えてroomCodesは触らない', async () => {
+  const db = fakeDb({ rooms: { old: room(10, null) }, codes: {} });
+  const r = await run({ argv: ['--apply'], env: {}, db, nowMs: NOW, log: () => {} });
+  assert.equal(r.stale[0].code, null);
+  assert.deepEqual(db.codeReads, []);
+  assert.deepEqual(db.updates, [{ 'rooms/old': null }]);
+});
+
+test('run: 削除が途中で失敗したら失敗したroomIdをログに出して中断する', async () => {
+  const db = fakeDb({
+    rooms: { a: room(10, '1111'), b: room(11, '2222') },
+    codes: { 1111: 'a', 2222: 'b' },
+    failOn: 'rooms/b',
+  });
+  const logs = [];
+  await assert.rejects(run({ argv: ['--apply'], env: {}, db, nowMs: NOW, log: (m) => logs.push(m) }));
+  assert.ok(logs.some((l) => l.includes('失敗 rooms/b') && l.includes('1件削除済み')));
 });
