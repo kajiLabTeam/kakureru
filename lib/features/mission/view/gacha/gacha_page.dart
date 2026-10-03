@@ -29,26 +29,26 @@ const _green = Color(0xFF4A9C5D);
 const _red = Color(0xFFE5484D);
 const _purple = Color(0xFF8E5AC0);
 
-/// 特典を引いた直後の確定演出(モック3)。パッケージは使わず、
+/// ごほうびを引いた直後の確定演出(モック3)。パッケージは使わず、
 /// `AnimationController`と`Transform`/`CustomPaint`だけで作る。
 ///
-/// 毎回見るので、**画面のどこをタップしても最後(特典カード)まで飛ばせる**
+/// 毎回見るので、**画面のどこをタップしても最後(ごほうびカード)まで飛ばせる**
 /// (カプセルの段だけはタップが「開ける」)。段の進み方は`gacha_phase.dart`。
 ///
 /// `GamePage`の上に重ねて開くだけで、ゲーム画面は破棄しない(位置情報の
 /// 送信は止まらない)。効果は引いた瞬間にもう出ている(持っておくごほうびは
 /// 使ったときに出る)。
 class GachaPage extends HookWidget {
-  /// [reward]は引いた特典(抽選はもう済んでいる)。
+  /// [reward]は引いたごほうび(抽選はもう済んでいる)。
   const GachaPage({super.key, required this.reward});
 
-  /// 引いた特典。
+  /// 引いたごほうび。
   final RewardType reward;
 
-  /// ゲーム画面の上に重ねて開く。最後に「特典の中身を見る」を押すと
-  /// 特典の画面([RewardPage])に移る。
+  /// ゲーム画面の上に重ねて開く。最後に「ごほうびの中身を見る」を押すと
+  /// ごほうびの画面([RewardPage])に移る。
   ///
-  /// 返すFutureは**特典の画面まで閉じてから**完了する。呼び出し側は
+  /// 返すFutureは**ごほうびの画面まで閉じてから**完了する。呼び出し側は
   /// これを待つ間、ゲーム終了の自動遷移を止めている(`GamePage`の
   /// `rewardOpen`)ため、演出だけ閉じた時点で完了させてはいけない。
   static Future<void> show(BuildContext context, RewardType reward) async {
@@ -93,7 +93,7 @@ class GachaPage extends HookWidget {
     final pulse = useAnimationController(
       duration: const Duration(milliseconds: 1100),
     );
-    // 確定: 白く弾ける → ハンコ → 特典カード。
+    // 確定: 白く弾ける → ハンコ → ごほうびカード。
     final confirm = useAnimationController(duration: gachaConfirmDuration);
     // 虹の輪の回転と紙吹雪の落下(確定の段だけ)。
     final rainbow = useAnimationController(
@@ -147,7 +147,7 @@ class GachaPage extends HookWidget {
       }
     }
 
-    // 始まったらすぐハンドルを回す(特典はもう引いてあるので待たせない)。
+    // 始まったらすぐハンドルを回す(ごほうびはもう引いてあるので待たせない)。
     useEffect(() {
       intro.duration = isMiss
           ? gachaTurningDuration
@@ -181,7 +181,7 @@ class GachaPage extends HookWidget {
     }
 
     return PopScope(
-      // 演出の途中で戻ると、どの特典だったか分からないまま閉じてしまう。
+      // 演出の途中で戻ると、どのごほうびだったか分からないまま閉じてしまう。
       // 戻る操作は「最後まで飛ばす」にする。
       canPop: phase.value == finalPhase && confirm.isCompleted,
       onPopInvokedWithResult: (didPop, _) {
@@ -1116,7 +1116,7 @@ class _ConfirmedOverlay extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              // 特典カードが跳ねて出る。
+              // ごほうびカードが跳ねて出る。
               AnimatedBuilder(
                 animation: confirm,
                 builder: (context, child) {
@@ -1200,10 +1200,10 @@ class _ConfirmedOverlay extends StatelessWidget {
               child: AnimatedBuilder(
                 animation: confirm,
                 builder: (context, _) => _GachaButton(
-                  label: '特典の中身を見る',
+                  label: 'ごほうびの中身を見る',
                   onPressed: confirm.isCompleted
-                      // 特典の画面はshowが続けて開く(ここで差し替えると
-                      // showのFutureが特典の画面を開いたまま完了する)。
+                      // ごほうびの画面はshowが続けて開く(ここで差し替えると
+                      // showのFutureがごほうびの画面を開いたまま完了する)。
                       ? () => Navigator.of(context).pop(true)
                       : null,
                 ),
@@ -1276,7 +1276,7 @@ class _MissedOverlay extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              // 特典カードは当たりと同じ見た目で出す(ハズレは何も起きない
+              // ごほうびカードは当たりと同じ見た目で出す(ハズレは何も起きない
               // ことを必ず伝える)。
               AnimatedBuilder(
                 animation: confirm,
@@ -1339,7 +1339,7 @@ class _MissedOverlay extends StatelessWidget {
               child: AnimatedBuilder(
                 animation: confirm,
                 builder: (context, _) => _GachaButton(
-                  label: '特典の中身を見る',
+                  label: 'ごほうびの中身を見る',
                   onPressed: confirm.isCompleted
                       ? () => Navigator.of(context).pop(true)
                       : null,

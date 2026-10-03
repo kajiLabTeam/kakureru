@@ -162,7 +162,7 @@ void main() {
       expect(find.text('効果はもう出ている'), findsNothing);
     });
 
-    testWidgets('ハンドルの途中でタップ1回すると、特典カードまで飛ばせる', (tester) async {
+    testWidgets('ハンドルの途中でタップ1回すると、ごほうびカードまで飛ばせる', (tester) async {
       await _pumpGacha(tester);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -177,7 +177,7 @@ void main() {
       expect(find.text('地図の「つかう」で好きなときに使える'), findsOneWidget);
       expect(find.text('効果はもう出ている'), findsNothing);
       final button = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, '特典の中身を見る'),
+        find.widgetWithText(FilledButton, 'ごほうびの中身を見る'),
       );
       expect(button.onPressed, isNotNull);
     });
@@ -202,12 +202,12 @@ void main() {
       expect(_confettiCount(tester), lessThanOrEqualTo(10));
     });
 
-    testWidgets('「特典の中身を見る」で特典の画面に移る', (tester) async {
+    testWidgets('「ごほうびの中身を見る」でごほうびの画面に移る', (tester) async {
       final done = await _openGachaViaShow(tester);
       await tester.tapAt(const Offset(200, 400));
       await tester.pump();
 
-      await tester.tap(find.text('特典の中身を見る'));
+      await tester.tap(find.text('ごほうびの中身を見る'));
       await _pumpTransition(tester);
 
       expect(find.byType(RewardPage), findsOneWidget);
@@ -215,13 +215,13 @@ void main() {
       expect(done(), isFalse);
     });
 
-    testWidgets('showのFutureは特典の画面を閉じるまで完了しない', (tester) async {
+    testWidgets('showのFutureはごほうびの画面を閉じるまで完了しない', (tester) async {
       final done = await _openGachaViaShow(tester);
       await tester.tapAt(const Offset(200, 400));
       await tester.pump();
-      await tester.tap(find.text('特典の中身を見る'));
+      await tester.tap(find.text('ごほうびの中身を見る'));
       await _pumpTransition(tester);
-      // 演出は閉じたが特典の画面を見ている間(=ゲーム終了の遷移を止める間)。
+      // 演出は閉じたがごほうびの画面を見ている間(=ゲーム終了の遷移を止める間)。
       expect(done(), isFalse);
 
       await tester.tap(find.text('地図にもどる'));
@@ -231,7 +231,7 @@ void main() {
       expect(done(), isTrue);
     });
 
-    testWidgets('演出を戻るで閉じたら特典の画面は出さずに完了する', (tester) async {
+    testWidgets('演出を戻るで閉じたらごほうびの画面は出さずに完了する', (tester) async {
       final done = await _openGachaViaShow(tester);
       await tester.tapAt(const Offset(200, 400));
       await _pumpTransition(tester);

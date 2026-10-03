@@ -170,7 +170,7 @@ class GamePage extends HookConsumerWidget {
     // (captureOpen。handleCatchPressed参照)。
     final captureOpen = useState(false);
 
-    // ミッションの「特典を引く」。送信中はボタンをローディング表示にし、
+    // ミッションの「ごほうびガチャを引く」。送信中はボタンをローディング表示にし、
     // 取れたら確定演出(GachaPage)を開く。開いている間はゲーム終了の
     // 自動遷移を止める(captureOpenと同じ)。
     final claimAction = useAsyncAction(context);
@@ -286,7 +286,7 @@ class GamePage extends HookConsumerWidget {
     // (呼び出しを条件分岐するとhooksの呼び出し順が崩れるため)。
     warnIfPhotoFeatureNotConfigured();
 
-    // ミッションの特典の効果(effects)。前のゲームの分は除く。残り時間は
+    // ミッションのごほうびの効果(effects)。前のゲームの分は除く。残り時間は
     // サーバー時刻(now)で数える。
     final roomEffects = effectsOfCurrentGame(
       ref.watch(effectsStreamProvider(roomId)).value ?? const [],
@@ -296,7 +296,7 @@ class GamePage extends HookConsumerWidget {
     final myLastPhotoAt = myUid == null
         ? null
         : findUser(room?.users ?? const [], myUid)?.lastPhotoAt;
-    // 特典「足元写真を1回まぬがれる」で飛ばすスロット。撮影プロンプトと
+    // ごほうび「足元写真を1回まぬがれる」で飛ばすスロット。撮影プロンプトと
     // 写真一覧(まぬがれたスロットも撮った扱いにする。issue #157)の両方で使う。
     final skippedPhotoSlots = skippedFootPhotoSlots(
       effects: roomEffects,
@@ -462,7 +462,7 @@ class GamePage extends HookConsumerWidget {
       return null;
     }, [mission?.id]);
 
-    // 特典が「足元写真を1回まぬがれる」だったときに飛ばすスロット。押した
+    // ごほうびが「足元写真を1回まぬがれる」だったときに飛ばすスロット。押した
     // 瞬間の撮影バナーの状態で決め、効果に書いておく(後から撮り直しても
     // ずれないように)。
     int? footPhotoSkipSlotNow() => footPhotoSlotToSkip(
@@ -475,7 +475,7 @@ class GamePage extends HookConsumerWidget {
       isDue: photoCapture.state.isDue,
     );
 
-    // 特典を引けたら、確定演出(GachaPage)→ 特典の画面(RewardPage)の順に
+    // ごほうびを引けたら、確定演出(GachaPage)→ ごほうびの画面(RewardPage)の順に
     // 出す。両方が閉じるまでゲーム終了の自動遷移を止める。
     Future<void> showReward(RewardType reward) async {
       rewardOpen.value = true;
@@ -483,8 +483,8 @@ class GamePage extends HookConsumerWidget {
       if (context.mounted) rewardOpen.value = false;
     }
 
-    // 取れたのに特典の書き込みが済んでいないとき(取った直後に通信が切れた
-    // 等)の「特典を受け取る」。書き込みは何度やっても1つにまとまる。
+    // 取れたのにごほうびの書き込みが済んでいないとき(取った直後に通信が切れた
+    // 等)の「ごほうびを受け取る」。書き込みは何度やっても1つにまとまる。
     Future<void> handleCompleteClaimPressed(
       Mission target,
       MissionSpot spot,
@@ -925,7 +925,7 @@ class GamePage extends HookConsumerWidget {
                         ),
                         ...mockUsers,
                       ];
-                // 特典「鬼の手がかりを止める」。効いている間、鬼の端末では
+                // ごほうび「鬼の手がかりを止める」。効いている間、鬼の端末では
                 // Wi-Fi・気圧の表示を隠す。
                 final clueBlockedEffect = myRole == UserRole.demon
                     ? activeEffectOf(
@@ -958,7 +958,7 @@ class GamePage extends HookConsumerWidget {
                       )
                     : const <WifiApComparison>[];
 
-                // 特典の効果(ミッション)。「自分のアイコンを大きくする」は
+                // ごほうびの効果(ミッション)。「自分のアイコンを大きくする」は
                 // 全員の地図で、引いた人のピンを2倍にする(鬼の手がかりを
                 // 止める効果は、相手選びの前で見ている)。
                 final enlargedUserUids = activeEnlargeSelfIconUids(
@@ -1090,7 +1090,7 @@ class GamePage extends HookConsumerWidget {
                               alert: outsideAreaAlert,
                               // 偽プレイヤーのピンにも名前と役割色を出すため、
                               // 地図には表示用の一覧を渡す(issue #67)。
-                              // ミッションのカードと「特典を引く」は地図の上に重ねる。
+                              // ミッションのカードと「ごほうびガチャを引く」は地図の上に重ねる。
                               // エリア外アラートはさらにその上に出る(戻る方が優先)。
                               map: Stack(
                                 children: [
@@ -1232,7 +1232,7 @@ class GamePage extends HookConsumerWidget {
                           ),
                           // 目撃写真のボタン(地図の右下)。地図の帰属表示
                           // (右下の「i」)を隠さないよう、その上に置く。
-                          // 「特典を引く」が出ている間は、そのボタンに
+                          // 「ごほうびガチャを引く」が出ている間は、そのボタンに
                           // 重ならないようさらに上へずらす。
                           // 写真機能が無効な環境では出さない。
                           if (isPhotoFeatureConfigured)

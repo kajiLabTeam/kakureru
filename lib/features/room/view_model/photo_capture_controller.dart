@@ -65,7 +65,7 @@ class PhotoCaptureController {
 /// ないとき。`takesFootPhotos`)。途中で役割が変わることがあるので、タイマーが
 /// 発火した時点の値を使う。通知は1スロットにつき1回まで。
 ///
-/// [skippedSlots]は特典 `skip_foot_photo` で飛ばすスロットの番号
+/// [skippedSlots]はごほうび `skip_foot_photo` で飛ばすスロットの番号
 /// (`skippedFootPhotoSlots`)。そのスロットでは撮っていなくても撮影を
 /// 促さない(バナーも通知も出さない)。
 ///
