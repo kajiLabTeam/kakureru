@@ -5,12 +5,13 @@ import 'package:kakureru/features/mission/view/gacha/gacha_page.dart';
 import 'package:kakureru/features/mission/view/gacha/gacha_phase.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
 
-Future<void> _pumpGacha(WidgetTester tester) async {
+Future<void> _pumpGacha(
+  WidgetTester tester, {
+  RewardType reward = RewardType.blockClues,
+}) async {
   await tester.binding.setSurfaceSize(const Size(393, 852));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    const MaterialApp(home: GachaPage(reward: RewardType.blockClues)),
-  );
+  await tester.pumpWidget(MaterialApp(home: GachaPage(reward: reward)));
 }
 
 /// ゲーム画面と同じく[GachaPage.show]で重ねて開く。返す関数は
@@ -93,6 +94,26 @@ void main() {
     test('紙吹雪は10枚まで', () {
       expect(gachaConfettiCount, lessThanOrEqualTo(10));
     });
+
+    test('ハズレ(isMiss)は激熱を出さず、ハンドルのあとすぐカプセルに進む', () {
+      expect(
+        gachaPhaseAt(const Duration(milliseconds: 1499), isMiss: true),
+        GachaPhase.turning,
+      );
+      expect(
+        gachaPhaseAt(const Duration(milliseconds: 1500), isMiss: true),
+        GachaPhase.capsule,
+      );
+      // 当たりなら同じ時刻はまだ激熱のはず(ハズレとの違いの確認)。
+      expect(
+        gachaPhaseAt(const Duration(milliseconds: 1500)),
+        GachaPhase.heat,
+      );
+    });
+
+    test('missedの段もタップで最後まで飛ばせる', () {
+      expect(gachaTapAction(GachaPhase.missed), GachaTapAction.skipToEnd);
+    });
   });
 
   group('GachaPage', () {
@@ -120,7 +141,28 @@ void main() {
       expect(find.text('鬼の手がかりを止める'), findsOneWidget);
     });
 
-    testWidgets('ハンドルの途中でタップ1回すると、特典カードまで飛ばせる', (tester) async {
+    testWidgets('ハズレは激熱を出さず、短い演出で赤い「残念」になる', (tester) async {
+      await _pumpGacha(tester, reward: RewardType.miss);
+      expect(find.text('まわしてる…'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 1600));
+      // ハズレは激熱を出さない。
+      expect(find.text('激熱'), findsNothing);
+      expect(find.text('カプセルを開ける'), findsOneWidget);
+
+      await tester.tap(find.text('カプセルを開ける'));
+      await tester.pump();
+      expect(find.text('確定'), findsNothing);
+      expect(find.text('残念'), findsOneWidget);
+
+      await tester.pump(gachaMissedDuration);
+      expect(find.text('なにも起きない'), findsOneWidget);
+      // 何も起きないので、時間のタグも「効果はもう出ている」も出さない。
+      expect(find.text('1回'), findsNothing);
+      expect(find.text('効果はもう出ている'), findsNothing);
+    });
+
+    testWidgets('ハンドルの途中でタップ1回すると、ごほうびカードまで飛ばせる', (tester) async {
       await _pumpGacha(tester);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -129,11 +171,13 @@ void main() {
 
       expect(find.text('確定'), findsOneWidget);
       expect(find.text('鬼の手がかりを止める'), findsOneWidget);
-      expect(find.text('鬼をジャマする'), findsOneWidget);
-      expect(find.text('30秒'), findsOneWidget);
-      expect(find.text('効果はもう出ている'), findsOneWidget);
+      expect(find.text('鬼をジャマする'), findsNothing);
+      expect(find.text('3分'), findsOneWidget);
+      // 持っておくごほうびなので、まだ効いていない。
+      expect(find.text('地図の「つかう」で好きなときに使える'), findsOneWidget);
+      expect(find.text('効果はもう出ている'), findsNothing);
       final button = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, '特典の中身を見る'),
+        find.widgetWithText(FilledButton, 'ごほうびの中身を見る'),
       );
       expect(button.onPressed, isNotNull);
     });
@@ -158,12 +202,12 @@ void main() {
       expect(_confettiCount(tester), lessThanOrEqualTo(10));
     });
 
-    testWidgets('「特典の中身を見る」で特典の画面に移る', (tester) async {
+    testWidgets('「ごほうびの中身を見る」でごほうびの画面に移る', (tester) async {
       final done = await _openGachaViaShow(tester);
       await tester.tapAt(const Offset(200, 400));
       await tester.pump();
 
-      await tester.tap(find.text('特典の中身を見る'));
+      await tester.tap(find.text('ごほうびの中身を見る'));
       await _pumpTransition(tester);
 
       expect(find.byType(RewardPage), findsOneWidget);
@@ -171,13 +215,13 @@ void main() {
       expect(done(), isFalse);
     });
 
-    testWidgets('showのFutureは特典の画面を閉じるまで完了しない', (tester) async {
+    testWidgets('showのFutureはごほうびの画面を閉じるまで完了しない', (tester) async {
       final done = await _openGachaViaShow(tester);
       await tester.tapAt(const Offset(200, 400));
       await tester.pump();
-      await tester.tap(find.text('特典の中身を見る'));
+      await tester.tap(find.text('ごほうびの中身を見る'));
       await _pumpTransition(tester);
-      // 演出は閉じたが特典の画面を見ている間(=ゲーム終了の遷移を止める間)。
+      // 演出は閉じたがごほうびの画面を見ている間(=ゲーム終了の遷移を止める間)。
       expect(done(), isFalse);
 
       await tester.tap(find.text('地図にもどる'));
@@ -187,7 +231,7 @@ void main() {
       expect(done(), isTrue);
     });
 
-    testWidgets('演出を戻るで閉じたら特典の画面は出さずに完了する', (tester) async {
+    testWidgets('演出を戻るで閉じたらごほうびの画面は出さずに完了する', (tester) async {
       final done = await _openGachaViaShow(tester);
       await tester.tapAt(const Offset(200, 400));
       await _pumpTransition(tester);

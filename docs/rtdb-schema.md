@@ -103,13 +103,13 @@ rooms/
             radiusM         判定の半径(15)
             claimedBy       先に取った人のuid。未取得は無し。1地点に1人、1人1地点まで
             claimedAt       取った時刻(サーバー時刻のミリ秒)
-            reward          取った人が引いたごほうび("block_clues" | "big_demon_icon" | "skip_foot_photo")。引く前は無し
+            reward          取った人が引いたごほうび("block_clues" | "enlarge_self_icon" | "skip_foot_photo" | "miss")。引く前は無し
     effects/
-      {effectId}/           ごほうびの効果。引いた瞬間に1件足す(ルーム単位。キーは "{missionId}_{spotId}"。下の「ミッションとごほうび」参照)
-        type                "block_clues" | "big_demon_icon" | "skip_foot_photo"
+      {effectId}/           ごほうびの効果。引いた瞬間に1件足す。持っておくごほうび(block_clues)だけは引いたときは書かず、「つかう」を押したときに足す(ルーム単位。キーは "{missionId}_{spotId}"。下の「ミッションとごほうび」参照)
+        type                "block_clues" | "enlarge_self_icon" | "skip_foot_photo" | "miss"
         byUid               引いた人のuid
-        startedAt           発動した時刻(サーバー時刻のミリ秒)
-        durationMs          効いている時間(30000)。skip_foot_photo は 0(回数もの)
+        startedAt           発動した時刻(サーバー時刻のミリ秒)。block_clues は使った時刻
+        durationMs          効いている時間。block_clues は180000(3分)、enlarge_self_icon は120000(2分)。skip_foot_photo は 0(回数もの)、miss も 0(何も起きない)
         skipSlot            skip_foot_photo で飛ばす撮影スロットの番号(skip_foot_photo のみ。次の1回だけ)
     taunts/
       {tauntId}/            (予約。まだ書かない)逃走者から鬼への挑発
@@ -379,11 +379,23 @@ npm test
 - **お知らせは逃走者にだけ、音なし・振動だけ**: 出た・のこり1分・終わったの3種類(`dueMissionNotices`)。アプリを開いていれば画面上のバナー、閉じていればOSの通知(チャンネル `kakureru_mission`、`playSound: false`)
 - **デバッグ用**: `flutter run --dart-define=DEBUG_MISSION=true` で起動したときだけ「着いたことにする」が出る(距離の判定だけ飛ばし、トランザクションはふつうに走る)。リリースビルドでは出ない
 
-**効果はuidごとではなくルーム単位**に持つ。鬼に効く効果(`block_clues` / `big_demon_icon`)は全員の端末で同じ見え方にする必要があるため。`skip_foot_photo` だけは `byUid` の本人に効く。
+**かくれるガチャの中身と確率**(`RewardType`、`lib/features/mission/model/reward_type.dart`)。当たり3種で合計80%(`rewardWinningOddsPercent`)を均等に分け(各 `rewardWinningOddsPercentEach` ≒ 26.67%)、残り20%(`rewardMissOddsPercent`)がハズレ1種。抽選は `MissionRepository.drawReward` が `RewardType.values` の `oddsPercent` を順に積み上げた累積分布で引く。
+
+| raw | 当/ハズレ | 確率 | 内容 |
+| --- | --- | --- | --- |
+| `block_clues` | 当たり | 約26.67% | 持っておいて好きなときに使う。使うと3分、鬼の端末で Wi-Fi と気圧の手がかりを隠す |
+| `enlarge_self_icon` | 当たり | 約26.67% | 2分、全員の地図(本人を含む)で引いた本人のピンを2倍にする |
+| `skip_foot_photo` | 当たり | 約26.67% | 次の足元写真の撮影タイムを1回まぬがれる(回数もの) |
+| `miss` | ハズレ | 20% | 何も起きない |
+
+**効果は基本ルーム単位**に持つ。鬼に効く効果(`block_clues`)や全員の地図に出る効果(`enlarge_self_icon`)は全員の端末で同じ見え方にする必要があるため。`skip_foot_photo` は `byUid` の本人に効く個人向けの効果。`miss` は何も起きないが、取った記録として他と同じ形で書く(`durationMs` 0 なので読む側では効かない)。旧版の `big_demon_icon` は `RewardType.fromRaw` が知らない値として読み飛ばす
 
 - 残り時間は `startedAt + durationMs` から**サーバー時刻**で数える(端末の時計がずれていても全員の帯が揃う)
 - `skip_foot_photo` は、引いた時点で撮影タイムが来ていてまだ撮っていなければ(撮影バナーが出ていれば)そのスロット、そうでなければ次のスロットを1回だけ飛ばす。**引いた瞬間に決めて `skipSlot` に書く**(`footPhotoSlotToSkip`)。読む側で `lastPhotoAt` から計算し直すと、引いた後に撮り直したときに飛ばす回が撮影済みのスロットへずれるため。飛ばしたスロットは**撮った扱いにし**、みんなの写真を見られる(ごほうびで撮影を免除されたのに閲覧権まで失うと損になるため)。一覧では自分の枠を空欄にせず「まぬがれました」と表示する(`skippedFootPhotoSlots`、`photoTileVisibilityOf`)
-- `block_clues` が効いている間、鬼の端末では手がかりカードとチップのWi-Fiの判定を隠し、最初に選ぶ相手も「Wi-Fiで最も近い相手」にしない(選ばれるチップで誰が近いかが分かってしまうため)
+- `block_clues` が効いている間、鬼の端末では手がかりカードとチップのWi-Fiの判定を隠し、最初に選ぶ相手も「Wi-Fiで最も近い相手」にしない(選ばれるチップで誰が近いかが分かってしまうため)。代わりに「逃走者のごほうびで止められている のこり X:XX」と残り時間だけ出し、**誰が引いたかは鬼に見せない**(位置が特定できてしまうため)
+- `enlarge_self_icon`(当たり)は、引いた本人には「みんなの地図であなたのアイコンが大きくなっている のこり X:XX」と個人向けの帯で知らせ、**全員の地図(鬼・逃走者・本人)**でその人のピンだけを `enlargedIconScale`(2倍)で大きく出す。複数人が同時に引くこともあるため、その時点で有効な全員のuidを集めて個別に拡大する(`activeEnlargeSelfIconUids`、1件だけに絞らない)
+- `block_clues` は**持っておくごほうび**(`RewardType.isHeld`)。引いたときは `spots/{spotId}/reward` だけを書き、`effects` は書かない。逃走者の地図に「つかう」の帯(`HeldRewardBar`)を出し、押したときに `MissionRepository.useHeldReward` が `effects/{missionId}_{spotId}` を `startedAt` = 使った時刻で書く。新しいノードは足さず、「自分が取った地点で、`reward` が持っておくもので、同じキーの効果がまだ無い」ことを持っている状態とみなす(`heldRewardsOf`)。書き込みは「まだ無いときだけ書く」トランザクションなので、2回押しても2台から押しても1回しか使えない。同じ効果が効いている間は、**他の逃走者が使った分も含めて**「つかう」を押せない(重ねても延びないため。押せるようになるまで持ったままにできる)
+- 逃走者から見える `block_clues` の帯には、引いた人の表示名を付ける(例:「みお のごほうび：鬼の手がかりを止めている」)。鬼の効果は全員に見えるものなので名前を出しても位置は漏れない
 - `restartRoom` は `missions` / `effects` を消さないので、読む側は `meta/startedAt` 以降のものだけに絞る
 
 **ルールは暫定**: `missions` / `effects` は `photos` / `events` と同じく認証済みなら誰でも読み書きできる。締め直し(`claimedBy` を一度しか書けなくする、`effects` を取った本人しか書けなくする等)は別のissueで行う。

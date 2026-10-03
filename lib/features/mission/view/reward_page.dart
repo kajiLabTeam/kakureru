@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
-import 'package:kakureru/features/mission/view/mission_card.dart';
 import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/view/game/game_palette.dart';
 
 /// ごほうびを引いたあとに出す画面(モック4)。
 ///
-/// 引いた瞬間に効果は出ている(持ち歩かせない)。この画面は知らせるだけで、
+/// 引いた瞬間に効果は出ている。ただし持っておくごほうび(`RewardType.isHeld`)
+/// は、地図の「つかう」を押したときに効き始める。この画面は知らせるだけで、
 /// 閉じても効果は変わらない。
 class RewardPage extends StatelessWidget {
   /// [reward]は引いたごほうび。
@@ -121,7 +121,9 @@ class RewardPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    reward.duration > Duration.zero
+                    reward.isHeld
+                        ? '地図の上の「つかう」を押すと効き始める'
+                        : reward.duration > Duration.zero
                         ? '残り時間は地図の上の帯にも出る'
                         : '次の撮影タイムは知らせが来ない',
                     style: const TextStyle(fontSize: 11, color: gameMuted),
@@ -136,7 +138,7 @@ class RewardPage extends StatelessWidget {
   }
 }
 
-/// 引いたごほうびのカード。「鬼をジャマする／自分がトクする」と効いている時間を書く。
+/// 引いたごほうびのカード。効いている時間を書く。
 class RewardCard extends StatelessWidget {
   /// [reward]は引いたごほうび。
   const RewardCard({super.key, required this.reward});
@@ -146,7 +148,7 @@ class RewardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final seconds = reward.duration.inSeconds;
+    final durationLabel = reward.durationLabel;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -159,26 +161,25 @@ class RewardCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              RewardTargetTag(target: reward.target, fontSize: 11),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: missionSoft,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  seconds > 0 ? '$seconds秒' : '1回',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: missionInk,
+              if (durationLabel != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: missionSoft,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    durationLabel,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: missionInk,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -256,8 +257,6 @@ class _OtherRewardRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          RewardTargetTag(target: reward.target),
         ],
       ),
     );
@@ -267,8 +266,9 @@ class _OtherRewardRow extends StatelessWidget {
 /// ごほうびのアイコン。
 IconData rewardIcon(RewardType reward) => switch (reward) {
   RewardType.blockClues => Icons.wifi_off,
-  RewardType.bigDemonIcon => Icons.zoom_out_map,
+  RewardType.enlargeSelfIcon => Icons.zoom_out_map,
   RewardType.skipFootPhoto => Icons.no_photography_outlined,
+  RewardType.miss => Icons.sentiment_dissatisfied_outlined,
 };
 
 class _RewardIcon extends StatelessWidget {
@@ -279,19 +279,19 @@ class _RewardIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDemon = reward.target == RewardTarget.demon;
+    final (background, foreground) = switch (reward.target) {
+      RewardTarget.demon => (demonSoft, demonDeep),
+      RewardTarget.self => (selfSoft, const Color(0xFF2F5FC4)),
+      RewardTarget.selfMiss => (missSoft, missDeep),
+    };
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: isDemon ? demonSoft : selfSoft,
+        color: background,
         borderRadius: BorderRadius.circular(size * 0.27),
       ),
-      child: Icon(
-        rewardIcon(reward),
-        size: size * 0.5,
-        color: isDemon ? demonDeep : const Color(0xFF2F5FC4),
-      ),
+      child: Icon(rewardIcon(reward), size: size * 0.5, color: foreground),
     );
   }
 }

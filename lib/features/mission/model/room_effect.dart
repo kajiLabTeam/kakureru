@@ -6,7 +6,8 @@ part 'room_effect.freezed.dart';
 part 'room_effect.g.dart';
 
 /// RTDB `rooms/{roomId}/effects/{effectId}` 1件ぶん。ごほうびを引いた瞬間に
-/// 1件足す(持ち歩かせない)。
+/// 1件足す。ただし持っておくごほうび(`RewardType.isHeld`。鬼の手がかりを
+/// 止める)は、使った瞬間に足す。
 ///
 /// 効果をuidごとではなく**ルーム単位**に持つのは、鬼に効く効果を全員の
 /// 端末で同じ見え方にするため。`skip_foot_photo` だけは `byUid` の本人に効く。

@@ -83,24 +83,47 @@ void main() {
       expect(_effects(db).keys, unorderedEquals(['m1_s0', 'm1_s1']));
     });
 
-    test('取れたらごほうびを地点とeffectsの両方に書く', () async {
+    test('鬼の手がかりを止めるは持っておくので、地点にだけ書いて効果は書かない', () async {
       final db = _dbWithMission();
-      final result = await _repo(
-        db,
-        'alice',
+      // seed=2は block_clues を引く種。
+      expect(drawReward(math.Random(2)), RewardType.blockClues);
+      final result = await MissionRepository(
+        db: db,
+        auth: FakeAuth('alice'),
+        random: math.Random(2),
+        serverNow: () async => 5000,
       ).claimMission(_roomId, 'm1', 's0');
 
       expect(result.outcome, ClaimOutcome.claimed);
-      final reward = result.reward!;
-      expect(db.read('$_spotPath/reward'), reward.raw);
+      expect(result.reward, RewardType.blockClues);
+      expect(db.read('$_spotPath/reward'), 'block_clues');
       expect(db.read('$_spotPath/claimedAt'), 5000);
-      final effect = _effects(db).values.single as Map<dynamic, dynamic>;
-      expect(effect['type'], reward.raw);
-      expect(effect['durationMs'], reward.duration.inMilliseconds);
-      // 効果のキーはミッションIDと地点ID(やり直しても重ならないように)。
-      expect(_effects(db).keys.single, 'm1_s0');
-      expect(effect['startedAt'], 5000);
-      expect(effect['durationMs'], 30000);
+      expect(_effects(db), isEmpty);
+    });
+
+    test('持っておかないごほうびは、取れたら地点とeffectsの両方に書く', () async {
+      for (var seed = 0; seed < 50; seed++) {
+        final drawn = drawReward(math.Random(seed));
+        if (drawn != RewardType.enlargeSelfIcon) continue;
+        final db = _dbWithMission();
+        final result = await MissionRepository(
+          db: db,
+          auth: FakeAuth('alice'),
+          random: math.Random(seed),
+          serverNow: () async => 5000,
+        ).claimMission(_roomId, 'm1', 's0');
+
+        expect(result.reward, RewardType.enlargeSelfIcon);
+        expect(db.read('$_spotPath/reward'), 'enlarge_self_icon');
+        final effect = _effects(db).values.single as Map<dynamic, dynamic>;
+        expect(effect['type'], 'enlarge_self_icon');
+        // 効果のキーはミッションIDと地点ID(やり直しても重ならないように)。
+        expect(_effects(db).keys.single, 'm1_s0');
+        expect(effect['startedAt'], 5000);
+        expect(effect['durationMs'], 120000);
+        return;
+      }
+      fail('enlarge_self_icon を引く種が見つからない');
     });
 
     test('足元写真のごほうびなら、押した瞬間に決めた飛ばすスロットを書く', () async {
@@ -223,15 +246,16 @@ void main() {
       final db = _dbWithMission();
       db
         ..write('$_spotPath/claimedBy', 'alice')
-        ..write('$_spotPath/reward', 'big_demon_icon');
+        ..write('$_spotPath/reward', 'enlarge_self_icon');
 
       final reward = await _repo(
         db,
         'alice',
       ).completeClaim(_roomId, 'm1', 's0');
 
-      expect(reward, RewardType.bigDemonIcon);
-      expect(db.read('$_effectPath/type'), 'big_demon_icon');
+      expect(reward, RewardType.enlargeSelfIcon);
+      expect(db.read('$_effectPath/type'), 'enlarge_self_icon');
+      expect(db.read('$_effectPath/durationMs'), 120000);
     });
 
     test('ほかの人が取った地点は受け取れない', () async {
@@ -239,6 +263,82 @@ void main() {
       db.write('$_spotPath/claimedBy', 'bob');
       await expectLater(
         _repo(db, 'alice').completeClaim(_roomId, 'm1', 's0'),
+        throwsA(isA<MissionClaimUnavailableException>()),
+      );
+      expect(_effects(db), isEmpty);
+    });
+  });
+
+  group('useHeldReward(持っているごほうびを好きなときに使う)', () {
+    FakeRtdb dbWithHeld({String by = 'alice', String reward = 'block_clues'}) {
+      final db = _dbWithMission();
+      db
+        ..write('$_spotPath/claimedBy', by)
+        ..write('$_spotPath/claimedAt', 5000)
+        ..write('$_spotPath/reward', reward);
+      return db;
+    }
+
+    test('使った時刻から3分の効果を書く', () async {
+      final db = dbWithHeld();
+      final used = await _repo(
+        db,
+        'alice',
+        now: 90000,
+      ).useHeldReward(_roomId, 'm1', 's0');
+
+      expect(used, isTrue);
+      expect(db.read('$_effectPath/type'), 'block_clues');
+      expect(db.read('$_effectPath/byUid'), 'alice');
+      expect(db.read('$_effectPath/startedAt'), 90000);
+      expect(db.read('$_effectPath/durationMs'), 180000);
+    });
+
+    test('2回押しても1回しか使えない(2回目はfalseで、時刻も変えない)', () async {
+      final db = dbWithHeld();
+      expect(
+        await _repo(db, 'alice', now: 90000).useHeldReward(_roomId, 'm1', 's0'),
+        isTrue,
+      );
+      expect(
+        await _repo(
+          db,
+          'alice',
+          now: 120000,
+        ).useHeldReward(_roomId, 'm1', 's0'),
+        isFalse,
+      );
+      expect(_effects(db), hasLength(1));
+      expect(db.read('$_effectPath/startedAt'), 90000);
+    });
+
+    test('ほかの人が引いたごほうびは使えない', () async {
+      final db = dbWithHeld(by: 'bob');
+      await expectLater(
+        _repo(db, 'alice').useHeldReward(_roomId, 'm1', 's0'),
+        throwsA(isA<MissionClaimUnavailableException>()),
+      );
+      expect(_effects(db), isEmpty);
+    });
+
+    test('持っておかないごほうびは使えない', () async {
+      final db = dbWithHeld(reward: 'skip_foot_photo');
+      await expectLater(
+        _repo(db, 'alice').useHeldReward(_roomId, 'm1', 's0'),
+        throwsA(isA<MissionClaimUnavailableException>()),
+      );
+      expect(_effects(db), isEmpty);
+    });
+
+    test('サーバー時刻が取れなければ使えない', () async {
+      final db = dbWithHeld();
+      await expectLater(
+        MissionRepository(
+          db: db,
+          auth: FakeAuth('alice'),
+          random: math.Random(1),
+          serverNow: () async => null,
+        ).useHeldReward(_roomId, 'm1', 's0'),
         throwsA(isA<MissionClaimUnavailableException>()),
       );
       expect(_effects(db), isEmpty);

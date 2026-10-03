@@ -17,6 +17,7 @@ import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/repository/mission_repository.dart';
 import 'package:kakureru/features/mission/view/effect_band.dart';
+import 'package:kakureru/features/mission/view/held_reward_bar.dart';
 import 'package:kakureru/features/mission/view/mission_card.dart';
 import 'package:kakureru/features/mission/view/gacha/gacha_page.dart';
 import 'package:kakureru/features/mission/view/mission_notice_banner.dart';
@@ -169,7 +170,7 @@ class GamePage extends HookConsumerWidget {
     // (captureOpen。handleCatchPressed参照)。
     final captureOpen = useState(false);
 
-    // ミッションの「特典を引く」。送信中はボタンをローディング表示にし、
+    // ミッションの「ごほうびガチャを引く」。送信中はボタンをローディング表示にし、
     // 取れたら確定演出(GachaPage)を開く。開いている間はゲーム終了の
     // 自動遷移を止める(captureOpenと同じ)。
     final claimAction = useAsyncAction(context);
@@ -177,6 +178,9 @@ class GamePage extends HookConsumerWidget {
 
     // デバッグ用の「ミッションをいますぐ出す」の書き込み中(DEBUG_MISSION)。
     final debugCreateAction = useAsyncAction(context);
+
+    // 持っているごほうび(鬼の手がかりを止める)の「つかう」の書き込み中。
+    final useRewardAction = useAsyncAction(context);
 
     // 詳細カードで選択中の相手(UI改修モック2a-03「逃走者を選んで詳細を見る」)。
     // nullの間は既定で最も近い相手を選ぶ(下のeffectiveSelectedUid参照)。
@@ -282,7 +286,7 @@ class GamePage extends HookConsumerWidget {
     // (呼び出しを条件分岐するとhooksの呼び出し順が崩れるため)。
     warnIfPhotoFeatureNotConfigured();
 
-    // ミッションの特典の効果(effects)。前のゲームの分は除く。残り時間は
+    // ミッションのごほうびの効果(effects)。前のゲームの分は除く。残り時間は
     // サーバー時刻(now)で数える。
     final roomEffects = effectsOfCurrentGame(
       ref.watch(effectsStreamProvider(roomId)).value ?? const [],
@@ -292,7 +296,7 @@ class GamePage extends HookConsumerWidget {
     final myLastPhotoAt = myUid == null
         ? null
         : findUser(room?.users ?? const [], myUid)?.lastPhotoAt;
-    // 特典「足元写真を1回まぬがれる」で飛ばすスロット。撮影プロンプトと
+    // ごほうび「足元写真を1回まぬがれる」で飛ばすスロット。撮影プロンプトと
     // 写真一覧(まぬがれたスロットも撮った扱いにする。issue #157)の両方で使う。
     final skippedPhotoSlots = skippedFootPhotoSlots(
       effects: roomEffects,
@@ -415,6 +419,18 @@ class GamePage extends HookConsumerWidget {
             nowMillis: now,
           )
         : null;
+    // 持っていてまだ使っていないごほうび(逃走者だけ。引いた順)。
+    final heldRewards =
+        roleOf(room?.users ?? const [], myUid) == UserRole.fugitive
+        ? heldRewardsOf(
+            missions: missionsOfCurrentGame(
+              ref.watch(missionsStreamProvider(roomId)).value ?? const [],
+              startedAt: room?.startedAt,
+            ),
+            effects: roomEffects,
+            uid: myUid,
+          )
+        : const <HeldReward>[];
     // 向かう先は、いちばん近い空いている地点(取られたら次に近い地点へ移る)。
     final missionTargetSpot = mission == null
         ? null
@@ -446,7 +462,7 @@ class GamePage extends HookConsumerWidget {
       return null;
     }, [mission?.id]);
 
-    // 特典が「足元写真を1回まぬがれる」だったときに飛ばすスロット。押した
+    // ごほうびが「足元写真を1回まぬがれる」だったときに飛ばすスロット。押した
     // 瞬間の撮影バナーの状態で決め、効果に書いておく(後から撮り直しても
     // ずれないように)。
     int? footPhotoSkipSlotNow() => footPhotoSlotToSkip(
@@ -459,7 +475,7 @@ class GamePage extends HookConsumerWidget {
       isDue: photoCapture.state.isDue,
     );
 
-    // 特典を引けたら、確定演出(GachaPage)→ 特典の画面(RewardPage)の順に
+    // ごほうびを引けたら、確定演出(GachaPage)→ ごほうびの画面(RewardPage)の順に
     // 出す。両方が閉じるまでゲーム終了の自動遷移を止める。
     Future<void> showReward(RewardType reward) async {
       rewardOpen.value = true;
@@ -467,8 +483,8 @@ class GamePage extends HookConsumerWidget {
       if (context.mounted) rewardOpen.value = false;
     }
 
-    // 取れたのに特典の書き込みが済んでいないとき(取った直後に通信が切れた
-    // 等)の「特典を受け取る」。書き込みは何度やっても1つにまとまる。
+    // 取れたのにごほうびの書き込みが済んでいないとき(取った直後に通信が切れた
+    // 等)の「ごほうびを受け取る」。書き込みは何度やっても1つにまとまる。
     Future<void> handleCompleteClaimPressed(
       Mission target,
       MissionSpot spot,
@@ -493,6 +509,39 @@ class GamePage extends HookConsumerWidget {
             SnackBar(
               content: Text(
                 'ごほうびを受け取れませんでした。'
+                '${userFacingErrorMessage(result.error!)}',
+              ),
+            ),
+          );
+        case AsyncActionStatus.skipped:
+          break;
+      }
+    }
+
+    // 持っているごほうびの「つかう」。効果はこの時刻から効き始める。
+    // 2回押しても、効果は1回しか書かれない(useHeldReward)。
+    Future<void> handleUseHeldRewardPressed(HeldReward held) async {
+      var used = false;
+      final result = await useRewardAction.run(() async {
+        used = await ref
+            .read(missionRepositoryProvider)
+            .useHeldReward(roomId, held.missionId, held.spotId);
+      });
+      if (!context.mounted) return;
+      switch (result.status) {
+        case AsyncActionStatus.succeeded:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                used ? '「${held.type.title}」を使った' : 'このごほうびはもう使ってある',
+              ),
+            ),
+          );
+        case AsyncActionStatus.failed:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'ごほうびを使えませんでした。'
                 '${userFacingErrorMessage(result.error!)}',
               ),
             ),
@@ -876,7 +925,7 @@ class GamePage extends HookConsumerWidget {
                         ),
                         ...mockUsers,
                       ];
-                // 特典「鬼の手がかりを止める」。効いている間、鬼の端末では
+                // ごほうび「鬼の手がかりを止める」。効いている間、鬼の端末では
                 // Wi-Fi・気圧の表示を隠す。
                 final clueBlockedEffect = myRole == UserRole.demon
                     ? activeEffectOf(
@@ -909,17 +958,19 @@ class GamePage extends HookConsumerWidget {
                       )
                     : const <WifiApComparison>[];
 
-                // 特典の効果(ミッション)。鬼のアイコンを大きくする効果は
-                // 逃走者の地図で鬼のピンを2倍にする(鬼の手がかりを止める
-                // 効果は、相手選びの前で見ている)。
-                final enlargeDemonIcon =
-                    myRole == UserRole.fugitive &&
-                    activeEffectOf(
-                          roomEffects,
-                          RewardType.bigDemonIcon,
-                          serverNowMillis: now,
-                        ) !=
-                        null;
+                // ごほうびの効果(ミッション)。「自分のアイコンを大きくする」は
+                // 全員の地図で、引いた人のピンを2倍にする(鬼の手がかりを
+                // 止める効果は、相手選びの前で見ている)。
+                final enlargedUserUids = activeEnlargeSelfIconUids(
+                  roomEffects,
+                  serverNowMillis: now,
+                );
+                // 自分が引いていれば、本人向けの通知に使う。
+                final myEnlargeSelfIconEffect = activeEnlargeSelfIconEffectFor(
+                  roomEffects,
+                  uid: myUid,
+                  serverNowMillis: now,
+                );
                 final missionStatus = mission == null || missionReading == null
                     ? null
                     : missionCardStatusOf(
@@ -955,6 +1006,42 @@ class GamePage extends HookConsumerWidget {
                           effect,
                           serverNowMillis: now,
                         ),
+                        // 誰が引いたかは逃走者にだけ伝える(鬼に伝えると
+                        // 居場所の特定につながるため)。
+                        drawerName: myRole == UserRole.fugitive
+                            ? findUser(room.users, effect.byUid)?.displayName
+                            : null,
+                      ),
+                    // 「自分のアイコンを大きくする」は本人にだけ出す
+                    // 個人向けの帯(他の帯と違い全員共通では出さない)。
+                    if (myEnlargeSelfIconEffect != null)
+                      EffectBand(
+                        type: RewardType.enlargeSelfIcon,
+                        viewerRole: myRole,
+                        remainingMillis: effectRemainingMillis(
+                          myEnlargeSelfIconEffect,
+                          serverNowMillis: now,
+                        ),
+                      ),
+                    // 持っているごほうび(先に引いたものから1つずつ出す)。
+                    // 同じ効果がいま効いているあいだは押せない(重ねても
+                    // 長くならず、無駄になるため)。
+                    if (heldRewards.firstOrNull case final held?)
+                      HeldRewardBar(
+                        type: held.type,
+                        onUse:
+                            useRewardAction.isRunning ||
+                                activeEffectOf(
+                                      roomEffects,
+                                      held.type,
+                                      serverNowMillis: now,
+                                    ) !=
+                                    null
+                            ? null
+                            : () => unawaited(handleUseHeldRewardPressed(held)),
+                        disabledReason: useRewardAction.isRunning
+                            ? '使っています…'
+                            : 'いま効いているので、切れてから使える',
                       ),
                     // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
                     // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
@@ -1003,7 +1090,7 @@ class GamePage extends HookConsumerWidget {
                               alert: outsideAreaAlert,
                               // 偽プレイヤーのピンにも名前と役割色を出すため、
                               // 地図には表示用の一覧を渡す(issue #67)。
-                              // ミッションのカードと「特典を引く」は地図の上に重ねる。
+                              // ミッションのカードと「ごほうびガチャを引く」は地図の上に重ねる。
                               // エリア外アラートはさらにその上に出る(戻る方が優先)。
                               map: Stack(
                                 children: [
@@ -1014,6 +1101,7 @@ class GamePage extends HookConsumerWidget {
                                       myUid: myUid,
                                       cachedPosition: cachedPosition.value,
                                       gameArea: room.setting.gameArea,
+                                      enlargedUserUids: enlargedUserUids,
                                       // 地図に出し続ける地点を[visibleMissionSpots]
                                       // に任せる(issue #155。自分が取った
                                       // 地点を除き、ミッションが終わったら
@@ -1033,7 +1121,6 @@ class GamePage extends HookConsumerWidget {
                                               claimed: spot.claimedBy != null,
                                             ),
                                       ],
-                                      enlargeDemonIcon: enlargeDemonIcon,
                                     ),
                                   ),
                                   if (mission != null &&
@@ -1145,7 +1232,7 @@ class GamePage extends HookConsumerWidget {
                           ),
                           // 目撃写真のボタン(地図の右下)。地図の帰属表示
                           // (右下の「i」)を隠さないよう、その上に置く。
-                          // 「特典を引く」が出ている間は、そのボタンに
+                          // 「ごほうびガチャを引く」が出ている間は、そのボタンに
                           // 重ならないようさらに上へずらす。
                           // 写真機能が無効な環境では出さない。
                           if (isPhotoFeatureConfigured)

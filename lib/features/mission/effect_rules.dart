@@ -8,8 +8,11 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/model/room_effect.dart';
+import 'package:kakureru/features/mission/repository/mission_repository.dart'
+    show missionEffectId;
 import 'package:kakureru/features/room/model/photo_slot.dart';
 
 /// 今のゲームの効果だけを、発動した順(古い順)に返す。[startedAt]が
@@ -61,13 +64,46 @@ RoomEffect? activeEffectOf(
 }
 
 /// いま効いている、時間で効く効果の一覧(地図の上の帯に出すもの)。
+///
+/// `enlarge_self_icon`(自分のアイコンを大きくする)は除く。これは `byUid` の本人にだけ出す
+/// 個人向けの表示のため、ここでは全体から1件だけ選んでしまうと複数の
+/// 逃走者が同時に引いたときに他の人の分が隠れてしまう([activeEnlargeSelfIconEffectFor]を使うこと)。
 List<RoomEffect> activeTimedEffects(
   List<RoomEffect> effects, {
   required int serverNowMillis,
 }) => [
   for (final type in RewardType.values)
-    ?activeEffectOf(effects, type, serverNowMillis: serverNowMillis),
+    if (type != RewardType.enlargeSelfIcon)
+      ?activeEffectOf(effects, type, serverNowMillis: serverNowMillis),
 ];
+
+/// [uid]が引いた `enlarge_self_icon` のうち、いま効いているもの。無ければ
+/// null。本人向けの帯(「あなたのアイコンが大きくなっている」)に使う。
+RoomEffect? activeEnlargeSelfIconEffectFor(
+  List<RoomEffect> effects, {
+  required String? uid,
+  required int serverNowMillis,
+}) {
+  if (uid == null) return null;
+  return activeEffectOf(
+    effects.where((e) => e.byUid == uid).toList(),
+    RewardType.enlargeSelfIcon,
+    serverNowMillis: serverNowMillis,
+  );
+}
+
+/// いま `enlarge_self_icon` が効いている人のuid一覧。全員の地図でその
+/// 人のピンを大きくする対象を決めるために使う(複数人が同時に効いて
+/// いることもあるため、1件に絞らず集合で返す)。
+Set<String> activeEnlargeSelfIconUids(
+  List<RoomEffect> effects, {
+  required int serverNowMillis,
+}) => {
+  for (final effect in effects)
+    if (effect.type == RewardType.enlargeSelfIcon &&
+        isEffectActive(effect, serverNowMillis: serverNowMillis))
+      effect.byUid,
+};
 
 /// `skip_foot_photo` を引いた瞬間に、どの撮影スロットを飛ばすかを決める。
 ///
@@ -137,4 +173,32 @@ Set<int> skippedFootPhotoSlots({
     skipped.add(slot);
   }
   return skipped;
+}
+
+/// 持っていてまだ使っていないごほうび1つ。使うときは
+/// `MissionRepository.useHeldReward(roomId, missionId, spotId)` に渡す。
+typedef HeldReward = ({String missionId, String spotId, RewardType type});
+
+/// [uid]が持っていて、まだ使っていないごほうび(引いた順)。
+///
+/// 持っておくごほうび([RewardType.isHeld])は、引いたときは地点の `reward`
+/// だけを書き、使ったときに `effects/{missionId}_{spotId}` を書く。なので
+/// 「自分が取った地点の `reward` が持っておくもので、同じキーの効果がまだ
+/// 無い」ものが手元に残っている。[missions]は `missionsOfCurrentGame` で
+/// 今のゲームに絞ったもの、[effects]は効果の一覧を渡す。
+List<HeldReward> heldRewardsOf({
+  required List<Mission> missions,
+  required List<RoomEffect> effects,
+  required String? uid,
+}) {
+  if (uid == null) return const [];
+  final usedIds = effects.map((e) => e.id).toSet();
+  return [
+    for (final mission in missions)
+      for (final spot in mission.spots)
+        if (spot.claimedBy == uid &&
+            (spot.reward?.isHeld ?? false) &&
+            !usedIds.contains(missionEffectId(mission.id, spot.id)))
+          (missionId: mission.id, spotId: spot.id, type: spot.reward!),
+  ];
 }

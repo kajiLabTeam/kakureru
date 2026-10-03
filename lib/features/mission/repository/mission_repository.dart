@@ -208,6 +208,9 @@ class MissionRepository {
   ///
   /// `rooms/{roomId}` への一括書き込みはルール上できないので、2か所を
   /// 別々に書く。途中で止まっても、もう一度呼べば残りが書かれる。
+  ///
+  /// 持っておくごほうび([RewardType.isHeld])は `reward` だけを書き、効果は
+  /// 書かない(使ったときに[useHeldReward]が書く)。
   Future<RewardType> _grantReward(
     String roomId,
     String missionId,
@@ -227,8 +230,70 @@ class MissionRepository {
         );
     final reward =
         RewardType.fromRaw(rewardResult.snapshot.value as String?) ?? drawn;
+    if (reward.isHeld) return reward;
 
-    await _db
+    await _writeEffectOnce(
+      roomId,
+      missionId,
+      spotId,
+      reward: reward,
+      uid: uid,
+      nowMillis: nowMillis,
+      footPhotoSkipSlot: footPhotoSkipSlot,
+    );
+    return reward;
+  }
+
+  /// 持っているごほうび(地点[spotId]で引いた[RewardType.isHeld]のもの)を
+  /// いま使う。効果の `startedAt` は使った時刻になる。
+  ///
+  /// 効果のキーは引いたときと同じ `missionEffectId` で、「まだ無いときだけ
+  /// 書く」トランザクションで書く。2回押しても、2台から押しても1回しか
+  /// 使えない。いま使えたらtrue、もう使ってあればfalse。自分が引いた持って
+  /// おくごほうびでなければ[MissionClaimUnavailableException]を投げる。
+  Future<bool> useHeldReward(
+    String roomId,
+    String missionId,
+    String spotId,
+  ) async {
+    final now = await _serverNowMillis();
+    if (now == null) throw const MissionClaimUnavailableException();
+    final uid = _uid;
+    final spot = await _db
+        .ref('rooms/$roomId/missions/$missionId/spots/$spotId')
+        .get();
+    final value = spot.value;
+    final reward = value is Map
+        ? RewardType.fromRaw(value['reward'] as String?)
+        : null;
+    if (value is! Map ||
+        value['claimedBy'] != uid ||
+        reward == null ||
+        !reward.isHeld) {
+      throw const MissionClaimUnavailableException();
+    }
+    return _writeEffectOnce(
+      roomId,
+      missionId,
+      spotId,
+      reward: reward,
+      uid: uid,
+      nowMillis: now,
+      footPhotoSkipSlot: null,
+    );
+  }
+
+  /// `effects/{missionId}_{spotId}` を、まだ無いときだけ書く。書けたらtrue。
+  Future<bool> _writeEffectOnce(
+    String roomId,
+    String missionId,
+    String spotId, {
+    required RewardType reward,
+    required String uid,
+    required int nowMillis,
+    required int? footPhotoSkipSlot,
+  }) async {
+    final result = await _db
         .ref('rooms/$roomId/effects/${missionEffectId(missionId, spotId)}')
         .runTransaction(
           (current) => current != null
@@ -246,7 +311,7 @@ class MissionRepository {
                 }),
           applyLocally: false,
         );
-    return reward;
+    return result.committed;
   }
 
   /// トランザクションの結果から、地点[spotId]を取った人のuidを読む。
@@ -284,9 +349,18 @@ class MissionRepository {
   }
 }
 
-/// ごほうびを1つ引く。3種類から等確率。ハズレは無い。
-RewardType drawReward(math.Random random) =>
-    RewardType.values[random.nextInt(RewardType.values.length)];
+/// ごほうびを1つ引く。各[RewardType.oddsPercent]に従った重み付き抽選
+/// (当たり3種で合計[rewardWinningOddsPercent]%を均等に、ハズレが
+/// [rewardMissOddsPercent]%)。
+RewardType drawReward(math.Random random) {
+  final roll = random.nextDouble() * 100;
+  var cumulative = 0.0;
+  for (final type in RewardType.values) {
+    cumulative += type.oddsPercent;
+    if (roll < cumulative) return type;
+  }
+  return RewardType.values.last;
+}
 
 /// 地点idの頭(`s0`, `s1`, …)。
 const missionSpotIdPrefix = 's';

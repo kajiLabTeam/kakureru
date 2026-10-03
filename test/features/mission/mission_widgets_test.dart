@@ -7,6 +7,7 @@ import 'package:kakureru/features/mission/model/mission_notice.dart';
 import 'package:kakureru/features/mission/model/mission_progress.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/view/effect_band.dart';
+import 'package:kakureru/features/mission/view/held_reward_bar.dart';
 import 'package:kakureru/features/mission/view/mission_card.dart';
 import 'package:kakureru/features/mission/view/mission_notice_banner.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
@@ -228,7 +229,7 @@ void main() {
       expect(find.text('ほかの人に取られた'), findsOneWidget);
     });
 
-    testWidgets('自分が取ったらごほうびと「自分がトクする」を出す', (tester) async {
+    testWidgets('自分が取ったらごほうびを出し、「自分がトクする」のタグは出さない', (tester) async {
       await pumpCard(
         tester,
         MissionCardStatus.claimedByMe,
@@ -236,16 +237,17 @@ void main() {
         myReward: RewardType.skipFootPhoto,
       );
       expect(find.text('足元写真を1回まぬがれる'), findsOneWidget);
-      expect(find.text('自分がトクする'), findsOneWidget);
+      expect(find.text('自分がトクする'), findsNothing);
     });
 
-    testWidgets('鬼に効くごほうびには「鬼をジャマする」を添える', (tester) async {
+    testWidgets('鬼に効くごほうびにも「鬼をジャマする」のタグは出さない', (tester) async {
       await pumpCard(
         tester,
         MissionCardStatus.claimedByMe,
         myReward: RewardType.blockClues,
       );
-      expect(find.text('鬼をジャマする'), findsOneWidget);
+      expect(find.text('鬼の手がかりを止める'), findsOneWidget);
+      expect(find.text('鬼をジャマする'), findsNothing);
     });
 
     testWidgets('畳むと旗のマークだけを左に出し、タップで開き直す', (tester) async {
@@ -355,15 +357,42 @@ void main() {
       expect(find.text('のこり 0:18'), findsOneWidget);
     });
 
-    test('鬼には誰に止められているかが分かる言い方にする', () {
+    test('鬼には誰に止められているかは分からない言い方にする', () {
       expect(
         effectBandText(RewardType.blockClues, viewerRole: UserRole.demon),
-        '逃走者に手がかりを止められている',
+        '逃走者のごほうびで止められている',
       );
+    });
+
+    testWidgets('drawerNameがあれば「(名前) のごほうび：…」を出す(逃走者視点)', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          const EffectBand(
+            type: RewardType.blockClues,
+            viewerRole: UserRole.fugitive,
+            remainingMillis: 18000,
+            drawerName: 'みお',
+          ),
+        ),
+      );
+      expect(find.text('みお のごほうび：鬼の手がかりを止めている'), findsOneWidget);
+    });
+
+    testWidgets('drawerNameが無ければ名前を出さない(鬼視点ではnullを渡す想定)', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          const EffectBand(
+            type: RewardType.blockClues,
+            viewerRole: UserRole.demon,
+            remainingMillis: 18000,
+          ),
+        ),
+      );
+      expect(find.text('逃走者のごほうびで止められている'), findsOneWidget);
     });
   });
 
-  testWidgets('ごほうびの画面は引いたごほうびと「鬼をジャマする」、ほかのごほうびを出す', (
+  testWidgets('ごほうびの画面は引いたごほうびとほかのごほうびを出し、誰に効くかのタグは出さない', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -371,13 +400,52 @@ void main() {
     );
     expect(find.text('ごほうびをひいた！'), findsOneWidget);
     expect(find.text('鬼の手がかりを止める'), findsOneWidget);
-    expect(find.text('30秒'), findsOneWidget);
-    expect(find.text('鬼のアイコンを大きくする'), findsOneWidget);
+    expect(find.text('3分'), findsOneWidget);
+    expect(find.text('地図の上の「つかう」を押すと効き始める'), findsOneWidget);
+    expect(find.text('自分のアイコンを大きくする'), findsOneWidget);
     expect(find.text('足元写真を1回まぬがれる'), findsOneWidget);
-    // 引いたごほうびとほかの鬼に効くごほうびで2つ、自分に効くもので1つ。
-    expect(find.text('鬼をジャマする'), findsNWidgets(2));
-    expect(find.text('自分がトクする'), findsOneWidget);
+    expect(find.text('鬼をジャマする'), findsNothing);
+    expect(find.text('自分がトクする'), findsNothing);
     expect(find.text('地図にもどる'), findsOneWidget);
+  });
+
+  group('HeldRewardBar(持っているごほうびの「つかう」)', () {
+    testWidgets('名前と時間を出し、「つかう」で使う', (tester) async {
+      var used = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HeldRewardBar(
+              type: RewardType.blockClues,
+              onUse: () => used++,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('鬼の手がかりを止める(3分)'), findsOneWidget);
+      expect(find.text('持っている。好きなときに使える'), findsOneWidget);
+      await tester.tap(find.text('つかう'));
+      expect(used, 1);
+    });
+
+    testWidgets('onUseがnullなら押せず、理由を出す', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: HeldRewardBar(
+              type: RewardType.blockClues,
+              onUse: null,
+              disabledReason: 'いま効いているので、切れてから使える',
+            ),
+          ),
+        ),
+      );
+      expect(find.text('いま効いているので、切れてから使える'), findsOneWidget);
+      final button = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'つかう'),
+      );
+      expect(button.onPressed, isNull);
+    });
   });
 
   group('デバッグ用の「着いたことにする」', () {

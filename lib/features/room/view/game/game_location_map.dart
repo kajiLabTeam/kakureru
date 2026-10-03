@@ -29,7 +29,7 @@ Widget buildLocationMapForTest({
   required String? myUid,
   List<LatLng> gameArea = const [],
   List<MissionMapPoint> missionPoints = const [],
-  bool enlargeDemonIcon = false,
+  Set<String> enlargedUserUids = const {},
 }) {
   return GameLocationMap(
     locations: locations,
@@ -38,7 +38,7 @@ Widget buildLocationMapForTest({
     cachedPosition: null,
     gameArea: gameArea,
     missionPoints: missionPoints,
-    enlargeDemonIcon: enlargeDemonIcon,
+    enlargedUserUids: enlargedUserUids,
   );
 }
 
@@ -54,8 +54,8 @@ typedef MissionMapPoint = ({
   bool claimed,
 });
 
-/// `big_demon_icon` が効いているあいだの、鬼のピンの倍率。
-const enlargedDemonIconScale = 2.0;
+/// `enlarge_self_icon` が効いているあいだの、引いた人のピンの倍率。
+const enlargedIconScale = 2.0;
 
 /// ゲーム中の地図。参加者のGPSピン、プレイエリアの境界と外側のマスクを描く。
 ///
@@ -77,7 +77,7 @@ class GameLocationMap extends HookWidget {
     required this.cachedPosition,
     required this.gameArea,
     this.missionPoints = const [],
-    this.enlargeDemonIcon = false,
+    this.enlargedUserUids = const {},
   });
 
   /// 地図に出す位置。自分から見えていい相手の分だけが渡ってくる。
@@ -99,9 +99,10 @@ class GameLocationMap extends HookWidget {
   /// 点と判定範囲の円を描く。無ければ空。
   final List<MissionMapPoint> missionPoints;
 
-  /// 鬼のピンを[enlargedDemonIconScale]倍にするか(ごほうび `big_demon_icon`)。
-  /// 自分のピンは大きくしない。
-  final bool enlargeDemonIcon;
+  /// ごほうび `enlarge_self_icon` を引いていて、ピンを[enlargedIconScale]倍に
+  /// する対象のuid。役割に関係なく全員の地図で大きくする(自分が引いていれば
+  /// 自分のピンも大きくなる)。
+  final Set<String> enlargedUserUids;
 
   @override
   Widget build(BuildContext context) {
@@ -401,11 +402,10 @@ class GameLocationMap extends HookWidget {
       role: displayRole,
     );
 
-    // ごほうび `big_demon_icon` の間は、鬼のピンをアイコンの中心を起点に拡大する。
-    // Transformはレイアウトを変えないので、重なりの判定や座標合わせは
-    // 元の大きさのまま動く。
-    final enlarged =
-        enlargeDemonIcon && !isSelf && targetRole == UserRole.demon;
+    // ごほうび `enlarge_self_icon` を引いた人のピンは、アイコンの中心を
+    // 起点に拡大する。Transformはレイアウトを変えないので、
+    // 重なりの判定や座標合わせは元の大きさのまま動く。
+    final enlarged = enlargedUserUids.contains(location.uid);
     final marker = Marker(
       // どの役割から見ても実座標に置く(issue #118でグリッドを廃止)。
       point: latlong.LatLng(location.latitude, location.longitude),
@@ -421,7 +421,7 @@ class GameLocationMap extends HookWidget {
           ? markerIconCenterAlignment
           : markerIconTipAlignment,
       child: Transform.scale(
-        scale: enlarged ? enlargedDemonIconScale : 1,
+        scale: enlarged ? enlargedIconScale : 1,
         alignment: enlargedMarkerScaleAlignment,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -462,7 +462,7 @@ class GameLocationMap extends HookWidget {
   }
 }
 
-/// 鬼のピンを拡大するときの起点(アイコンの中心)。
+/// ピンを拡大するときの起点(アイコンの中心)。
 ///
 /// `Transform.scale`の`alignment`は、子(幅[markerWidth]×高さ[markerHeight])の
 /// 中で動かない点を指す。アイコンは上詰めなので、中心は上端から

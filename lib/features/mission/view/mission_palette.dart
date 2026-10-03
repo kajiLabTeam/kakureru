@@ -22,14 +22,20 @@ const missionRangeFill = Color(0x1FC98A1E);
 /// 「埋まった」ことを示す)。
 const missionRangeClaimedFill = Color(0x1F6B6A64);
 
-/// 「鬼をジャマする」のタグの地と文字。
+/// 鬼に効くごほうびのアイコンの地。
 const demonSoft = Color(0xFFFBEBEB);
 
-/// 「鬼をジャマする」の文字・アイコン、注意の赤字。
+/// 鬼に効くごほうびのアイコン、注意の赤字。
 const demonDeep = Color(0xFFC0343A);
 
-/// 「自分がトクする」のタグの地。
+/// 自分に効くごほうびのアイコンの地。
 const selfSoft = Color(0xFFE8EEF9);
+
+/// ハズレのアイコンの地。
+const missSoft = Color(0xFFF1E4E4);
+
+/// ハズレの文字・アイコン。
+const missDeep = Color(0xFF8A4B4B);
 
 /// 逃走者の緑の淡い地。
 const fugitiveSoft = Color(0xFFE9F0EA);

@@ -1,7 +1,7 @@
-/// 特典ガチャの確定演出の段と、時間・タップでの進み方(純粋な計算)。
+/// ごほうびガチャの確定演出の段と、時間・タップでの進み方(純粋な計算)。
 ///
 /// 待たされるのは最初の2段(ハンドル・激熱)だけで、あとはタップで進む。
-/// 毎回見る演出なので、**どの段でもタップ1回で最後(特典カード)まで
+/// 毎回見る演出なので、**どの段でもタップ1回で最後(ごほうびカード)まで
 /// 飛ばせる**。ただしカプセルの段のタップは「開ける」で、開く演出を見せる。
 library;
 
@@ -17,8 +17,11 @@ enum GachaPhase {
   /// 金のカプセルが落ちて2回弾む。脈打って光り、タップを待つ。
   capsule,
 
-  /// 確定。白く弾ける → 虹の輪・紙吹雪・「確定」のハンコ → 特典カード。
+  /// 確定(当たり)。白く弾ける → 虹の輪・紙吹雪・「確定」のハンコ → ごほうびカード。
   confirmed,
+
+  /// ハズレ。激熱を出さず、赤い「残念」で短く終わる。
+  missed,
 }
 
 /// ハンドルを回す段の長さ。
@@ -27,8 +30,12 @@ const gachaTurningDuration = Duration(milliseconds: 1500);
 /// 激熱の段の長さ。
 const gachaHeatDuration = Duration(milliseconds: 1400);
 
-/// 確定の段の、ハンコと特典カードが出そろうまでの長さ。
+/// 確定(当たり)の段の、ハンコとごほうびカードが出そろうまでの長さ。
 const gachaConfirmDuration = Duration(milliseconds: 1100);
+
+/// ハズレの段の、「残念」とごほうびカードが出そろうまでの長さ。当たりより
+/// 短くする(待たされた末のハズレを長引かせない)。
+const gachaMissedDuration = Duration(milliseconds: 700);
 
 /// ハンドルの回転数(ハンドルを回す段の間に回る数)。
 const gachaKnobTurns = 3;
@@ -44,9 +51,11 @@ const gachaRedLampDelay = Duration(milliseconds: 550);
 
 /// 時間で進む段(ハンドル・激熱)の、始まってから[elapsed]たったときの段。
 /// 時間で進むのはカプセルまで。カプセルから先はタップでしか進まない。
-GachaPhase gachaPhaseAt(Duration elapsed) {
+///
+/// [isMiss]ならハズレなので激熱を出さず、ハンドルのあとすぐカプセルに進む。
+GachaPhase gachaPhaseAt(Duration elapsed, {bool isMiss = false}) {
   if (elapsed < gachaTurningDuration) return GachaPhase.turning;
-  if (elapsed < gachaTurningDuration + gachaHeatDuration) {
+  if (!isMiss && elapsed < gachaTurningDuration + gachaHeatDuration) {
     return GachaPhase.heat;
   }
   return GachaPhase.capsule;
@@ -54,7 +63,7 @@ GachaPhase gachaPhaseAt(Duration elapsed) {
 
 /// タップしたときの動き。
 enum GachaTapAction {
-  /// 確定の段の終わり(特典カードが出そろった状態)まで一気に飛ばす。
+  /// 確定の段の終わり(ごほうびカードが出そろった状態)まで一気に飛ばす。
   skipToEnd,
 
   /// カプセルを開ける(確定の段の演出を最初から見せる)。
@@ -70,7 +79,8 @@ GachaTapAction gachaTapAction(GachaPhase phase) => switch (phase) {
   GachaPhase.capsule => GachaTapAction.open,
   GachaPhase.turning ||
   GachaPhase.heat ||
-  GachaPhase.confirmed => GachaTapAction.skipToEnd,
+  GachaPhase.confirmed ||
+  GachaPhase.missed => GachaTapAction.skipToEnd,
 };
 
 /// きたい度のランプが何個点いているか(1〜3)。ハンドルを回し始めてから

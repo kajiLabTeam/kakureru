@@ -20,21 +20,28 @@ String formatEffectRemaining(int remainingMillis) {
 String effectBandText(RewardType type, {required UserRole? viewerRole}) {
   final isDemon = viewerRole == UserRole.demon;
   return switch (type) {
-    RewardType.blockClues => isDemon ? '逃走者に手がかりを止められている' : '鬼の手がかりを止めている',
-    RewardType.bigDemonIcon => isDemon ? '逃走者の地図で鬼が大きく出ている' : '鬼のアイコンを大きくしている',
-    // 回数ものは帯に出さない(呼ばれない)が、switchを網羅するために置く。
+    RewardType.blockClues => isDemon ? '逃走者のごほうびで止められている' : '鬼の手がかりを止めている',
+    // 本人にだけ出す帯なので、鬼視点の文言は使われない。
+    RewardType.enlargeSelfIcon => 'みんなの地図であなたのアイコンが大きくなっている',
+    // 回数もの・ハズレは帯に出さない(呼ばれない)が、switchを網羅するために置く。
     RewardType.skipFootPhoto => '足元写真を1回まぬがれる',
+    RewardType.miss => 'ハズレ',
   };
 }
 
 /// 効果が効いているあいだ地図の上に出す細い帯(モック5)。
 class EffectBand extends StatelessWidget {
   /// [remainingMillis]は `startedAt + durationMs` からサーバー時刻で求めた値。
+  ///
+  /// [drawerName]は引いた人の表示名。逃走者が見る帯にだけ渡し、誰が
+  /// 止めているかを伝える(例:「みお のごほうび」)。鬼が見る帯には
+  /// 絶対に渡さない(どこにいる逃走者か特定できてしまうため)。
   const EffectBand({
     super.key,
     required this.type,
     required this.viewerRole,
     required this.remainingMillis,
+    this.drawerName,
   });
 
   /// 効いている効果。
@@ -45,6 +52,9 @@ class EffectBand extends StatelessWidget {
 
   /// 残り時間(ミリ秒)。
   final int remainingMillis;
+
+  /// 引いた人の表示名。鬼視点では渡さないこと。
+  final String? drawerName;
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +74,10 @@ class EffectBand extends StatelessWidget {
           const SizedBox(width: 7),
           Flexible(
             child: Text(
-              effectBandText(type, viewerRole: viewerRole),
+              drawerName != null
+                  ? '$drawerName のごほうび：'
+                        '${effectBandText(type, viewerRole: viewerRole)}'
+                  : effectBandText(type, viewerRole: viewerRole),
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 11,
@@ -123,7 +136,7 @@ class ClueBlockedCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '手がかりが止められている（のこり '
+                  '逃走者のごほうびで止められている（のこり '
                   '${formatEffectRemaining(remainingMillis)}）',
                   style: const TextStyle(
                     fontSize: 14,

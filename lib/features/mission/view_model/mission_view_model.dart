@@ -33,7 +33,7 @@ final missionsStreamProvider = StreamProvider.family
       return ref.watch(missionRepositoryProvider).watchMissions(roomId);
     });
 
-/// 特典の効果の一覧(`effects`)。前のゲームの分も含むので、使うときは
+/// ごほうびの効果の一覧(`effects`)。前のゲームの分も含むので、使うときは
 /// `effectsOfCurrentGame` で絞ること。
 final effectsStreamProvider = StreamProvider.family
     .autoDispose<List<RoomEffect>, String>((ref, roomId) {

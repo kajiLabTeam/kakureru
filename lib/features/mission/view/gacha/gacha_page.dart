@@ -6,7 +6,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/view/gacha/focus_lines_painter.dart';
 import 'package:kakureru/features/mission/view/gacha/gacha_phase.dart';
-import 'package:kakureru/features/mission/view/mission_card.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
 
 /// 演出の地(暗い茶)。**この画面の中だけ**で使う(ゲーム中の画面には
@@ -30,25 +29,26 @@ const _green = Color(0xFF4A9C5D);
 const _red = Color(0xFFE5484D);
 const _purple = Color(0xFF8E5AC0);
 
-/// 特典を引いた直後の確定演出(モック3)。パッケージは使わず、
+/// ごほうびを引いた直後の確定演出(モック3)。パッケージは使わず、
 /// `AnimationController`と`Transform`/`CustomPaint`だけで作る。
 ///
-/// 毎回見るので、**画面のどこをタップしても最後(特典カード)まで飛ばせる**
+/// 毎回見るので、**画面のどこをタップしても最後(ごほうびカード)まで飛ばせる**
 /// (カプセルの段だけはタップが「開ける」)。段の進み方は`gacha_phase.dart`。
 ///
 /// `GamePage`の上に重ねて開くだけで、ゲーム画面は破棄しない(位置情報の
-/// 送信は止まらない)。効果は引いた瞬間にもう出ている。
+/// 送信は止まらない)。効果は引いた瞬間にもう出ている(持っておくごほうびは
+/// 使ったときに出る)。
 class GachaPage extends HookWidget {
-  /// [reward]は引いた特典(抽選はもう済んでいる)。
+  /// [reward]は引いたごほうび(抽選はもう済んでいる)。
   const GachaPage({super.key, required this.reward});
 
-  /// 引いた特典。
+  /// 引いたごほうび。
   final RewardType reward;
 
-  /// ゲーム画面の上に重ねて開く。最後に「特典の中身を見る」を押すと
-  /// 特典の画面([RewardPage])に移る。
+  /// ゲーム画面の上に重ねて開く。最後に「ごほうびの中身を見る」を押すと
+  /// ごほうびの画面([RewardPage])に移る。
   ///
-  /// 返すFutureは**特典の画面まで閉じてから**完了する。呼び出し側は
+  /// 返すFutureは**ごほうびの画面まで閉じてから**完了する。呼び出し側は
   /// これを待つ間、ゲーム終了の自動遷移を止めている(`GamePage`の
   /// `rewardOpen`)ため、演出だけ閉じた時点で完了させてはいけない。
   static Future<void> show(BuildContext context, RewardType reward) async {
@@ -71,6 +71,8 @@ class GachaPage extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMiss = reward.isMiss;
+    final finalPhase = isMiss ? GachaPhase.missed : GachaPhase.confirmed;
     final phase = useState(GachaPhase.turning);
 
     // ハンドル〜激熱までの時間(この2段だけは時間で進む)。
@@ -91,7 +93,7 @@ class GachaPage extends HookWidget {
     final pulse = useAnimationController(
       duration: const Duration(milliseconds: 1100),
     );
-    // 確定: 白く弾ける → ハンコ → 特典カード。
+    // 確定: 白く弾ける → ハンコ → ごほうびカード。
     final confirm = useAnimationController(duration: gachaConfirmDuration);
     // 虹の輪の回転と紙吹雪の落下(確定の段だけ)。
     final rainbow = useAnimationController(
@@ -125,6 +127,18 @@ class GachaPage extends HookWidget {
           unawaited(lines.repeat());
           unawaited(rainbow.repeat());
           unawaited(confetti.repeat());
+          confirm.duration = gachaConfirmDuration;
+          if (animateConfirm) {
+            unawaited(confirm.forward(from: 0));
+          } else {
+            confirm.value = 1;
+          }
+        case GachaPhase.missed:
+          intro.stop();
+          shake.stop();
+          drop.value = 1;
+          pulse.stop();
+          confirm.duration = gachaMissedDuration;
           if (animateConfirm) {
             unawaited(confirm.forward(from: 0));
           } else {
@@ -133,12 +147,15 @@ class GachaPage extends HookWidget {
       }
     }
 
-    // 始まったらすぐハンドルを回す(特典はもう引いてあるので待たせない)。
+    // 始まったらすぐハンドルを回す(ごほうびはもう引いてあるので待たせない)。
     useEffect(() {
+      intro.duration = isMiss
+          ? gachaTurningDuration
+          : gachaTurningDuration + gachaHeatDuration;
       void onIntro() {
-        if (phase.value == GachaPhase.confirmed) return;
+        if (phase.value == finalPhase) return;
         final elapsed = intro.duration! * intro.value;
-        final next = gachaPhaseAt(elapsed);
+        final next = gachaPhaseAt(elapsed, isMiss: isMiss);
         if (next.index > phase.value.index) enterPhase(next);
       }
 
@@ -150,27 +167,27 @@ class GachaPage extends HookWidget {
     }, const []);
 
     void onTap() {
-      if (phase.value == GachaPhase.confirmed && confirm.isCompleted) return;
+      if (phase.value == finalPhase && confirm.isCompleted) return;
       switch (gachaTapAction(phase.value)) {
         case GachaTapAction.open:
-          enterPhase(GachaPhase.confirmed);
+          enterPhase(finalPhase);
         case GachaTapAction.skipToEnd:
-          if (phase.value == GachaPhase.confirmed) {
+          if (phase.value == finalPhase) {
             confirm.value = 1;
           } else {
-            enterPhase(GachaPhase.confirmed, animateConfirm: false);
+            enterPhase(finalPhase, animateConfirm: false);
           }
       }
     }
 
     return PopScope(
-      // 演出の途中で戻ると、どの特典だったか分からないまま閉じてしまう。
+      // 演出の途中で戻ると、どのごほうびだったか分からないまま閉じてしまう。
       // 戻る操作は「最後まで飛ばす」にする。
-      canPop: phase.value == GachaPhase.confirmed && confirm.isCompleted,
+      canPop: phase.value == finalPhase && confirm.isCompleted,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         // canPopはbuildの時点の値なので、出そろった直後はまだfalseのことがある。
-        if (phase.value == GachaPhase.confirmed && confirm.isCompleted) {
+        if (phase.value == finalPhase && confirm.isCompleted) {
           Navigator.of(context).pop();
           return;
         }
@@ -210,7 +227,7 @@ class GachaPage extends HookWidget {
                     // 確定の段では、上に重ねたカードの側にボタンを出す。
                     // 下の案内が透けて見えないよう、ここは空けておく。
                     Visibility.maintain(
-                      visible: phase.value != GachaPhase.confirmed,
+                      visible: phase.value != finalPhase,
                       child: _Bottom(
                         phase: phase.value,
                         pulse: pulse,
@@ -232,6 +249,10 @@ class GachaPage extends HookWidget {
                     rainbow: rainbow,
                     confetti: confetti,
                   ),
+                ),
+              if (phase.value == GachaPhase.missed)
+                Positioned.fill(
+                  child: _MissedOverlay(reward: reward, confirm: confirm),
                 ),
             ],
           ),
@@ -285,7 +306,7 @@ class _Header extends StatelessWidget {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  '特典ガチャ',
+                  'かくれるガチャ',
                   style: TextStyle(
                     fontFamily: gachaFontFamily,
                     fontSize: 25,
@@ -965,7 +986,7 @@ class _ConfirmedOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final seconds = reward.duration.inSeconds;
+    final durationLabel = reward.durationLabel;
     return ColoredBox(
       color: const Color(0xF00A0806),
       child: Stack(
@@ -1095,7 +1116,7 @@ class _ConfirmedOverlay extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              // 特典カードが跳ねて出る。
+              // ごほうびカードが跳ねて出る。
               AnimatedBuilder(
                 animation: confirm,
                 builder: (context, child) {
@@ -1125,25 +1146,14 @@ class _ConfirmedOverlay extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _DarkTag(
-                            label: rewardTargetLabel(reward.target),
-                            background: reward.target == RewardTarget.demon
-                                ? const Color(0xFFC0343A)
-                                : _blue,
-                            foreground: Colors.white,
-                          ),
-                          const SizedBox(width: 7),
-                          _DarkTag(
-                            label: seconds > 0 ? '$seconds秒' : '1回',
-                            background: gachaGold,
-                            foreground: const Color(0xFF241A0B),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
+                      if (durationLabel != null) ...[
+                        _DarkTag(
+                          label: durationLabel,
+                          background: gachaGold,
+                          foreground: const Color(0xFF241A0B),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       Text(
                         reward.title,
                         textAlign: TextAlign.center,
@@ -1174,9 +1184,9 @@ class _ConfirmedOverlay extends StatelessWidget {
                   parent: confirm,
                   curve: const Interval(0.8, 1),
                 ),
-                child: const Text(
-                  '効果はもう出ている',
-                  style: TextStyle(fontSize: 11, color: _muted),
+                child: Text(
+                  reward.isHeld ? '地図の「つかう」で好きなときに使える' : '効果はもう出ている',
+                  style: const TextStyle(fontSize: 11, color: _muted),
                 ),
               ),
             ],
@@ -1190,10 +1200,147 @@ class _ConfirmedOverlay extends StatelessWidget {
               child: AnimatedBuilder(
                 animation: confirm,
                 builder: (context, _) => _GachaButton(
-                  label: '特典の中身を見る',
+                  label: 'ごほうびの中身を見る',
                   onPressed: confirm.isCompleted
-                      // 特典の画面はshowが続けて開く(ここで差し替えると
-                      // showのFutureが特典の画面を開いたまま完了する)。
+                      // ごほうびの画面はshowが続けて開く(ここで差し替えると
+                      // showのFutureがごほうびの画面を開いたまま完了する)。
+                      ? () => Navigator.of(context).pop(true)
+                      : null,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// ハズレの段。当たり([_ConfirmedOverlay])と違い、虹の輪・紙吹雪・
+/// 「確定」のハンコは出さず、赤い「残念」のスタンプで短く終わる
+/// (待たされた末のハズレを当たりと同じ豪華さで引き延ばさない)。
+class _MissedOverlay extends StatelessWidget {
+  const _MissedOverlay({required this.reward, required this.confirm});
+
+  final RewardType reward;
+  final AnimationController confirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return ColoredBox(
+      color: const Color(0xF00A0806),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 赤い「残念」のスタンプが斜めに飛び込む。
+              AnimatedBuilder(
+                animation: confirm,
+                builder: (context, child) {
+                  final t = _interval(confirm.value, 0, 0.5);
+                  final scale = 2.4 - 1.4 * Curves.easeOutBack.transform(t);
+                  return Opacity(
+                    opacity: t,
+                    child: Transform.rotate(
+                      angle: -6 * math.pi / 180,
+                      child: Transform.scale(scale: scale, child: child),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 28,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7A2226),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _red, width: 3),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x99B0272C), blurRadius: 22),
+                    ],
+                  ),
+                  child: const Text(
+                    '残念',
+                    style: TextStyle(
+                      fontFamily: gachaFontFamily,
+                      fontSize: 40,
+                      height: 1,
+                      letterSpacing: 4,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // ごほうびカードは当たりと同じ見た目で出す(ハズレは何も起きない
+              // ことを必ず伝える)。
+              AnimatedBuilder(
+                animation: confirm,
+                builder: (context, child) {
+                  final t = _interval(confirm.value, 0.25, 0.8);
+                  final eased = Curves.easeOutBack.transform(t);
+                  return Opacity(
+                    opacity: t,
+                    child: Transform.translate(
+                      offset: Offset(0, 16 * (1 - eased)),
+                      child: child,
+                    ),
+                  );
+                },
+                child: Container(
+                  width: math.min(330, size.width - 32),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B1510),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _red, width: 2),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x4DB0272C), blurRadius: 32),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        reward.title,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: gachaFontFamily,
+                          fontSize: 22,
+                          height: 1.4,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        reward.description,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          height: 1.7,
+                          color: Color(0xFFCFC6B4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 24,
+            child: SafeArea(
+              top: false,
+              child: AnimatedBuilder(
+                animation: confirm,
+                builder: (context, _) => _GachaButton(
+                  label: 'ごほうびの中身を見る',
+                  onPressed: confirm.isCompleted
                       ? () => Navigator.of(context).pop(true)
                       : null,
                 ),

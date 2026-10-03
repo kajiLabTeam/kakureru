@@ -9,11 +9,12 @@ import 'package:kakureru/features/room/view/game/game_palette.dart';
 
 const _myUid = 'me';
 const _demonUid = 'demon';
+const _otherUid = 'other';
 
 Future<void> _pumpMap(
   WidgetTester tester, {
   List<MissionMapPoint> missionPoints = const [],
-  bool enlargeDemonIcon = false,
+  Set<String> enlargedUserUids = const {},
 }) async {
   await tester.binding.setSurfaceSize(const Size(360, 640));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -25,13 +26,15 @@ Future<void> _pumpMap(
           users: const [
             RoomUser(id: _myUid, displayName: 'わたし'),
             RoomUser(id: _demonUid, displayName: 'おに', role: UserRole.demon),
+            RoomUser(id: _otherUid, displayName: 'みお'),
           ],
           locations: const [
             UserLocation(uid: _myUid, latitude: 35, longitude: 137),
             UserLocation(uid: _demonUid, latitude: 35.001, longitude: 137),
+            UserLocation(uid: _otherUid, latitude: 35.002, longitude: 137),
           ],
           missionPoints: missionPoints,
-          enlargeDemonIcon: enlargeDemonIcon,
+          enlargedUserUids: enlargedUserUids,
         ),
       ),
     ),
@@ -88,13 +91,13 @@ void main() {
     expect(find.text('アクセスポイント'), findsNothing);
   });
 
-  testWidgets('「鬼のアイコンを大きくする」の間は、鬼のピンだけ2倍にする', (tester) async {
-    await _pumpMap(tester, enlargeDemonIcon: true);
-    expect(_scaleOf(tester, 'おに（鬼）'), enlargedDemonIconScale);
-    expect(_scaleOf(tester, '自分（逃走者）'), 1);
+  testWidgets('自分が「自分のアイコンを大きくする」を引いたら、自分のピンも2倍', (tester) async {
+    await _pumpMap(tester, enlargedUserUids: {_myUid});
+    expect(_scaleOf(tester, '自分（逃走者）'), enlargedIconScale);
+    expect(_scaleOf(tester, 'おに（鬼）'), 1);
   });
 
-  testWidgets('拡大しても鬼のアイコンの中心は動かない(実際の位置のまま)', (tester) async {
+  testWidgets('拡大してもアイコンの中心は動かない(実際の位置のまま)', (tester) async {
     // 鬼のピン(ラベル「おに（鬼）」と同じ列にあるアイコン)の中心。
     Offset demonIconCenter() => tester.getCenter(
       find.descendant(
@@ -107,7 +110,7 @@ void main() {
 
     await _pumpMap(tester);
     final normal = demonIconCenter();
-    await _pumpMap(tester, enlargeDemonIcon: true);
+    await _pumpMap(tester, enlargedUserUids: {_demonUid});
     final enlarged = demonIconCenter();
 
     expect(enlarged.dx, closeTo(normal.dx, 0.5));
@@ -117,5 +120,20 @@ void main() {
   testWidgets('効果が無ければ鬼のピンは元の大きさ', (tester) async {
     await _pumpMap(tester);
     expect(_scaleOf(tester, 'おに（鬼）'), 1);
+  });
+
+  testWidgets('「自分のアイコンを大きくする」を引いた人は、ほかの人の地図でもピンが2倍', (
+    tester,
+  ) async {
+    await _pumpMap(tester, enlargedUserUids: {_otherUid});
+    expect(_scaleOf(tester, 'みお（逃走者）'), enlargedIconScale);
+    // 引いていない自分・鬼は元の大きさのまま。
+    expect(_scaleOf(tester, '自分（逃走者）'), 1);
+    expect(_scaleOf(tester, 'おに（鬼）'), 1);
+  });
+
+  testWidgets('enlargedUserUidsに無ければ逃走者のピンは元の大きさ', (tester) async {
+    await _pumpMap(tester);
+    expect(_scaleOf(tester, 'みお（逃走者）'), 1);
   });
 }

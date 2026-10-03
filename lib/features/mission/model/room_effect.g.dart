@@ -27,6 +27,7 @@ Map<String, dynamic> _$RoomEffectToJson(_RoomEffect instance) =>
 
 const _$RewardTypeEnumMap = {
   RewardType.blockClues: 'block_clues',
-  RewardType.bigDemonIcon: 'big_demon_icon',
+  RewardType.enlargeSelfIcon: 'enlarge_self_icon',
   RewardType.skipFootPhoto: 'skip_foot_photo',
+  RewardType.miss: 'miss',
 };
