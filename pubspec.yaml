@@ -66,6 +66,9 @@ dependencies:
   # テザリング中の端末が「いま接続しているWi-Fi(=自分のホットスポット)」の
   # BSSIDを得るためだけに追加(issue #142)。
   network_info_plus: ^7.0.0
+  # かくれるガチャの効果音を鳴らすためだけに追加(issue #160)。音源は
+  # assets/sounds/gacha/ で、出どころは docs/gacha-sounds.md。
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   # コード生成用。実行時には不要なので dev_dependencies 側に置く。
@@ -99,6 +102,8 @@ flutter:
   # DelaGothicOne-OFL.txt で、アプリのライセンス表示にも登録している(main.dart)。
   assets:
     - assets/fonts/DelaGothicOne-OFL.txt
+    # 特典ガチャの効果音(issue #160)。出どころとライセンスは docs/gacha-sounds.md。
+    - assets/sounds/gacha/
   fonts:
     - family: DelaGothicOne
       fonts:
