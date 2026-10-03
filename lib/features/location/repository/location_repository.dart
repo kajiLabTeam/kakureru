@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -113,13 +115,16 @@ class LocationRepository {
       // 子であるpressure(PressureRepository)・wifiScan(WifiScanRepository)を
       // 4秒ごとに消してしまう(issue #8)。update()にして自分が持つキーだけを
       // 書き換え、他リポジトリが書いた兄弟キーには触れないようにする。
-      _db.ref('rooms/$roomId/locations/$_uid').update({
-        'lat': toWrite.latitude,
-        'lng': toWrite.longitude,
-        'altitude': toWrite.altitude,
-        'accuracy': toWrite.accuracy,
-        'updatedAt': ServerValue.timestamp,
-      });
+      // 4秒ごとのコールバックなので書き込みの完了は待たない。
+      unawaited(
+        _db.ref('rooms/$roomId/locations/$_uid').update({
+          'lat': toWrite.latitude,
+          'lng': toWrite.longitude,
+          'altitude': toWrite.altitude,
+          'accuracy': toWrite.accuracy,
+          'updatedAt': ServerValue.timestamp,
+        }),
+      );
     };
     FlutterForegroundTask.addTaskDataCallback(_taskDataCallback!);
 

@@ -81,7 +81,7 @@ class RoomWaitingPage extends HookConsumerWidget {
 
     useEffect(() {
       final pressureNotifier = ref.read(pressureViewModelProvider.notifier);
-      pressureNotifier.init(roomId);
+      unawaited(pressureNotifier.init(roomId));
       // 前のルームで出たキャリブレーションの失敗表示を持ち越さない
       // (providerは画面をまたいで生き続ける)。ビルド中は状態を書き換え
       // られないので、このフレームが確定してから消す。
@@ -146,14 +146,20 @@ class RoomWaitingPage extends HookConsumerWidget {
       // 直接書けないため、指名された本人が自分で書く方式)。
       final myself = myUid == null ? null : _findUser(room.users, myUid);
       if (room.pendingDemonUid == myUid && myself?.role != UserRole.demon) {
-        ref.read(roomRepositoryProvider).acceptDemonNomination(roomId, myUid!);
+        unawaited(
+          ref
+              .read(roomRepositoryProvider)
+              .acceptDemonNomination(roomId, myUid!),
+        );
       }
 
       // ホストが既に鬼になっている自分の指名を取り消したら、自分でroleを
       // 逃走者に書き戻して受諾する(上と同じ自己申告方式。
       // docs/rtdb-schema.mdの「鬼の取り消し」参照)。
       if (room.demonRevokeUid == myUid && myself?.role == UserRole.demon) {
-        ref.read(roomRepositoryProvider).acceptDemonRevoke(roomId, myUid!);
+        unawaited(
+          ref.read(roomRepositoryProvider).acceptDemonRevoke(roomId, myUid!),
+        );
       }
       return null;
     }, [roomAsync.value]);
@@ -840,9 +846,11 @@ class _CalibrationSection extends ConsumerWidget {
               ? () {
                   final notifier = ref.read(pressureViewModelProvider.notifier);
                   if (isHost) {
-                    notifier.calibrateAsHost(roomId);
+                    unawaited(notifier.calibrateAsHost(roomId));
                   } else {
-                    notifier.calibrateAsParticipant(roomId, basePressure);
+                    unawaited(
+                      notifier.calibrateAsParticipant(roomId, basePressure),
+                    );
                   }
                 }
               : null,

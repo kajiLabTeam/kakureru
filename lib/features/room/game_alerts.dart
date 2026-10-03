@@ -146,13 +146,15 @@ class GameAlerts extends Notifier<GameAlertsState> {
     //
     // タイマーの初回発火は1秒後なので、ここで1回打っておかないと、画面に
     // 入った瞬間に既に終了している(再入場した等)場合に1秒待たされる。
-    Future(() {
-      // 自分を予約したstart()より後にstop()/start()が呼ばれていたら、
-      // その世代の処理に任せてここでは何もしない。
-      if (_disposed || generation != _generation) return;
-      state = initialGameAlertsState;
-      _evaluate();
-    });
+    unawaited(
+      Future(() {
+        // 自分を予約したstart()より後にstop()/start()が呼ばれていたら、
+        // その世代の処理に任せてここでは何もしない。
+        if (_disposed || generation != _generation) return;
+        state = initialGameAlertsState;
+        _evaluate();
+      }),
+    );
   }
 
   /// ゲーム画面を離れた時に呼ぶ。タイマーを畳み、エリア外の通知も消す。
@@ -174,10 +176,12 @@ class GameAlerts extends Notifier<GameAlertsState> {
     // 離脱もウィジェットのライフサイクル(useEffectの後始末)の中で起きるので、
     // [start]と同じくビルドの外へ逃がす。すぐ[start]が呼ばれた場合
     // (部屋を移った等)は、そちらの初期化に任せてここでは何もしない。
-    Future(() {
-      if (_disposed || generation != _generation) return;
-      state = initialGameAlertsState;
-    });
+    unawaited(
+      Future(() {
+        if (_disposed || generation != _generation) return;
+        state = initialGameAlertsState;
+      }),
+    );
   }
 
   void _disposeTimers() {

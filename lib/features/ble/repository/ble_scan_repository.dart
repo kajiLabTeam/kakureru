@@ -64,15 +64,17 @@ class BleScanRepository {
       detections.forEach(_detectionController.add);
     });
 
-    FlutterBluePlus.startScan(
-      continuousUpdates: true,
-      withMsd: [MsdFilter(BleProximityThresholds.manufacturerId)],
+    unawaited(
+      FlutterBluePlus.startScan(
+        continuousUpdates: true,
+        withMsd: [MsdFilter(BleProximityThresholds.manufacturerId)],
+      ),
     );
   }
 
   /// ゲーム画面を離れる時に呼ぶこと。
   void stopScanning() {
-    _scanSub?.cancel();
+    unawaited(_scanSub?.cancel());
     _scanSub = null;
     unawaited(FlutterBluePlus.stopScan());
   }

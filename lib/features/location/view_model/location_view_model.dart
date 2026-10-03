@@ -254,8 +254,8 @@ class LocationViewModel extends Notifier<LocationState> {
     // _repoではなく_repoInstanceを直接見る。dispose時にref.read()を新たに
     // 呼ばないため(_repoの中身を参照)。start()を一度も呼んでいなければ
     // _repoInstanceはnullのままで、そもそも止めるものが無い。
-    _repoInstance?.stopSendingLocation();
-    _locationsSub?.cancel();
+    unawaited(_repoInstance?.stopSendingLocation());
+    unawaited(_locationsSub?.cancel());
     _locationsSub = null;
   }
 }
