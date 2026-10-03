@@ -40,6 +40,7 @@ class PhotoGalleryPage extends StatelessWidget {
     required this.catchPhotos,
     required this.nowMillis,
     required this.photoCapture,
+    required this.skippedSlots,
   });
 
   final String roomId;
@@ -49,6 +50,11 @@ class PhotoGalleryPage extends StatelessWidget {
   final List<CatchPhoto> catchPhotos;
   final int nowMillis;
   final PhotoCaptureController photoCapture;
+
+  /// 「足元写真を1回まぬがれる」で自分が撮影を免除したスロット番号
+  /// (`skippedFootPhotoSlots`)。撮った扱いにして閲覧できるようにし、
+  /// 一覧では自分の枠に「まぬがれました」と出す(issue #157)。
+  final Set<int> skippedSlots;
 
   @override
   Widget build(BuildContext context) {
@@ -84,13 +90,34 @@ class PhotoGalleryPage extends StatelessWidget {
       intervalSec: room.setting.photoIntervalSec,
     );
     final intervalSec = room.setting.photoIntervalSec;
-    final sections = startedAt == null
+    final photoSections = startedAt == null
         ? const <PhotoGallerySection>[]
         : buildPhotoGallerySections(
             photos: photos,
             startedAt: startedAt,
             intervalSec: intervalSec,
           );
+    final currentSlot = startedAt == null
+        ? null
+        : currentPhotoSlotIndex(
+            startedAt: startedAt,
+            nowMillis: nowMillis,
+            intervalSec: intervalSec,
+          );
+
+    // まぬがれたスロットは、誰も写真を撮っていなくても(=セクションが
+    // 無くても)自分の「まぬがれました」枠だけは見せる。ただし、まだ
+    // 始まっていない未来のスロット(次に引いた直後は`current + 1`になりうる。
+    // `footPhotoSlotToSkip`参照)は、その時間になるまで一覧に出さない。
+    final sectionSlots = {for (final s in photoSections) s.slotIndex};
+    final sections = [
+      ...photoSections,
+      for (final slot in skippedSlots)
+        if (currentSlot != null &&
+            slot <= currentSlot &&
+            !sectionSlots.contains(slot))
+          PhotoGallerySection(slotIndex: slot, photos: const []),
+    ]..sort((a, b) => b.slotIndex.compareTo(a.slotIndex));
 
     if (startedAt == null || sections.isEmpty) {
       return ListView(
@@ -99,16 +126,18 @@ class PhotoGalleryPage extends StatelessWidget {
       );
     }
 
-    final currentSlot = currentPhotoSlotIndex(
-      startedAt: startedAt,
-      nowMillis: nowMillis,
-      intervalSec: intervalSec,
-    );
-
     Widget buildSection(PhotoGallerySection section) {
       final isCurrentSlot = section.slotIndex == currentSlot;
+      final viewerSkippedSlot = skippedSlots.contains(section.slotIndex);
       final viewerCapturedInSlot =
-          myUid != null && section.photos.any((p) => p.uid == myUid);
+          myUid != null &&
+          (section.photos.any((p) => p.uid == myUid) || viewerSkippedSlot);
+      // 撮った扱いにはなるが、本物の写真は無い(撮っていないため)ので
+      // 自分の写真が無ければ専用の「まぬがれました」枠を1件足す。
+      final showSkippedTile =
+          viewerSkippedSlot &&
+          myUid != null &&
+          !section.photos.any((p) => p.uid == myUid);
       final visibility = photoTileVisibilityOf(
         viewerIsDemon: viewerIsDemon,
         viewerCapturedInSlot: viewerCapturedInSlot,
@@ -148,7 +177,7 @@ class PhotoGalleryPage extends StatelessWidget {
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: section.photos.length,
+              itemCount: section.photos.length + (showSkippedTile ? 1 : 0),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 10,
@@ -156,6 +185,16 @@ class PhotoGalleryPage extends StatelessWidget {
                 childAspectRatio: 1,
               ),
               itemBuilder: (context, photoIndex) {
+                if (photoIndex >= section.photos.length) {
+                  final me = findUser(room.users, myUid!);
+                  return SkippedPhotoTile(
+                    personColor: userColorOf(myUid!),
+                    personName: me == null || me.displayName.isEmpty
+                        ? '???'
+                        : me.displayName,
+                    personIsDemon: me?.role == UserRole.demon,
+                  );
+                }
                 final photo = section.photos[photoIndex];
                 final person = findUser(room.users, photo.uid);
                 return PhotoTile(

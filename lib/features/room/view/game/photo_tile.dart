@@ -91,6 +91,53 @@ class PhotoTile extends HookWidget {
   }
 }
 
+/// 「足元写真を1回まぬがれる」で撮影を免除された自分の枠。
+///
+/// 実際の写真は無い(撮っていないため)ので、ダウンロードはせず
+/// [_BlurredPlaceholder]の上に「まぬがれました」とだけ出す。免除された
+/// スロットは撮った扱いになり([photoTileVisibilityOf])、見られない
+/// 側の[PhotoTile]の2状態(ぼかし)とは違って常にこの枠で表示する。
+class SkippedPhotoTile extends StatelessWidget {
+  const SkippedPhotoTile({
+    super.key,
+    required this.personColor,
+    required this.personName,
+    required this.personIsDemon,
+  });
+
+  final Color personColor;
+  final String personName;
+  final bool personIsDemon;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _BlurredPlaceholder(color: personColor),
+            Container(color: Colors.black.withValues(alpha: 0.26)),
+            const _CenteredHint(icon: Icons.shield, label: 'まぬがれました'),
+            Positioned(
+              left: 8,
+              bottom: 8,
+              right: 8,
+              child: _PersonLabel(
+                color: personColor,
+                name: personName,
+                isDemon: personIsDemon,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CenteredHint extends StatelessWidget {
   const _CenteredHint({required this.icon, required this.label});
 
