@@ -118,24 +118,27 @@ export default {
         return new Response("payload too large", { status: 413 });
       }
 
-      // 同じキーへの上書きを409で禁止する。署名付きURLを使わずWorker経由の直接書き込みにしている以上、
-      // 「他人が同じ roomId/photoId を推測して先に PUT すれば差し替えられる」を防ぐ最低限の砦がこのチェック。
-      if (await env.PHOTOS.head(key)) {
-        return new Response("already exists", { status: 409 });
-      }
-
       const bytes = await request.arrayBuffer();
       if (bytes.byteLength > MAX_BYTES) {
         return new Response("payload too large", { status: 413 });
       }
 
-      await env.PHOTOS.put(key, bytes, {
+      // 同じキーへの上書きを409で禁止する。署名付きURLを使わずWorker経由の直接書き込みにしている以上、
+      // 「他人が同じ roomId/photoId を推測して先に PUT すれば差し替えられる」を防ぐ最低限の砦がこの条件。
+      // head で確認してから put だと同時リクエストがすり抜けるため、put の onlyIf で
+      // 「存在確認と書き込み」を1回の操作にする。条件に合わないと put は null を返す。
+      const stored = await env.PHOTOS.put(key, bytes, {
+        onlyIf: { etagDoesNotMatch: "*" },
         httpMetadata: {
           contentType: "image/jpeg",
-          cacheControl: "public, max-age=31536000, immutable",
+          // 写真はルーム参加者だけのもの。共有キャッシュ(CDN等)に残さない。
+          cacheControl: "private, max-age=31536000, immutable",
         },
         customMetadata: { uid, roomId },
       });
+      if (stored === null) {
+        return new Response("already exists", { status: 409 });
+      }
 
       return new Response(null, { status: 204 });
     }
