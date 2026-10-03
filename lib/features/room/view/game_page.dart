@@ -175,6 +175,9 @@ class GamePage extends HookConsumerWidget {
     final claimAction = useAsyncAction(context);
     final rewardOpen = useState(false);
 
+    // デバッグ用の「ミッションをいますぐ出す」の書き込み中(DEBUG_MISSION)。
+    final debugCreateAction = useAsyncAction(context);
+
     // 詳細カードで選択中の相手(UI改修モック2a-03「逃走者を選んで詳細を見る」)。
     // nullの間は既定で最も近い相手を選ぶ(下のeffectiveSelectedUid参照)。
     // ウィジェット内で完結する一時状態なのでhooksで持つ(AGENTS.md規約)。
@@ -497,6 +500,33 @@ class GamePage extends HookConsumerWidget {
         case AsyncActionStatus.skipped:
           break;
       }
+    }
+
+    // デバッグ用の「ミッションをいますぐ出す」(DEBUG_MISSION)。何回目を
+    // 出すかを選ばせ、時刻やホストかどうかに関係なくその場で書く。
+    Future<void> handleDebugCreatePressed(Room current) async {
+      final round = await showMissionDebugRoundPicker(
+        context,
+        fugitiveCount: current.users
+            .where((u) => u.role == UserRole.fugitive)
+            .length,
+      );
+      if (round == null || !context.mounted) return;
+      var written = false;
+      final result = await debugCreateAction.run(() async {
+        written = await ref
+            .read(missionControllerProvider.notifier)
+            .debugCreateMission(round);
+      });
+      if (!context.mounted) return;
+      if (result.status == AsyncActionStatus.skipped) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            written ? '$round回目のミッションを出しました' : 'まだ部屋の情報が届いていないため出せませんでした',
+          ),
+        ),
+      );
     }
 
     // 「ごほうびガチャを引く」。先着はリポジトリのトランザクションで決まる。
@@ -1090,6 +1120,25 @@ class GamePage extends HookConsumerWidget {
                                           ),
                                         ),
                                   ],
+                                  // デバッグ用(DEBUG_MISSION=trueのときだけ)。
+                                  // ミッションが出ていなければ、カードの位置に
+                                  // 「ミッションをいますぐ出す」を置く(放出から
+                                  // 3分待たずに、回を選んで出せる)。
+                                  if (debugMissionArrivalEnabled &&
+                                      mission == null &&
+                                      room.startedAt != null)
+                                    Positioned(
+                                      left: 12,
+                                      right: 12,
+                                      top: 12,
+                                      child: MissionDebugCreateButton(
+                                        onPressed: debugCreateAction.isRunning
+                                            ? null
+                                            : () => unawaited(
+                                                handleDebugCreatePressed(room),
+                                              ),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),

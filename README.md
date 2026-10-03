@@ -93,7 +93,7 @@ flutter analyze
    flutter build apk --release --dart-define-from-file=dart_defines.json
    ```
 
-   ミッションを家の中で試すときは `--dart-define=DEBUG_MISSION=true` を足すと（`scripts/run.sh` なら `./scripts/run.sh -d <device> --mission-debug` でよい）、カードの下に「着いたことにする」が出る（距離の判定だけ飛ばす。リリースビルドでは出ない）。
+   ミッションを家の中で試すときは `--dart-define=DEBUG_MISSION=true` を足すと（`scripts/run.sh` なら `./scripts/run.sh -d <device> --mission-debug` でよい）、カードの下に「着いたことにする」が出る（距離の判定だけ飛ばす）。ミッションが出ていない間はカードの位置に「ミッションをいますぐ出す」が出て、押すと何回目のミッション（1〜3回目。地点の数が違う）を出すか選べ、放出から3分待たずにその場で出る。どちらもリリースビルドでは出ない。
 
    VS Codeから実行する場合は `.vscode/launch.json` の "kakureru" 構成を使えば、F5でも同じフラグが自動で付く。ミッションを試すときは "kakureru (ミッションのデバッグ)" 構成を選ぶと `DEBUG_MISSION=true` も付く。
 
