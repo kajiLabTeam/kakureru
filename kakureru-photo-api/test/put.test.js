@@ -69,6 +69,8 @@ test("同じキーへの2回目のPUTは409で、中身は上書きされない"
   assert.deepEqual([...new Uint8Array(PHOTOS.store.get("rooms/r1/p1.jpg"))], [1]);
 });
 
+// 注: フェイクの put は await を挟まず同期で判定するので、実R2の原子性は検証していない。
+// ここで守るのは「head で先に確認せず、put に onlyIf を渡している」という回帰。
 test("同時に来た2件のPUTは片方だけ成功する", async () => {
   const PHOTOS = fakeBucket();
   const env = { PHOTOS, FIREBASE_PROJECT_ID: PROJECT };
