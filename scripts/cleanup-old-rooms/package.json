@@ -1,0 +1,12 @@
+{
+  "name": "kakureru-cleanup-old-rooms",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node cleanup.js",
+    "test": "node --test cleanup.test.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}
