@@ -74,6 +74,18 @@ void main() {
     expect(missionSpotCounts.length, missionDueDelays.length);
   });
 
+  test('デバッグで選べる回は1〜3回目で、地点の数は回と逃走者の人数で決まる', () {
+    expect(debugMissionRoundChoices(fugitiveCount: 5), [
+      (round: 1, spotCount: 4),
+      (round: 2, spotCount: 4),
+      (round: 3, spotCount: 3),
+    ]);
+    expect(
+      debugMissionRoundChoices(fugitiveCount: 2).map((c) => c.spotCount),
+      [2, 2, 2],
+    );
+  });
+
   group('missionsOfCurrentGame', () {
     test('開始前のミッション(前のゲームの残り)を除き、古い順に並べる', () {
       final result = missionsOfCurrentGame(

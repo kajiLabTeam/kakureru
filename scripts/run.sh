@@ -3,7 +3,8 @@
 # --dart-define-from-file 付きで指定しなくて済むようにするためのもの。
 # 使い方: ./scripts/run.sh [--mission-debug] [flutter runに渡す追加引数、例: -d <device>]
 #   --mission-debug: --dart-define=DEBUG_MISSION=true を足す(ミッションカードの下に
-#                    「着いたことにする」が出る。リリースビルドでは出ない)
+#                    「着いたことにする」、ミッションが無い間は「ミッションをいますぐ
+#                    出す」(回を選んで即発動)が出る。リリースビルドでは出ない)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

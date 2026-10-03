@@ -51,6 +51,18 @@ int missionSpotCount({required int round, required int fugitiveCount}) {
   return fugitiveCount.clamp(1, max);
 }
 
+/// デバッグで選べる回(1始まり)と、その回で置く地点の数。
+/// 回の数は[missionDueDelays]の長さと同じ。
+List<({int round, int spotCount})> debugMissionRoundChoices({
+  required int fugitiveCount,
+}) => [
+  for (var round = 1; round <= missionDueDelays.length; round++)
+    (
+      round: round,
+      spotCount: missionSpotCount(round: round, fugitiveCount: fugitiveCount),
+    ),
+];
+
 /// 今のゲームのミッションだけを、出した順(古い順)に返す。
 ///
 /// 「同じメンバーでもう一回」(`restartRoom`)は `missions` を消さないため、

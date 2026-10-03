@@ -255,6 +255,35 @@ class MissionController extends Notifier<MissionProgress> {
       nowMillis: nowMillis,
     );
     if (round == null) return;
+    unawaited(_writeMission(roomId, room, round: round, nowMillis: nowMillis));
+  }
+
+  /// デバッグ用(`DEBUG_MISSION=true`のときだけ画面から呼ぶ)。[round]回目の
+  /// ミッションを、放出からの時間・ホストかどうか・出ているミッションの
+  /// 有無に関係なく、いますぐ書く。家の中で3分待たずに試すため。
+  ///
+  /// 部屋かサーバー時刻がまだ届いていなければ書かずにfalseを返す。
+  Future<bool> debugCreateMission(int round) async {
+    final roomId = _roomId;
+    final room = _roomSub?.read().value;
+    final offset = _offsetSub?.read().value;
+    if (roomId == null || room == null || offset == null) return false;
+    await _writeMission(
+      roomId,
+      room,
+      round: round,
+      nowMillis: serverNowMillis(offset),
+    );
+    return true;
+  }
+
+  /// [round]回目のミッションを書く。地点の数はいまの逃走者の人数で決める。
+  Future<void> _writeMission(
+    String roomId,
+    Room room, {
+    required int round,
+    required int nowMillis,
+  }) {
     // 捕まった人は役が鬼に変わるので、役が逃走者の人だけを数えればよい。
     final fugitiveCount = room.users
         .where((u) => u.role == UserRole.fugitive)
@@ -262,26 +291,24 @@ class MissionController extends Notifier<MissionProgress> {
     _creating = true;
     _lastCreatedAt = nowMillis;
     final generation = _generation;
-    unawaited(
-      ref
-          .read(missionRepositoryProvider)
-          .createMission(
-            roomId,
-            area: room.setting.gameArea,
-            spotCount: missionSpotCount(
-              round: round,
-              fugitiveCount: fugitiveCount,
-            ),
+    return ref
+        .read(missionRepositoryProvider)
+        .createMission(
+          roomId,
+          area: room.setting.gameArea,
+          spotCount: missionSpotCount(
             round: round,
-            nowMillis: nowMillis,
-          )
-          .catchError((Object e) {
-            debugPrint('[MissionController] ミッションを書けませんでした: $e');
-          })
-          .whenComplete(() {
-            if (generation == _generation) _creating = false;
-          }),
-    );
+            fugitiveCount: fugitiveCount,
+          ),
+          round: round,
+          nowMillis: nowMillis,
+        )
+        .catchError((Object e) {
+          debugPrint('[MissionController] ミッションを書けませんでした: $e');
+        })
+        .whenComplete(() {
+          if (generation == _generation) _creating = false;
+        });
   }
 
   void _updateProgress(

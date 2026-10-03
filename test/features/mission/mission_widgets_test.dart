@@ -409,6 +409,46 @@ void main() {
     });
   });
 
+  group('デバッグ用の「ミッションをいますぐ出す」', () {
+    testWidgets('DEBUG_MISSIONを付けていなければ出さない', (tester) async {
+      await tester.pumpWidget(
+        _wrap(MissionDebugCreateButton(onPressed: () {})),
+      );
+      expect(find.text('ミッションをいますぐ出す'), findsNothing);
+    });
+
+    testWidgets('押すと回を選ぶシートが出て、選んだ回が返る', (tester) async {
+      int? picked;
+      await tester.pumpWidget(
+        _wrap(
+          Builder(
+            builder: (context) => MissionDebugCreateButton(
+              enabled: true,
+              onPressed: () async {
+                picked = await showMissionDebugRoundPicker(
+                  context,
+                  fugitiveCount: 5,
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      expect(
+        tester.getSize(find.byType(InkWell)).height,
+        greaterThanOrEqualTo(44),
+      );
+      await tester.tap(find.text('ミッションをいますぐ出す'));
+      await tester.pumpAndSettle();
+      expect(find.text('1回目のミッション'), findsOneWidget);
+      expect(find.text('2回目のミッション'), findsOneWidget);
+      expect(find.text('地点 3か所'), findsOneWidget);
+      await tester.tap(find.text('3回目のミッション'));
+      await tester.pumpAndSettle();
+      expect(picked, 3);
+    });
+  });
+
   group('お知らせのバナー', () {
     testWidgets('文言を出し、44px以上で、押すと呼ばれる', (tester) async {
       var tapped = 0;

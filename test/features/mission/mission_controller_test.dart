@@ -137,6 +137,47 @@ void main() {
         expect(repository.calls, isEmpty);
       });
     });
+
+    test('デバッグ: 放出前でもホスト以外でも、選んだ回をすぐ書く', () {
+      fakeAsync((async) {
+        final repository = _RecordingRepository();
+        final container = containerWith(
+          myUid: fugitiveUid,
+          room: roomWith(releasedAgoSec: 10),
+          repository: repository,
+        );
+        final controller = container.read(missionControllerProvider.notifier)
+          ..start(roomId);
+        // 部屋とサーバー時刻が届くまで待つ。
+        async.elapse(const Duration(seconds: 1));
+        bool? written;
+        unawaited(controller.debugCreateMission(3).then((w) => written = w));
+        async.flushMicrotasks();
+        expect(written, isTrue);
+        expect(repository.calls, [(spotCount: 2, round: 3)]);
+      });
+    });
+
+    test('デバッグ: 部屋がまだ届いていなければ書かずにfalse', () {
+      fakeAsync((async) {
+        final repository = _RecordingRepository();
+        final container = containerWith(
+          myUid: hostUid,
+          room: roomWith(releasedAgoSec: 10),
+          repository: repository,
+        );
+        bool? written;
+        unawaited(
+          container
+              .read(missionControllerProvider.notifier)
+              .debugCreateMission(1)
+              .then((w) => written = w),
+        );
+        async.flushMicrotasks();
+        expect(written, isFalse);
+        expect(repository.calls, isEmpty);
+      });
+    });
   });
 
   group('自分の進み具合', () {
