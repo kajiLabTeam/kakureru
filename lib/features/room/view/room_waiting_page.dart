@@ -631,24 +631,24 @@ class RoomWaitingPage extends HookConsumerWidget {
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 24),
                     child: Text(
-                      '鬼が1人も指名されていません。「鬼にする」または「鬼をランダムで決める」で指名してください',
-                      style: TextStyle(color: _pendingColor),
+                      '鬼を1人以上指名してください',
+                      style: TextStyle(color: _pendingColor, fontSize: 12),
                     ),
                   ),
                 if (isHost && demonCount > 0 && !canStartWithRoleComposition)
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 24),
                     child: Text(
-                      '全員が鬼になっています。逃走者が1人以上必要です',
-                      style: TextStyle(color: _pendingColor),
+                      '逃走者が1人以上必要です',
+                      style: TextStyle(color: _pendingColor, fontSize: 12),
                     ),
                   ),
                 if (isHost && room.setting.gameArea.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 24),
                     child: Text(
-                      'プレイエリアが未設定です。「設定」からエリアを指定してください',
-                      style: TextStyle(color: _pendingColor),
+                      '「設定」でプレイエリアを指定してください',
+                      style: TextStyle(color: _pendingColor, fontSize: 12),
                     ),
                   ),
                 if (isHost && !allCalibrated && pendingNames.isNotEmpty)
@@ -656,7 +656,10 @@ class RoomWaitingPage extends HookConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Text(
                       'キャリブレーション未完了: ${pendingNames.join('、')}',
-                      style: const TextStyle(color: _pendingColor),
+                      style: const TextStyle(
+                        color: _pendingColor,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 if (isHost)
