@@ -641,10 +641,12 @@ class MissionClaimButton extends StatelessWidget {
   }
 }
 
-/// 「着いたことにする」(デバッグ用)を出してよいか。
+/// ミッションのデバッグ用のボタン(「着いたことにする」「ミッションを
+/// いますぐ出す」)を出してよいか。
 ///
-/// `flutter run --dart-define=DEBUG_MISSION=true` で起動したときだけtrue。
-/// リリースビルドでは定義があっても必ずfalse(本番で距離の判定を飛ばせない)。
+/// `flutter run --dart-define=DEBUG_MISSION=true` で起動したときだけtrue
+/// (`./scripts/run.sh --mission-debug`)。リリースビルドでは定義があっても
+/// 必ずfalse(本番で距離の判定や出す時刻を飛ばせない)。
 const bool debugMissionArrivalEnabled =
     !kReleaseMode && bool.fromEnvironment('DEBUG_MISSION');
 
@@ -670,6 +672,77 @@ class MissionDebugArrivalButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!enabled) return const SizedBox.shrink();
+    return _DebugDashedButton(label: '着いたことにする', onPressed: onPressed);
+  }
+}
+
+/// ミッションが出ていないときにカードの位置へ出す、デバッグ用の
+/// 「ミッションをいますぐ出す」(点線の枠)。押したら
+/// [showMissionDebugRoundPicker]で回を選ばせる。
+/// [enabled]がfalseなら何も描かない。既定は[debugMissionArrivalEnabled]。
+class MissionDebugCreateButton extends StatelessWidget {
+  /// [onPressed]がnullの間は押せない(書き込み中など)。
+  const MissionDebugCreateButton({
+    super.key,
+    required this.onPressed,
+    this.enabled = debugMissionArrivalEnabled,
+  });
+
+  /// 押したとき。
+  final VoidCallback? onPressed;
+
+  /// 出すか。テストからだけ差し替える。
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled) return const SizedBox.shrink();
+    return _DebugDashedButton(label: 'ミッションをいますぐ出す', onPressed: onPressed);
+  }
+}
+
+/// デバッグ用に、何回目のミッションを出すかを選ばせる。選ばなければnull。
+///
+/// 回ごとに地点の数が違う([debugMissionRoundChoices])ので、それも並べる。
+Future<int?> showMissionDebugRoundPicker(
+  BuildContext context, {
+  required int fugitiveCount,
+}) => showModalBottomSheet<int>(
+  context: context,
+  builder: (context) => SafeArea(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(
+            'どのミッションを出す?(デバッグ)',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+        ),
+        for (final choice in debugMissionRoundChoices(
+          fugitiveCount: fugitiveCount,
+        ))
+          ListTile(
+            leading: const Icon(Icons.flag_outlined),
+            title: Text('${choice.round}回目のミッション'),
+            subtitle: Text('地点 ${choice.spotCount}か所'),
+            onTap: () => Navigator.of(context).pop(choice.round),
+          ),
+      ],
+    ),
+  ),
+);
+
+/// デバッグ用のボタンの見た目(点線の枠・虫のアイコン・高さ44)。
+class _DebugDashedButton extends StatelessWidget {
+  const _DebugDashedButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
     return CustomPaint(
       painter: const _DashedBorderPainter(color: missionInk),
       child: Material(
@@ -678,17 +751,21 @@ class MissionDebugArrivalButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: onPressed,
-          child: const SizedBox(
+          child: SizedBox(
             width: double.infinity,
             height: 44,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.bug_report_outlined, size: 18, color: missionInk),
-                SizedBox(width: 6),
+                const Icon(
+                  Icons.bug_report_outlined,
+                  size: 18,
+                  color: missionInk,
+                ),
+                const SizedBox(width: 6),
                 Text(
-                  '着いたことにする',
-                  style: TextStyle(
+                  label,
+                  style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: missionInk,
