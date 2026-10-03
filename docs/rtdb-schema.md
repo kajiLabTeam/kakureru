@@ -186,6 +186,7 @@ RTDBの `.read`/`.write` 権限は、**アクセス先のパス自身か、そ�
 
 `scripts/cleanup-old-rooms/`(Node.js + `firebase-admin`)。`meta/createdAt` が7日(`--days` で変更可)以上前のルームを、`rooms/{roomId}` と `roomCodes/{code}` を1回の更新でまとめて削除する。
 
+- `rooms` は `meta/createdAt` で絞って読む。`database.rules.json` の `rooms/.indexOn: ["meta/createdAt"]` のルールをデプロイ済みでないと、`rooms` 全体をダウンロードしてから絞る(動くが重い)。**ルールのデプロイは人が行う**
 - **既定は dry-run**(削除対象を一覧するだけ)。`--apply` を付けたときだけ消す。まず dry-run の一覧を人が目で確認してから `--apply` を付けること
 - `meta/createdAt` が無いルームは古いか判断できないので**触らずスキップ**として表示する
 - `roomCodes/{code}` が**別のルームを指していたら消さない**(4桁コードは使い回されるため、新しいルームのコードを巻き込まない)
