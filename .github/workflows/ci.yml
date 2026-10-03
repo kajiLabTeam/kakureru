@@ -105,6 +105,35 @@ jobs:
       # 地図にウォーターマークが出るがCIでは表示を見ないので問題ない。
       - run: flutter build apk --debug
 
+  rules-test:
+    name: rules-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # Firebaseエミュレータ(database)はJavaで動く。firebase-tools 15 は JDK 21 以上を要求する。
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: rules-test/package-lock.json
+
+      - name: 依存関係
+        working-directory: rules-test
+        run: npm ci
+
+      # database.rules.json を変えたときに catches / catchPhotos のルールが壊れていないかを、
+      # ローカルのエミュレータ上で確かめる(demo-プロジェクトなので本番のFirebaseにはつながらない)。
+      - name: DBルールのテスト
+        working-directory: rules-test
+        run: npm test
+
   secret-scan:
     name: secret-scan
     runs-on: ubuntu-latest
