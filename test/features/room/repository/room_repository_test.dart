@@ -439,7 +439,7 @@ void main() {
   });
 
   group('RoomRepository.joinRoom 終了時刻の判定', () {
-    // statusをFINISHEDにするfinishRoomはまだどこからも呼ばれておらず、
+    // statusをFINISHEDにする処理は無く、
     // 遊び終えたルームはPLAYINGのままendsAtだけが過去になる。「先週の
     // コードで終わった部屋に入れてしまう」のはこの状態なので、ここが
     // 実際のガードになる。
