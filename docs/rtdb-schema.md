@@ -180,7 +180,36 @@ RTDBの `.read`/`.write` 権限は、**アクセス先のパス自身か、そ�
 - `users/{uid}` への書き込みは `createRoom` / `joinRoom` / `reportSensorAvailability` とも `update()` で行い、ノードごと置き換える `set()` を使わない(先に書かれた `pressureOffset` 等を消さないため)。例外は `createRoom` 失敗時のロールバックだけ
 - 退出者の `locations/{uid}`(最後の位置・Wi-Fiスキャン)は残る。消えないぶん古い値が残り続ける点に注意
 
-**ルームの掃除方針(未実装)**: 退出で消さない代わりに、**作成から7日以上たったルームを `rooms/{roomId}` ごと(と対応する `roomCodes/{code}` を)削除する**。個々の `users/{uid}` を消すことはしない。実装はPhase 2のCloud Functions(Admin SDK)かスクリプトで行う予定で、現時点では何も消えない。
+**ルームの掃除方針**: 退出で消さない代わりに、**作成から7日以上たったルームを `rooms/{roomId}` ごと(と対応する `roomCodes/{code}` を)削除する**。個々の `users/{uid}` を消すことはしない。Phase 2 の Cloud Functions ができるまでは、人が手で回すスクリプト(`scripts/cleanup-old-rooms/`)で行う。自動では動かない。
+
+### 古いルームの掃除スクリプト
+
+`scripts/cleanup-old-rooms/`(Node.js + `firebase-admin`)。`meta/createdAt` が7日(`--days` で変更可)以上前のルームを、`rooms/{roomId}` と `roomCodes/{code}` を1回の更新でまとめて削除する。
+
+- `rooms` は `meta/createdAt` で絞って読む。`database.rules.json` の `rooms/.indexOn: ["meta/createdAt"]` のルールをデプロイ済みでないと、`rooms` 全体をダウンロードしてから絞る(動くが重い)。**ルールのデプロイは人が行う**
+- **既定は dry-run**(削除対象を一覧するだけ)。`--apply` を付けたときだけ消す。まず dry-run の一覧を人が目で確認してから `--apply` を付けること
+- `meta/createdAt` が無いルームは古いか判断できないので**触らずスキップ**として表示する
+- `roomCodes/{code}` が**別のルームを指していたら消さない**(4桁コードは使い回されるため、新しいルームのコードを巻き込まない)
+- `rooms/` に対応するルームが無い、行き先の無い `roomCodes` の残骸は対象外(このスクリプトは `rooms` 起点で動く)
+- **写真の実体(R2)は消さない**。RTDB上の `photos` は `rooms/{roomId}` ごと消えるが、R2のオブジェクトはバケットの7日ライフサイクルルール([photo-storage.md](photo-storage.md))に任せる
+- 削除はルーム1件ごとに1回の更新。途中で失敗したら失敗した `roomId` を表示して中断する(再実行すれば残りだけ消える)。持ち主の確認から削除までの間にコードを取り直される競合は理屈の上では残るが、`roomCodes` の新規作成は既存コードがあると失敗するため実害はほぼ無い
+
+```sh
+cd scripts/cleanup-old-rooms
+npm install   # 初回のみ
+
+# 認証: サービスアカウント鍵(Firebase Console → プロジェクトの設定 → サービスアカウント)を
+# 人が発行し、そのファイルのパスを渡す。鍵はリポジトリの外に置き、コミットしない。
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccountKey.json
+export FIREBASE_DATABASE_URL=https://<project>-default-rtdb.<region>.firebasedatabase.app   # Realtime Database のURL
+
+npm start                       # dry-run: 一覧だけ(何も消さない)
+npm start -- --days 14          # 14日以上前を対象にする(dry-run)
+npm start -- --apply            # 実際に削除する
+npm test                        # スクリプトのテスト(Firebaseには接続しない)
+```
+
+エージェント(AI)は鍵を読まない・作らない・コミットしない(AGENTS.md 安全ルール2)。実データに対する実行は人が行う。
 
 ### テザリングのホットスポットの除外(issue #142)
 
@@ -199,7 +228,7 @@ SIMなしの研究室端末を各自のスマホのテザリングにつない�
 
 `main.dart` で `Firebase.initializeApp` の直後、他のFirebase利用より前に `enableDatabasePersistence`(`lib/core/utils/database_persistence.dart`)を1回だけ呼び、`setPersistenceEnabled(true)` にしている。通信が切れている間の書き込みは端末に溜まり、再接続時に送られる。二重呼び出しは関数内のフラグで防いでいる。
 
-**Phase 1 の間の既知の制約**: 削除処理が無いため、遊び終わったあとも `roomCodes/{code}` が残り続ける。4桁コードは9000通り(1000〜9999)しかないので、開発中に何度もルームを作り直していると枯渇しうる。Phase 2 実装までは、開発中に溜まった `roomCodes` / `rooms` を手動（Firebase Console）または簡単なクリーンアップスクリプトで消す運用が必要。
+**Phase 1 の間の既知の制約**: 削除処理が無いため、遊び終わったあとも `roomCodes/{code}` が残り続ける。4桁コードは9000通り(1000〜9999)しかないので、開発中に何度もルームを作り直していると枯渇しうる。Phase 2 実装までは、開発中に溜まった `roomCodes` / `rooms` を手動（Firebase Console）または上の「古いルームの掃除スクリプト」で消す運用が必要。
 
 ### Phase 1 の暫定措置: `locations/` をルームメンバーに開放
 

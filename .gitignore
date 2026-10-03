@@ -74,5 +74,8 @@ kakureru-photo-api/.wrangler/
 # rules-test (RTDBルールのエミュレータテスト)
 rules-test/node_modules/
 
+# 古いルームの掃除スクリプト
+scripts/cleanup-old-rooms/node_modules/
+
 # Widget Preview related
 .widget_preview/
