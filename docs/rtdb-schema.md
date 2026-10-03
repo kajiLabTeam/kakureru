@@ -161,13 +161,13 @@ RTDBの `.read`/`.write` 権限は、**アクセス先のパス自身か、そ�
 - 書き込み: `RoomRepository.createRoom` は `rooms/{roomId}/meta` → `setting` → `users/{uid}` の順で個別に `set()` する（`roomCodes` のホスト限定ルールが `meta/hostUserId` を参照するため、`meta` を最初に確定させる）
 - 読み取り: `RoomRepository.watchRoom` は `meta` / `setting` / `users` を個別に `onValue` 購読し、クライアント側で `Room` に合成する
 
-### ルーム終了(解散)は Phase 1 ではステータス変更のみ
+### ルーム終了(解散)は Phase 1 では何も消さない
 
 ホストが解散時に他ユーザーの `users/{uid}` を削除できるようにルールを緩めることは行わない。`users/{uid}` の書き込みを本人以外にも許可すると、`role` や `pressureOffset` を第三者が書き換えられる穴になるため。
 
-そのため `RoomRepository.finishRoom` は `meta/status` を `"FINISHED"` にし `meta/endedAt` を記録するだけで、`users` / `setting` / それ以外の `meta` / `roomCodes` の実データは削除しない。これらの削除は **Phase 2 の `finishGame` Cloud Function**（Admin SDK でルールをバイパスして全参加者分をまとめて消せる）に任せる。
+そのためクライアントからは `users` / `setting` / `meta` / `roomCodes` の実データを削除しない（解散用の `finishRoom` は呼び出し元が無かったため削除した。`meta/status` を `"FINISHED"` にする処理は現状どこにも無い）。これらの削除は **Phase 2 の `finishGame` Cloud Function**（Admin SDK でルールをバイパスして全参加者分をまとめて消せる）に任せる。
 
-**参加時のガード**: 残り続けるコードで終わった部屋に入ってしまわないよう、`RoomRepository.joinRoom` は `roomCodes/{code}` を引いた後に `rooms/{roomId}/meta` を読み、(1) `meta` が無い（ルームだけ手動削除された等）なら `notFound`、(2) そのルームが終了済みなら `finished` として参加させない。終了したかどうかの判定は画面側と同じ `isGameOver`（`status` が `"FINISHED"` / `endsAt` を過ぎた / `PLAYING` 中に逃走者が0人）に任せる——判定をここで書き直すと、片方だけ条件が増えたときに「画面では終わっているのに参加できる」ズレが生まれるため。`finishRoom` はまだどこからも呼ばれておらず、遊び終えた部屋は `status` が `"PLAYING"` のままなので、実際に効くのは残り2つ（時間切れ・全員捕まった）である。逃走者の有無を見るために `PLAYING` のときだけ `rooms/{roomId}/users` も読む。なおこのガードは完全な保証ではない: 読み取りから `users/{uid}` の書き込みまでの間に最後の逃走者が捕まるレースは残る（`rooms/{roomId}` をまたぐ原子的な読み書きが上記の理由でできないため）。
+**参加時のガード**: 残り続けるコードで終わった部屋に入ってしまわないよう、`RoomRepository.joinRoom` は `roomCodes/{code}` を引いた後に `rooms/{roomId}/meta` を読み、(1) `meta` が無い（ルームだけ手動削除された等）なら `notFound`、(2) そのルームが終了済みなら `finished` として参加させない。終了したかどうかの判定は画面側と同じ `isGameOver`（`status` が `"FINISHED"` / `endsAt` を過ぎた / `PLAYING` 中に逃走者が0人）に任せる——判定をここで書き直すと、片方だけ条件が増えたときに「画面では終わっているのに参加できる」ズレが生まれるため。`status` を `"FINISHED"` にする処理は現状無く、遊び終えた部屋は `status` が `"PLAYING"` のままなので、実際に効くのは残り2つ（時間切れ・全員捕まった）である。逃走者の有無を見るために `PLAYING` のときだけ `rooms/{roomId}/users` も読む。なおこのガードは完全な保証ではない: 読み取りから `users/{uid}` の書き込みまでの間に最後の逃走者が捕まるレースは残る（`rooms/{roomId}` をまたぐ原子的な読み書きが上記の理由でできないため）。
 
 ### 退出してもデータは消さない
 
@@ -357,7 +357,7 @@ npm test
 - `released` / `game_ended` は全端末で同じ判定が回るため、重複を避けてホスト端末だけが書く。`at` は「ホスト端末が検知した時刻」で、バックグラウンド等で遅れうる。正確な予定時刻は `meta/releasedAt` / `meta/endsAt` を使うこと。ホストのアプリが閉じていると記録されない
 - `catch` の `lat`/`lng`/`accuracy` は、その時点で鬼が最後に送った `locations/{uid}` の値。`pressure` は端末の最新の気圧(取れなければ `locations/{uid}/pressure`)
 - 各イベントには記録時点の `displayName` を入れる。呼び出し側が渡さなければ `users/{uid}/displayName` を読んで補い、読めなければ省く(イベント自体は記録する)
-- `meta/endedAt` は `finishRoom` がどこからも呼ばれていないため現状書かれない。終了時刻は `game_ended` イベントか `meta/endsAt`(全員捕獲で早期終了した場合は最後の `catch`)から求める
+- `meta/endedAt` は書き込む処理が現状無い(`restartRoom` がクリアするだけ)ため書かれない。終了時刻は `game_ended` イベントか `meta/endsAt`(全員捕獲で早期終了した場合は最後の `catch`)から求める
 
 ### ミッションとごほうび(`missions` / `effects`)
 

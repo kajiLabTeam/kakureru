@@ -140,14 +140,6 @@ class RoomRepository {
     throw RoomCreateError.codeExhausted;
   }
 
-  /// ルームを終了状態にする(解散)。
-  Future<void> finishRoom(String roomId) async {
-    await _db.ref('rooms/$roomId/meta').update({
-      'status': RoomStatus.finished.raw,
-      'endedAt': ServerValue.timestamp,
-    });
-  }
-
   /// ホストがゲームを開始する。
   Future<void> startGame(String roomId) async {
     await _db.ref('rooms/$roomId/meta/startedAt').set(ServerValue.timestamp);
@@ -446,9 +438,9 @@ class RoomRepository {
   ///    「画面では終わっているのに参加できる」ズレが生まれるため)
   ///
   /// 実際に効くのは`status`が`FINISHED`になる経路ではなく、残りの2つ。
-  /// `status`を`FINISHED`にする[finishRoom]はまだ呼ばれておらず、遊び
-  /// 終えたルームは`PLAYING`のまま`endsAt`が過去になるか、全員が捕まって
-  /// 逃走者0人になるかのどちらかで終わる。
+  /// 現状`status`を`FINISHED`にする処理は無く、遊び終えたルームは`PLAYING`の
+  /// まま`endsAt`が過去になるか、全員が捕まって逃走者0人になるかの
+  /// どちらかで終わる。
   ///
   /// まだ終わっていない進行中([RoomStatus.playing])のルームへの途中参加は
   /// 従来どおり許可する。失敗理由は[RoomJoinError]で投げる(画面側で日本語に
