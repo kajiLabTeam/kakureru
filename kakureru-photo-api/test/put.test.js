@@ -66,7 +66,7 @@ test("同じキーへの2回目のPUTは409で、中身は上書きされない"
   const env = { PHOTOS, FIREBASE_PROJECT_ID: PROJECT };
   assert.equal((await put(env, "u1", new Uint8Array([1]))).status, 204);
   assert.equal((await put(env, "u2", new Uint8Array([9]))).status, 409);
-  assert.deepEqual([...PHOTOS.store.get("rooms/r1/p1.jpg")], [1]);
+  assert.deepEqual([...new Uint8Array(PHOTOS.store.get("rooms/r1/p1.jpg"))], [1]);
 });
 
 test("同時に来た2件のPUTは片方だけ成功する", async () => {
