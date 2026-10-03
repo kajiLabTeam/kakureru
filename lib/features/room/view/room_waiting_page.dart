@@ -688,6 +688,11 @@ class RoomWaitingPage extends HookConsumerWidget {
                       ),
                     ),
                   ),
+                // Android 15以降は画面がナビゲーションバーの下まで広がるので、
+                // 最下部の文字・ボタンがバーに潜らないよう、バーの高さぶん
+                // 空ける(issue #136)。他の画面のようにSafeAreaで包むと、
+                // 入れ子の深い参加者の行が1行80字に収まらなくなるため。
+                SizedBox(height: MediaQuery.paddingOf(context).bottom),
               ],
             );
           },
@@ -753,8 +758,11 @@ class _CalibrationSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // ホスト以外はこの欄が画面の最下部に来るので、ホストの「ゲーム開始」
+    // ボタンと同じだけ下を空け、ナビゲーションバーに張り付かないようにする
+    // (issue #167)。
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: EdgeInsets.fromLTRB(24, 8, 24, isHost ? 8 : 24),
       child: _buildMyStatus(ref),
     );
   }

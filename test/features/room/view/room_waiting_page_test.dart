@@ -20,6 +20,8 @@ import 'package:kakureru/features/room/view_model/room_view_model.dart';
 import 'package:kakureru/features/wifi/model/wifi_scan_status.dart';
 import 'package:kakureru/features/wifi/view_model/wifi_view_model.dart';
 
+import '../../../helpers/fake_navigation_bar.dart';
+
 const _roomId = 'room1';
 const _myUid = 'host';
 
@@ -487,6 +489,45 @@ void main() {
             )
             .onPressed,
         isNull,
+      );
+    });
+
+    // ホスト以外は下に「ゲーム開始」が無く、このボタンが最下部に来る。
+    testWidgets('ホスト以外の端末でもナビゲーションバーに重ならない (issue #167)', (tester) async {
+      fakeNavigationBar(tester);
+      await _pumpWaitingPage(
+        tester,
+        roomRepo: _FakeRoomRepository(),
+        pressureViewModel: _FakePressureViewModel(
+          initialState: const PressureState(
+            sensorAvailability: PressureSensorAvailability.available,
+            myPressureHPa: 1013,
+          ),
+        ),
+        initialRoom: _room(
+          basePressure: 1013,
+          users: const [
+            RoomUser(
+              id: 'other-host',
+              displayName: 'ホスト',
+              isHost: true,
+              pressureSensorAvailable: true,
+            ),
+            RoomUser(
+              id: _myUid,
+              displayName: '自分',
+              pressureSensorAvailable: true,
+            ),
+          ],
+        ).copyWith(hostUserId: 'other-host'),
+      );
+
+      expect(find.widgetWithText(FilledButton, 'ゲーム開始'), findsNothing);
+      // バーに重ならないだけでなく、「ゲーム開始」と同じ24pxは離れている。
+      expectAboveNavigationBar(
+        tester,
+        find.widgetWithText(FilledButton, 'キャリブレーションする(未実施)'),
+        height: 48 + 24,
       );
     });
   });
