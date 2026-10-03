@@ -21,11 +21,11 @@ String effectBandText(RewardType type, {required UserRole? viewerRole}) {
   final isDemon = viewerRole == UserRole.demon;
   return switch (type) {
     RewardType.blockClues => isDemon ? '逃走者のごほうびで止められている' : '鬼の手がかりを止めている',
-    RewardType.bigDemonIcon => isDemon ? '逃走者の地図で鬼が大きく出ている' : '鬼のアイコンを大きくしている',
     // 本人にだけ出す帯なので、鬼視点の文言は使われない。
-    RewardType.enlargeSelfIcon => 'あなたのアイコンが大きくなっている',
-    // 回数ものは帯に出さない(呼ばれない)が、switchを網羅するために置く。
+    RewardType.enlargeSelfIcon => 'みんなの地図であなたのアイコンが大きくなっている',
+    // 回数もの・ハズレは帯に出さない(呼ばれない)が、switchを網羅するために置く。
     RewardType.skipFootPhoto => '足元写真を1回まぬがれる',
+    RewardType.miss => 'ハズレ',
   };
 }
 

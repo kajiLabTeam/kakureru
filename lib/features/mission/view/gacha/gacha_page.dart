@@ -986,7 +986,7 @@ class _ConfirmedOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final seconds = reward.duration.inSeconds;
+    final durationLabel = reward.durationLabel;
     return ColoredBox(
       color: const Color(0xF00A0806),
       child: Stack(
@@ -1156,12 +1156,14 @@ class _ConfirmedOverlay extends StatelessWidget {
                                 : _blue,
                             foreground: Colors.white,
                           ),
-                          const SizedBox(width: 7),
-                          _DarkTag(
-                            label: seconds > 0 ? '$seconds秒' : '1回',
-                            background: gachaGold,
-                            foreground: const Color(0xFF241A0B),
-                          ),
+                          if (durationLabel != null) ...[
+                            const SizedBox(width: 7),
+                            _DarkTag(
+                              label: durationLabel,
+                              background: gachaGold,
+                              foreground: const Color(0xFF241A0B),
+                            ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -1239,7 +1241,6 @@ class _MissedOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final seconds = reward.duration.inSeconds;
     return ColoredBox(
       color: const Color(0xF00A0806),
       child: Stack(
@@ -1288,8 +1289,8 @@ class _MissedOverlay extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              // 特典カードは当たりと同じ見た目で出す(ハズレも何が起きて
-              // いるかは必ず伝える)。
+              // 特典カードは当たりと同じ見た目で出す(ハズレは何も起きない
+              // ことを必ず伝える)。
               AnimatedBuilder(
                 animation: confirm,
                 builder: (context, child) {
@@ -1324,12 +1325,6 @@ class _MissedOverlay extends StatelessWidget {
                             background: _red,
                             foreground: Colors.white,
                           ),
-                          const SizedBox(width: 7),
-                          _DarkTag(
-                            label: seconds > 0 ? '$seconds秒' : '1回',
-                            background: gachaGold,
-                            foreground: const Color(0xFF241A0B),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -1355,17 +1350,6 @@ class _MissedOverlay extends StatelessWidget {
                       ),
                     ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              FadeTransition(
-                opacity: CurvedAnimation(
-                  parent: confirm,
-                  curve: const Interval(0.8, 1),
-                ),
-                child: const Text(
-                  '効果はもう出ている',
-                  style: TextStyle(fontSize: 11, color: _muted),
                 ),
               ),
             ],

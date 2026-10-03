@@ -62,7 +62,7 @@ RoomEffect? activeEffectOf(
 
 /// いま効いている、時間で効く効果の一覧(地図の上の帯に出すもの)。
 ///
-/// `enlarge_self_icon`(ハズレ)は除く。これは `byUid` の本人にだけ出す
+/// `enlarge_self_icon`(自分のアイコンを大きくする)は除く。これは `byUid` の本人にだけ出す
 /// 個人向けの表示のため、ここでは全体から1件だけ選んでしまうと複数の
 /// 逃走者が同時に引いたときに他の人の分が隠れてしまう([activeEnlargeSelfIconEffectFor]を使うこと)。
 List<RoomEffect> activeTimedEffects(
@@ -89,8 +89,8 @@ RoomEffect? activeEnlargeSelfIconEffectFor(
   );
 }
 
-/// いま `enlarge_self_icon` が効いている逃走者のuid一覧。鬼の地図でその
-/// 逃走者のピンを大きくする対象を決めるために使う(複数人が同時に効いて
+/// いま `enlarge_self_icon` が効いている人のuid一覧。全員の地図でその
+/// 人のピンを大きくする対象を決めるために使う(複数人が同時に効いて
 /// いることもあるため、1件に絞らず集合で返す)。
 Set<String> activeEnlargeSelfIconUids(
   List<RoomEffect> effects, {

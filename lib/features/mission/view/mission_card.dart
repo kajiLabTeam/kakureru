@@ -558,11 +558,11 @@ class RewardTargetTag extends StatelessWidget {
   }
 }
 
-/// 「鬼をジャマする」「自分がトクする」「自分がソンする」。
+/// 「鬼をジャマする」「自分がトクする」「ハズレ」。
 String rewardTargetLabel(RewardTarget target) => switch (target) {
   RewardTarget.demon => '鬼をジャマする',
   RewardTarget.self => '自分がトクする',
-  RewardTarget.selfMiss => '自分がソンする',
+  RewardTarget.selfMiss => 'ハズレ',
 };
 
 /// 地図の下寄せに出す「ごほうびガチャを引く」ボタン(モック2)。押す場所は1か所で、

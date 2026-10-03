@@ -142,7 +142,7 @@ void main() {
     });
 
     testWidgets('ハズレは激熱を出さず、短い演出で赤い「残念」になる', (tester) async {
-      await _pumpGacha(tester, reward: RewardType.enlargeSelfIcon);
+      await _pumpGacha(tester, reward: RewardType.miss);
       expect(find.text('まわしてる…'), findsOneWidget);
 
       await tester.pump(const Duration(milliseconds: 1600));
@@ -156,8 +156,10 @@ void main() {
       expect(find.text('残念'), findsOneWidget);
 
       await tester.pump(gachaMissedDuration);
-      expect(find.text('ハズレ'), findsOneWidget);
-      expect(find.text('効果はもう出ている'), findsOneWidget);
+      expect(find.text('なにも起きない'), findsOneWidget);
+      // 何も起きないので、時間のタグも「効果はもう出ている」も出さない。
+      expect(find.text('1回'), findsNothing);
+      expect(find.text('効果はもう出ている'), findsNothing);
     });
 
     testWidgets('ハンドルの途中でタップ1回すると、特典カードまで飛ばせる', (tester) async {

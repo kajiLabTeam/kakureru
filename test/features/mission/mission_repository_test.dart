@@ -226,15 +226,16 @@ void main() {
       final db = _dbWithMission();
       db
         ..write('$_spotPath/claimedBy', 'alice')
-        ..write('$_spotPath/reward', 'big_demon_icon');
+        ..write('$_spotPath/reward', 'enlarge_self_icon');
 
       final reward = await _repo(
         db,
         'alice',
       ).completeClaim(_roomId, 'm1', 's0');
 
-      expect(reward, RewardType.bigDemonIcon);
-      expect(db.read('$_effectPath/type'), 'big_demon_icon');
+      expect(reward, RewardType.enlargeSelfIcon);
+      expect(db.read('$_effectPath/type'), 'enlarge_self_icon');
+      expect(db.read('$_effectPath/durationMs'), 150000);
     });
 
     test('ほかの人が取った地点は受け取れない', () async {

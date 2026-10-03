@@ -89,7 +89,7 @@ void main() {
     });
   });
 
-  group('enlarge_self_icon(ハズレ)', () {
+  group('enlarge_self_icon(自分のアイコンを大きくする)', () {
     test('activeEnlargeSelfIconEffectForは自分が引いた分だけ返す', () {
       final mine = _effect(
         id: 'mine',
@@ -122,7 +122,7 @@ void main() {
       );
     });
 
-    test('activeEnlargeSelfIconUidsは効いている全員のuidを返す(鬼の地図用)', () {
+    test('activeEnlargeSelfIconUidsは効いている全員のuidを返す(全員の地図用)', () {
       final a = _effect(
         id: 'a',
         type: RewardType.enlargeSelfIcon,
@@ -138,6 +138,7 @@ void main() {
         type: RewardType.enlargeSelfIcon,
         byUid: 'carol',
         startedAt: 0,
+        durationMs: 30000,
       );
       expect(
         activeEnlargeSelfIconUids(

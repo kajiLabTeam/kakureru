@@ -146,7 +146,7 @@ class RewardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final seconds = reward.duration.inSeconds;
+    final durationLabel = reward.durationLabel;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -161,24 +161,25 @@ class RewardCard extends StatelessWidget {
             children: [
               RewardTargetTag(target: reward.target, fontSize: 11),
               const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: missionSoft,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  seconds > 0 ? '$seconds秒' : '1回',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: missionInk,
+              if (durationLabel != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: missionSoft,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    durationLabel,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: missionInk,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -267,9 +268,9 @@ class _OtherRewardRow extends StatelessWidget {
 /// ごほうびのアイコン。
 IconData rewardIcon(RewardType reward) => switch (reward) {
   RewardType.blockClues => Icons.wifi_off,
-  RewardType.bigDemonIcon => Icons.zoom_out_map,
+  RewardType.enlargeSelfIcon => Icons.zoom_out_map,
   RewardType.skipFootPhoto => Icons.no_photography_outlined,
-  RewardType.enlargeSelfIcon => Icons.personal_injury_outlined,
+  RewardType.miss => Icons.sentiment_dissatisfied_outlined,
 };
 
 class _RewardIcon extends StatelessWidget {

@@ -399,11 +399,11 @@ void main() {
     expect(find.text('ごほうびをひいた！'), findsOneWidget);
     expect(find.text('鬼の手がかりを止める'), findsOneWidget);
     expect(find.text('30秒'), findsOneWidget);
-    expect(find.text('鬼のアイコンを大きくする'), findsOneWidget);
+    expect(find.text('自分のアイコンを大きくする'), findsOneWidget);
     expect(find.text('足元写真を1回まぬがれる'), findsOneWidget);
-    // 引いたごほうびとほかの鬼に効くごほうびで2つ、自分に効くもので1つ。
-    expect(find.text('鬼をジャマする'), findsNWidgets(2));
-    expect(find.text('自分がトクする'), findsOneWidget);
+    // 鬼に効くのは引いたごほうびだけ。自分に効くものが2つ。
+    expect(find.text('鬼をジャマする'), findsOneWidget);
+    expect(find.text('自分がトクする'), findsNWidgets(2));
     expect(find.text('地図にもどる'), findsOneWidget);
   });
 

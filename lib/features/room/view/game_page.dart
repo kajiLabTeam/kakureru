@@ -909,26 +909,14 @@ class GamePage extends HookConsumerWidget {
                       )
                     : const <WifiApComparison>[];
 
-                // 特典の効果(ミッション)。鬼のアイコンを大きくする効果は
-                // 逃走者の地図で鬼のピンを2倍にする(鬼の手がかりを止める
-                // 効果は、相手選びの前で見ている)。
-                final enlargeDemonIcon =
-                    myRole == UserRole.fugitive &&
-                    activeEffectOf(
-                          roomEffects,
-                          RewardType.bigDemonIcon,
-                          serverNowMillis: now,
-                        ) !=
-                        null;
-                // ハズレ「あなたのアイコンが大きくなる」。鬼の地図で、引いた
-                // 逃走者のピンを2倍にする(鬼側だけに渡す。逃走者には渡さない)。
-                final enlargedFugitiveUids = myRole == UserRole.demon
-                    ? activeEnlargeSelfIconUids(
-                        roomEffects,
-                        serverNowMillis: now,
-                      )
-                    : const <String>{};
-                // 自分がハズレを引いていれば、本人向けの通知に使う。
+                // 特典の効果(ミッション)。「自分のアイコンを大きくする」は
+                // 全員の地図で、引いた人のピンを2倍にする(鬼の手がかりを
+                // 止める効果は、相手選びの前で見ている)。
+                final enlargedUserUids = activeEnlargeSelfIconUids(
+                  roomEffects,
+                  serverNowMillis: now,
+                );
+                // 自分が引いていれば、本人向けの通知に使う。
                 final myEnlargeSelfIconEffect = activeEnlargeSelfIconEffectFor(
                   roomEffects,
                   uid: myUid,
@@ -975,7 +963,7 @@ class GamePage extends HookConsumerWidget {
                             ? findUser(room.users, effect.byUid)?.displayName
                             : null,
                       ),
-                    // ハズレ「あなたのアイコンが大きくなる」は本人にだけ出す
+                    // 「自分のアイコンを大きくする」は本人にだけ出す
                     // 個人向けの帯(他の帯と違い全員共通では出さない)。
                     if (myEnlargeSelfIconEffect != null)
                       EffectBand(
@@ -1044,7 +1032,7 @@ class GamePage extends HookConsumerWidget {
                                       myUid: myUid,
                                       cachedPosition: cachedPosition.value,
                                       gameArea: room.setting.gameArea,
-                                      enlargedUserUids: enlargedFugitiveUids,
+                                      enlargedUserUids: enlargedUserUids,
                                       // 地図に出し続ける地点を[visibleMissionSpots]
                                       // に任せる(issue #155。自分が取った
                                       // 地点を除き、ミッションが終わったら
@@ -1064,7 +1052,6 @@ class GamePage extends HookConsumerWidget {
                                               claimed: spot.claimedBy != null,
                                             ),
                                       ],
-                                      enlargeDemonIcon: enlargeDemonIcon,
                                     ),
                                   ),
                                   if (mission != null &&

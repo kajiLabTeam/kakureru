@@ -35,9 +35,11 @@ const missionLastMinuteWarning = Duration(minutes: 1);
 /// 取られた」「ごほうびを引いた」)を出しておく時間。
 const finishedMissionCardDuration = Duration(seconds: 15);
 
-/// 時間で効くごほうび(鬼の手がかりを止める・鬼のアイコンを大きくする)の
-/// 効いている時間。
+/// 時間で効くごほうび(鬼の手がかりを止める)の効いている時間。
 const rewardEffectDuration = Duration(seconds: 30);
+
+/// ごほうび「自分のアイコンを大きくする」の効いている時間。
+const enlargeSelfIconDuration = Duration(minutes: 2, seconds: 30);
 
 /// アプリ内のお知らせ(バナー)を出しておく時間。
 const missionBannerDuration = Duration(seconds: 8);
