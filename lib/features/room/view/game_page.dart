@@ -334,7 +334,7 @@ class GamePage extends HookConsumerWidget {
         }
       }
 
-      loadCached();
+      unawaited(loadCached());
       return null;
     }, const []);
 

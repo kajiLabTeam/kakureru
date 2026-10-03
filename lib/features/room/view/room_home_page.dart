@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -117,9 +119,11 @@ class RoomHomePage extends HookConsumerWidget {
                       ? null
                       : () {
                           isCreating.value = true;
-                          ref
-                              .read(roomViewModelProvider.notifier)
-                              .createRoom(nameController.text);
+                          unawaited(
+                            ref
+                                .read(roomViewModelProvider.notifier)
+                                .createRoom(nameController.text),
+                          );
                         },
                   child: isCreating.value
                       ? const _ButtonSpinner()
@@ -168,12 +172,14 @@ class RoomHomePage extends HookConsumerWidget {
                           ? null
                           : () {
                               isJoining.value = true;
-                              ref
-                                  .read(roomViewModelProvider.notifier)
-                                  .joinRoom(
-                                    codeController.text,
-                                    nameController.text,
-                                  );
+                              unawaited(
+                                ref
+                                    .read(roomViewModelProvider.notifier)
+                                    .joinRoom(
+                                      codeController.text,
+                                      nameController.text,
+                                    ),
+                              );
                             },
                       child: isJoining.value
                           ? const _ButtonSpinner()

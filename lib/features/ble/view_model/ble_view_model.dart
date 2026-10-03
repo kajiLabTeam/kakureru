@@ -166,7 +166,7 @@ class BleViewModel extends Notifier<Map<String, BleDetection>> {
     _sinceRestart = null;
     _periodicRestart?.cancel();
     _periodicRestart = null;
-    _sub?.cancel();
+    unawaited(_sub?.cancel());
     _sub = null;
     _rssiHistory.clear();
     _repo.stopScanning();

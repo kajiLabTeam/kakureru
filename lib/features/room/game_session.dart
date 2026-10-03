@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -33,8 +35,8 @@ void useGameSession(
   // 走らないまま**画面を離れることになる(例外はhooksが握るので画面には
   // 何も出ない。issue #93)。
   useEffect(() {
-    final location = ref.read(locationViewModelProvider.notifier)
-      ..start(roomId);
+    final location = ref.read(locationViewModelProvider.notifier);
+    unawaited(location.start(roomId));
     return location.stop;
   }, [roomId]);
 
@@ -48,9 +50,9 @@ void useGameSession(
   // 気圧の送信。センサー購読自体は待機画面のキャリブレーションで既に
   // 始まっている想定(PressureViewModel.initは判定済みなら再判定しない)。
   useEffect(() {
-    final pressure = ref.read(pressureViewModelProvider.notifier)
-      ..init(roomId)
-      ..startSendingToRoom(roomId);
+    final pressure = ref.read(pressureViewModelProvider.notifier);
+    unawaited(pressure.init(roomId));
+    pressure.startSendingToRoom(roomId);
     return pressure.stopSendingAndDispose;
   }, [roomId]);
 
@@ -84,7 +86,8 @@ void useGameSession(
   // (FirebaseAuthの復元前など)は開始できない。
   useEffect(() {
     if (myUid == null) return null;
-    final ble = ref.read(bleViewModelProvider.notifier)..start(myUid);
+    final ble = ref.read(bleViewModelProvider.notifier);
+    unawaited(ble.start(myUid));
     return ble.stop;
   }, [myUid]);
 }
@@ -127,7 +130,7 @@ void useLocationRetryOnResume(WidgetRef ref, {required String roomId}) {
 
     final location = ref.read(locationViewModelProvider);
     if (location.failure == LocationFailure.none) return;
-    ref.read(locationViewModelProvider.notifier).start(roomId);
+    unawaited(ref.read(locationViewModelProvider.notifier).start(roomId));
   });
 }
 

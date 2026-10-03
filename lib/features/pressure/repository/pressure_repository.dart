@@ -90,9 +90,9 @@ class PressureRepository {
   /// センサー購読を完全に止める。ルーム全体から離れる時に呼ぶこと。
   void disposeSensor() {
     stopSendingToRoom();
-    _sensorSub?.cancel();
+    unawaited(_sensorSub?.cancel());
     _sensorSub = null;
-    _smoothedController?.close();
+    unawaited(_smoothedController?.close());
     _smoothedController = null;
     _movingAverage = null;
     _latestSmoothed = null;

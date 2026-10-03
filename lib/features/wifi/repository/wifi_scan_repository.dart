@@ -227,7 +227,7 @@ class WifiScanRepository {
     _session++;
     _lastUsesTethering = defaultUsesTethering;
     _lastHotspotBssid = null;
-    _resultsSub?.cancel();
+    unawaited(_resultsSub?.cancel());
     _resultsSub = null;
   }
 }
