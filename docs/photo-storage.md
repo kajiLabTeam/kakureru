@@ -21,7 +21,7 @@ R2の無料枠（2026年時点）：
 | 項目 | 無料枠 | 上記シナリオでの使用量 |
 |---|---|---|
 | 保存容量 | 10GB | 360枚 × 最大2MB ≈ 最大720MB（実際はJPEG圧縮でこれより小さい） |
-| Class A operations（書き込み系: `put`, `head`など） | 100万回/月 | 360回 + 409衝突チェックの`head`360回 ≈ 720回/セッション |
+| Class A operations（書き込み系: `put`, `head`など） | 100万回/月 | 360回/セッション（409判定は`put`の`onlyIf`で行うため`head`は不要） |
 | Class B operations（読み込み系: `get`） | 1000万回/月 | 10,800回/セッション |
 | Egress（読み出し転送量） | 無料（無制限） | 約5.3GB/セッション |
 
@@ -58,10 +58,10 @@ JWK（`https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gse
 RS256署名をWorker内で直接検証する（`aud`=プロジェクトID `kakureru-b8545`、`iss`=`https://securetoken.google.com/kakureru-b8545`、
 `exp`が未来であることを確認）。
 
-R2上のキーは `rooms/{roomId}/{photoId}.jpg`。
+R2上のキーは `rooms/{roomId}/{photoId}.jpg`。保存時の `Cache-Control` は `private, max-age=31536000, immutable`（共有キャッシュに残さない。上書き禁止なので同じキーの中身は変わらず、端末側キャッシュは長くてよい）。
 
 **Phase 1では「認証済みユーザーなら誰でもどのルームの写真も読み書きできる」**（RTDBの `photos` ノードを
-認証済み全員に開放しているのと同じ方針）。同一キーへの上書きは409で禁止しているため、他人の写真を後から
+認証済み全員に開放しているのと同じ方針）。同一キーへの上書きは409で禁止しているため（R2の`put`の`onlyIf: { etagDoesNotMatch: "*" }`で存在確認と書き込みを1回の操作にしており、同時リクエストでもすり抜けない）、他人の写真を後から
 差し替えることはできないが、他人のルームの写真を閲覧・新規アップロードすること自体は防いでいない。
 
 ## RTDB側のメタデータ
