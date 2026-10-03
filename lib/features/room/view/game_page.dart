@@ -12,6 +12,7 @@ import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/mission/effect_rules.dart';
 import 'package:kakureru/features/mission/mission_rules.dart';
+import 'package:kakureru/features/mission/mission_timing.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/repository/mission_repository.dart';
@@ -163,10 +164,9 @@ class GamePage extends HookConsumerWidget {
       return timer.cancel;
     }, const []);
 
-    // 鬼の「捕まえた」(issue #140)。送信中はボタンをローディング表示にし、
-    // 成功したら撮影画面(CatchCapturePage)を開く。撮影画面を開いている間は
-    // ゲーム終了の自動遷移を止める(captureOpen)。
-    final catchAction = useAsyncAction(context);
+    // 鬼の「捕まえた」(issue #140)。選択シート・撮影画面(CatchCapturePage)を
+    // 開いている間は、ボタンを押せなくし、ゲーム終了の自動遷移を止める
+    // (captureOpen。handleCatchPressed参照)。
     final captureOpen = useState(false);
 
     // ミッションの「特典を引く」。送信中はボタンをローディング表示にし、
@@ -289,6 +289,17 @@ class GamePage extends HookConsumerWidget {
     final myLastPhotoAt = myUid == null
         ? null
         : findUser(room?.users ?? const [], myUid)?.lastPhotoAt;
+    // 特典「足元写真を1回まぬがれる」で飛ばすスロット。撮影プロンプトと
+    // 写真一覧(まぬがれたスロットも撮った扱いにする。issue #157)の両方で使う。
+    final skippedPhotoSlots = skippedFootPhotoSlots(
+      effects: roomEffects,
+      myUid: myUid,
+      scheduleStartMillis: photoScheduleStartMillis(
+        releasedAt: room?.releasedAt,
+        intervalSec: photoIntervalSec,
+      ),
+      intervalSec: photoIntervalSec,
+    );
     final photoCapture = usePhotoCaptureController(
       context,
       roomId: roomId,
@@ -299,16 +310,7 @@ class GamePage extends HookConsumerWidget {
       lastPhotoAt: myLastPhotoAt,
       // 鬼も逃走者も撮る(issue #140)。
       notifyWhenDue: takesFootPhotos(roleOf(room?.users ?? const [], myUid)),
-      // 特典「足元写真を1回まぬがれる」で飛ばすスロット。
-      skippedSlots: skippedFootPhotoSlots(
-        effects: roomEffects,
-        myUid: myUid,
-        scheduleStartMillis: photoScheduleStartMillis(
-          releasedAt: room?.releasedAt,
-          intervalSec: photoIntervalSec,
-        ),
-        intervalSec: photoIntervalSec,
-      ),
+      skippedSlots: skippedPhotoSlots,
     );
 
     // GPSの実測(getPositionStream)は初回の測位に時間がかかる(コールドスタート)。
@@ -417,6 +419,29 @@ class GamePage extends HookConsumerWidget {
     final missionReading = mission == null
         ? null
         : readAccessPoint(spot: missionTargetSpot, location: myLocation);
+
+    // ミッションのお知らせバナーを、出してしばらくしたら小さいアイコンに
+    // 畳む(issue #155)。開閉そのものは画面内で完結する一時状態なので
+    // hooksで持つ(AGENTS.md規約)。新しいお知らせが来たら(keyが変わったら)
+    // 展開し直し、[missionBannerDuration]後にまた畳む。
+    final missionBannerCollapsed = useState(false);
+    useEffect(() {
+      if (missionBanner == null) return null;
+      missionBannerCollapsed.value = false;
+      final timer = Timer(missionBannerDuration, () {
+        missionBannerCollapsed.value = true;
+      });
+      return timer.cancel;
+    }, [missionBanner?.key]);
+
+    // ミッションのカードを折りたたんでいるか(issue #155。地図を隠す
+    // 面積を減らす)。これも画面内で完結する一時状態なのでhooksで持つ。
+    // 新しいミッションが始まったら開いた状態に戻す。
+    final missionCardExpanded = useState(true);
+    useEffect(() {
+      missionCardExpanded.value = true;
+      return null;
+    }, [mission?.id]);
 
     // 特典が「足元写真を1回まぬがれる」だったときに飛ばすスロット。押した
     // 瞬間の撮影バナーの状態で決め、効果に書いておく(後から撮り直しても
@@ -556,82 +581,98 @@ class GamePage extends HookConsumerWidget {
       }
     }
 
-    // 「捕まえた」の処理(issue #140)。相手と場所を選ぶ→捕獲を書く→
-    // 撮影画面を開く。onPressed直下に書くとネストが深くなりすぎるため
+    // 「捕まえた」の処理(issue #140)。相手と場所を選ぶ→撮影画面で写真を
+    // 撮って送る→そこで初めて捕獲を書く。撮らずに戻ったら選択からやり直す
+    // (runCatchFlow)。onPressed直下に書くとネストが深くなりすぎるため
     // 独立した関数にしている。
     //
-    // 失敗はuseAsyncActionのerrorにも入るが、この画面では地図が主役で
-    // エラー行を置く場所が無いためSnackBarで出す。
+    // 選択シート・撮影画面を開いている間はcaptureOpenを立て、ゲーム終了の
+    // 自動遷移を止める。最後の逃走者を捕まえた場合、reportCatchの書き込みは
+    // RTDBのローカルリスナーへ即座に流れるため、撮影画面を閉じる前に
+    // 結果画面へ飛ばないようにするため(issue #154)。同期的に立てるので
+    // 二重押しもここで弾ける。
     Future<void> handleCatchPressed(List<CatchCandidate> candidates) async {
-      final choice = await showCatchTargetSheet(
-        context,
-        candidates: candidates,
-      );
-      if (choice == null || !context.mounted) return;
+      if (captureOpen.value) return;
+      captureOpen.value = true;
 
-      String? catchId;
-      final result = await catchAction.run(() async {
-        catchId = await ref
+      // 捕獲を書き、分析用のイベントログ(鬼のそのときの位置・GPS精度・
+      // 気圧)を添える(ログはfire-and-forget)。
+      Future<String> reportCatch(CatchTargetChoice choice) async {
+        final catchId = await ref
             .read(roomRepositoryProvider)
             .reportCatch(roomId, fugitiveUid: choice.uid);
-      });
-      // 分析用のイベントログ。捕獲が書けたときだけ、鬼のそのときの位置・
-      // GPS精度・気圧を添えて記録する(fire-and-forget)。
-      if (result.status == AsyncActionStatus.succeeded && myUid != null) {
-        unawaited(
-          ref
-              .read(eventLogRepositoryProvider)
-              .log(
-                roomId,
-                type: GameEventType.caught,
-                uid: myUid,
-                targetUid: choice.uid,
-                lat: myLocation?.latitude,
-                lng: myLocation?.longitude,
-                accuracy: myLocation?.accuracy,
-                pressure: pressureState.myPressureHPa ?? myLocation?.pressure,
-                indoor: choice.indoor,
-              ),
-        );
+        if (myUid != null) {
+          unawaited(
+            ref
+                .read(eventLogRepositoryProvider)
+                .log(
+                  roomId,
+                  type: GameEventType.caught,
+                  uid: myUid,
+                  targetUid: choice.uid,
+                  lat: myLocation?.latitude,
+                  lng: myLocation?.longitude,
+                  accuracy: myLocation?.accuracy,
+                  pressure: pressureState.myPressureHPa ?? myLocation?.pressure,
+                  indoor: choice.indoor,
+                ),
+          );
+        }
+        return catchId;
       }
-      if (!context.mounted) return;
-      switch (result.status) {
-        case AsyncActionStatus.succeeded:
-          final id = catchId;
-          if (id == null) return;
-          final name = candidates
-              .firstWhere(
-                (c) => c.uid == choice.uid,
-                orElse: () => (uid: choice.uid, name: '???'),
-              )
-              .name;
-          captureOpen.value = true;
-          await Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => CatchCapturePage(
-                roomId: roomId,
-                catchId: id,
-                fugitiveUid: choice.uid,
-                fugitiveName: name,
-              ),
+
+      Future<bool> capture(CatchTargetChoice choice) async {
+        if (!context.mounted) return false;
+        // 写真APIが未設定の環境(dart_defines無しの起動)では撮れないため、
+        // 写真なしで捕獲を書く。撮影画面を出すと捕まえる手段が無くなる。
+        if (!isPhotoFeatureConfigured) {
+          try {
+            await reportCatch(choice);
+            return true;
+          } on Object catch (e) {
+            debugPrint('[GamePage] 捕獲の送信に失敗: $e');
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '「捕まえた」の送信に失敗しました。'
+                    '${userFacingErrorMessage(e)}',
+                  ),
+                ),
+              );
+            }
+            return false;
+          }
+        }
+        final name = candidates
+            .firstWhere(
+              (c) => c.uid == choice.uid,
+              orElse: () => (uid: choice.uid, name: '???'),
+            )
+            .name;
+        final sent = await Navigator.of(context).push<bool>(
+          MaterialPageRoute<bool>(
+            builder: (_) => CatchCapturePage(
+              roomId: roomId,
+              fugitiveUid: choice.uid,
+              fugitiveName: name,
+              onCatch: () => reportCatch(choice),
             ),
-          );
-          if (context.mounted) captureOpen.value = false;
-        case AsyncActionStatus.failed:
-          // 何の操作が失敗したのかは残す(SnackBarは画面の文脈から離れた
-          // 場所に出るため)。原因の説明だけをuserFacingErrorMessageに任せ、
-          // 例外そのものは埋め込まない(issue #95)。
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '「捕まえた」の送信に失敗しました。'
-                '${userFacingErrorMessage(result.error!)}',
-              ),
-            ),
-          );
-        case AsyncActionStatus.skipped:
-          // 前の送信がまだ終わっていないだけなので、何も出さない。
-          break;
+          ),
+        );
+        return sent ?? false;
+      }
+
+      try {
+        await runCatchFlow(
+          chooseTarget: () async {
+            if (!context.mounted) return null;
+            return showCatchTargetSheet(context, candidates: candidates);
+          },
+          capture: capture,
+        );
+      } finally {
+        if (context.mounted) captureOpen.value = false;
       }
     }
 
@@ -974,15 +1015,23 @@ class GamePage extends HookConsumerWidget {
                                       cachedPosition: cachedPosition.value,
                                       gameArea: room.setting.gameArea,
                                       enlargedUserUids: enlargedFugitiveUids,
-                                      // 空いている地点だけを出す(取られた地点へ
-                                      // 向かわせない)。
+                                      // 地図に出し続ける地点を[visibleMissionSpots]
+                                      // に任せる(issue #155。自分が取った
+                                      // 地点を除き、ミッションが終わったら
+                                      // 何も残さない判定はmission_rules.dart
+                                      // 側の純粋関数でテストする)。
                                       missionPoints: [
                                         if (mission != null)
-                                          for (final spot in openSpots(mission))
+                                          for (final spot
+                                              in visibleMissionSpots(
+                                                mission,
+                                                myUid: myUid,
+                                              ))
                                             (
                                               lat: spot.lat,
                                               lng: spot.lng,
                                               radiusM: spot.radiusM,
+                                              claimed: spot.claimedBy != null,
                                             ),
                                       ],
                                       enlargeDemonIcon: enlargeDemonIcon,
@@ -1001,6 +1050,10 @@ class GamePage extends HookConsumerWidget {
                                         reading: missionReading,
                                         remainingMillis:
                                             mission.expiresAt - now,
+                                        expanded: missionCardExpanded.value,
+                                        onToggleExpanded: () =>
+                                            missionCardExpanded.value =
+                                                !missionCardExpanded.value,
                                         myReward: myMissionSpot?.reward,
                                       ),
                                     ),
@@ -1223,7 +1276,7 @@ class GamePage extends HookConsumerWidget {
                       CatchButtonStrip(
                         nearestName: catchCandidates.firstOrNull?.name,
                         inRangeCount: catchCandidates.length,
-                        isSubmitting: catchAction.isRunning,
+                        isSubmitting: captureOpen.value,
                         waitingForRelease: catchWaitingForRelease,
                         onPressed: () =>
                             unawaited(handleCatchPressed(catchCandidates)),
@@ -1244,30 +1297,48 @@ class GamePage extends HookConsumerWidget {
                                 catchPhotos: galleryCatchPhotos,
                                 nowMillis: now,
                                 photoCapture: photoCapture,
+                                skippedSlots: skippedPhotoSlots,
                               ),
                             ],
                           ),
                           // ミッションのお知らせ(逃走者だけ・アプリを開いて
-                          // いるとき)。タップで地図のミッションのカードへ。
+                          // いるとき)。出してしばらくすると小さいアイコンに
+                          // 畳む(issue #155)。展開したバナーをタップすると
+                          // 地図のミッションのカードへ、畳んだアイコンを
+                          // タップすると展開し直すだけ(Riverpod側は触らない)。
                           if (missionBanner case final notice?)
                             Positioned(
                               left: 12,
                               right: 12,
                               top: 8,
-                              child: MissionNoticeBanner(
-                                notice: notice,
-                                onTap: () {
-                                  ref
-                                      .read(missionBannerProvider.notifier)
-                                      .dismiss();
-                                  pageIndex.value = 0;
-                                  pageController.animateToPage(
-                                    0,
-                                    duration: const Duration(milliseconds: 200),
-                                    curve: Curves.easeInOut,
-                                  );
-                                },
-                              ),
+                              child: missionBannerCollapsed.value
+                                  ? MissionNoticeIcon(
+                                      onTap: () =>
+                                          missionBannerCollapsed.value = false,
+                                    )
+                                  : MissionNoticeBanner(
+                                      notice: notice,
+                                      onTap: () {
+                                        ref
+                                            .read(
+                                              missionBannerProvider.notifier,
+                                            )
+                                            .dismiss();
+                                        pageIndex.value = 0;
+                                        pageController.animateToPage(
+                                          0,
+                                          duration: const Duration(
+                                            milliseconds: 200,
+                                          ),
+                                          curve: Curves.easeInOut,
+                                        );
+                                      },
+                                      // 右へスライドしたら、地図へは移らず
+                                      // お知らせだけ片付ける。
+                                      onDismissed: () => ref
+                                          .read(missionBannerProvider.notifier)
+                                          .dismiss(),
+                                    ),
                             ),
                           // 取り消しの期限を過ぎた捕獲の全員への知らせ
                           // (issue #140)。地図の上に重ね、タップで写真タブを開く。

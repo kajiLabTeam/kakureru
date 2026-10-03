@@ -84,7 +84,7 @@ class MissionRepository {
 
   /// ホストの端末が、[round]回目のミッションを1件書く。
   ///
-  /// 地点はエリアの中から[spotCount]個(鬼の人数 + 1)、互いに50m以上離して
+  /// 地点はエリアの中から[spotCount]個(`missionSpotCount`)、互いに50m以上離して
   /// ランダムに選ぶ([pickAccessPoints])。エリアが狭すぎて1つも選べなければ
   /// 書かない。`expiresAt` はサーバー時刻の補正値[nowMillis] + 制限時間
   /// ([missionTimeLimit])。

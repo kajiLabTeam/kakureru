@@ -5,6 +5,7 @@ import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 
 const _myUid = 'me';
 const _demonUid = 'demon';
@@ -56,8 +57,8 @@ void main() {
     await _pumpMap(
       tester,
       missionPoints: const [
-        (lat: 35.0005, lng: 137.0, radiusM: 15),
-        (lat: 35.0010, lng: 137.0, radiusM: 15),
+        (lat: 35.0005, lng: 137.0, radiusM: 15, claimed: false),
+        (lat: 35.0010, lng: 137.0, radiusM: 15, claimed: false),
       ],
     );
     expect(find.text('アクセスポイント'), findsNWidgets(2));
@@ -69,6 +70,22 @@ void main() {
       polygons.where((p) => p.borderColor == missionAccent),
       hasLength(2),
     );
+  });
+
+  testWidgets('ほかの人に取られた地点は色を落として出す', (tester) async {
+    await _pumpMap(
+      tester,
+      missionPoints: const [
+        (lat: 35.0005, lng: 137.0, radiusM: 15, claimed: true),
+      ],
+    );
+    expect(find.text('取られた'), findsOneWidget);
+    expect(find.text('アクセスポイント'), findsNothing);
+    final polygons = tester
+        .widgetList<PolygonLayer>(find.byType(PolygonLayer))
+        .expand((layer) => layer.polygons)
+        .toList();
+    expect(polygons.where((p) => p.borderColor == gameMuted), hasLength(1));
   });
 
   testWidgets('ミッションが無ければアクセスポイントは描かない', (tester) async {

@@ -12,6 +12,7 @@ import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
 import 'package:kakureru/features/room/role_theme.dart';
+import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:latlong2/latlong.dart' as latlong;
 
@@ -44,7 +45,16 @@ Widget buildLocationMapForTest({
 }
 
 /// 地図に出すミッションの地点(アクセスポイント)と判定の半径(m)。
-typedef MissionMapPoint = ({double lat, double lng, double radiusM});
+///
+/// [claimed]はほかの人に取られた地点か(issue #155)。自分が取った地点は
+/// 呼び出し側(GamePage)がそもそも渡さない(向かう必要が無いため)。
+/// ほかの人が取った地点は「埋まった」と分かるよう、色を落として出し続ける。
+typedef MissionMapPoint = ({
+  double lat,
+  double lng,
+  double radiusM,
+  bool claimed,
+});
 
 /// `big_demon_icon` が効いているあいだの、鬼のピンの倍率。
 const enlargedDemonIconScale = 2.0;
@@ -172,6 +182,7 @@ class GameLocationMap extends HookWidget {
           point.lat,
           point.lng,
           point.radiusM,
+          point.claimed,
         ],
       ],
     );
@@ -280,6 +291,9 @@ class GameLocationMap extends HookWidget {
 
   /// アクセスポイントの判定範囲(半径 `radiusM`)の破線の円。
   /// flutter_mapのCircleMarkerは破線にできないため、円周を多角形で描く。
+  ///
+  /// ほかの人に取られた地点([MissionMapPoint.claimed])は、埋まったことが
+  /// 分かるよう灰色に色を落とす(issue #155)。
   Polygon<Object> _missionRangePolygon(MissionMapPoint point) {
     const distance = latlong.Distance();
     final center = latlong.LatLng(point.lat, point.lng);
@@ -288,15 +302,18 @@ class GameLocationMap extends HookWidget {
         for (var deg = 0; deg < 360; deg += 10)
           distance.offset(center, point.radiusM, deg),
       ],
-      color: missionRangeFill,
+      color: point.claimed ? missionRangeClaimedFill : missionRangeFill,
       borderStrokeWidth: 2,
-      borderColor: missionAccent,
+      borderColor: point.claimed ? gameMuted : missionAccent,
       pattern: StrokePattern.dashed(segments: const [6, 4]),
     );
   }
 
-  /// アクセスポイントの点とラベル。
+  /// アクセスポイントの点とラベル。[MissionMapPoint.claimed]なら灰色に
+  /// 色を落とす(issue #155)。
   Marker _missionMarker(MissionMapPoint point) {
+    final color = point.claimed ? gameMuted : missionAccent;
+    final labelColor = point.claimed ? gameMuted : missionDeep;
     return Marker(
       point: latlong.LatLng(point.lat, point.lng),
       width: 110,
@@ -309,7 +326,7 @@ class GameLocationMap extends HookWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: missionAccent,
+              color: color,
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 3),
               boxShadow: const [
@@ -322,12 +339,12 @@ class GameLocationMap extends HookWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: missionDeep,
+              color: labelColor,
               borderRadius: BorderRadius.circular(999),
             ),
-            child: const Text(
-              'アクセスポイント',
-              style: TextStyle(
+            child: Text(
+              point.claimed ? '取られた' : 'アクセスポイント',
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
