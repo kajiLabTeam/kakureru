@@ -758,8 +758,11 @@ class _CalibrationSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // ホスト以外はこの欄が画面の最下部に来るので、ホストの「ゲーム開始」
+    // ボタンと同じだけ下を空け、ナビゲーションバーに張り付かないようにする
+    // (issue #167)。
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: EdgeInsets.fromLTRB(24, 8, 24, isHost ? 8 : 24),
       child: _buildMyStatus(ref),
     );
   }

@@ -523,9 +523,11 @@ void main() {
       );
 
       expect(find.widgetWithText(FilledButton, 'ゲーム開始'), findsNothing);
+      // バーに重ならないだけでなく、「ゲーム開始」と同じ24pxは離れている。
       expectAboveNavigationBar(
         tester,
         find.widgetWithText(FilledButton, 'キャリブレーションする(未実施)'),
+        height: 48 + 24,
       );
     });
   });
