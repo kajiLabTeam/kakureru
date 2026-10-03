@@ -120,7 +120,7 @@ void main() {
         // 効果のキーはミッションIDと地点ID(やり直しても重ならないように)。
         expect(_effects(db).keys.single, 'm1_s0');
         expect(effect['startedAt'], 5000);
-        expect(effect['durationMs'], 150000);
+        expect(effect['durationMs'], 120000);
         return;
       }
       fail('enlarge_self_icon を引く種が見つからない');
@@ -255,7 +255,7 @@ void main() {
 
       expect(reward, RewardType.enlargeSelfIcon);
       expect(db.read('$_effectPath/type'), 'enlarge_self_icon');
-      expect(db.read('$_effectPath/durationMs'), 150000);
+      expect(db.read('$_effectPath/durationMs'), 120000);
     });
 
     test('ほかの人が取った地点は受け取れない', () async {

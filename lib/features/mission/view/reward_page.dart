@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
-import 'package:kakureru/features/mission/view/mission_card.dart';
 import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/view/game/game_palette.dart';
 
@@ -139,7 +138,7 @@ class RewardPage extends StatelessWidget {
   }
 }
 
-/// 引いたごほうびのカード。「鬼をジャマする／自分がトクする」と効いている時間を書く。
+/// 引いたごほうびのカード。効いている時間を書く。
 class RewardCard extends StatelessWidget {
   /// [reward]は引いたごほうび。
   const RewardCard({super.key, required this.reward});
@@ -162,8 +161,6 @@ class RewardCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              RewardTargetTag(target: reward.target, fontSize: 11),
-              const Spacer(),
               if (durationLabel != null)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -260,8 +257,6 @@ class _OtherRewardRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          RewardTargetTag(target: reward.target),
         ],
       ),
     );

@@ -373,21 +373,13 @@ class MissionCard extends StatelessWidget {
         return [
           const SizedBox(height: 6),
           if (reward != null)
-            Row(
-              children: [
-                RewardTargetTag(target: reward.target),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    reward.title,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: gameInk,
-                    ),
-                  ),
-                ),
-              ],
+            Text(
+              reward.title,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: gameInk,
+              ),
             )
           else
             const Text(
@@ -520,50 +512,6 @@ class _Tag extends StatelessWidget {
     );
   }
 }
-
-/// 「鬼をジャマする」「自分がトクする」のタグ。ごほうびには必ず添える
-/// (ごほうびのカードと共通)。
-class RewardTargetTag extends StatelessWidget {
-  /// [target]に応じて文言と色を変える。
-  const RewardTargetTag({super.key, required this.target, this.fontSize = 10});
-
-  /// 誰に効くか。
-  final RewardTarget target;
-
-  /// 文字の大きさ。
-  final double fontSize;
-
-  @override
-  Widget build(BuildContext context) {
-    final (background, foreground) = switch (target) {
-      RewardTarget.demon => (demonSoft, demonDeep),
-      RewardTarget.self => (selfSoft, const Color(0xFF2F5FC4)),
-      RewardTarget.selfMiss => (missSoft, missDeep),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        rewardTargetLabel(target),
-        style: TextStyle(
-          fontSize: fontSize,
-          fontWeight: FontWeight.w700,
-          color: foreground,
-        ),
-      ),
-    );
-  }
-}
-
-/// 「鬼をジャマする」「自分がトクする」「ハズレ」。
-String rewardTargetLabel(RewardTarget target) => switch (target) {
-  RewardTarget.demon => '鬼をジャマする',
-  RewardTarget.self => '自分がトクする',
-  RewardTarget.selfMiss => 'ハズレ',
-};
 
 /// 地図の下寄せに出す「ごほうびガチャを引く」ボタン(モック2)。押す場所は1か所で、
 /// 高さは44px以上(58)にする。

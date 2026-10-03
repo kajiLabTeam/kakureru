@@ -171,7 +171,7 @@ void main() {
 
       expect(find.text('確定'), findsOneWidget);
       expect(find.text('鬼の手がかりを止める'), findsOneWidget);
-      expect(find.text('鬼をジャマする'), findsOneWidget);
+      expect(find.text('鬼をジャマする'), findsNothing);
       expect(find.text('3分'), findsOneWidget);
       // 持っておくごほうびなので、まだ効いていない。
       expect(find.text('地図の「つかう」で好きなときに使える'), findsOneWidget);

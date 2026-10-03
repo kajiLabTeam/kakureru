@@ -39,7 +39,7 @@ const finishedMissionCardDuration = Duration(seconds: 15);
 const rewardEffectDuration = Duration(minutes: 3);
 
 /// ごほうび「自分のアイコンを大きくする」の効いている時間。
-const enlargeSelfIconDuration = Duration(minutes: 2, seconds: 30);
+const enlargeSelfIconDuration = Duration(minutes: 2);
 
 /// アプリ内のお知らせ(バナー)を出しておく時間。
 const missionBannerDuration = Duration(seconds: 8);

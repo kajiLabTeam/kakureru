@@ -17,17 +17,17 @@ void main() {
     expect(RewardType.miss.oddsPercent, rewardMissOddsPercent);
   });
 
-  test('自分のアイコンを大きくするは当たりで、2分30秒効く', () {
+  test('自分のアイコンを大きくするは当たりで、2分効く', () {
     expect(RewardType.enlargeSelfIcon.isMiss, isFalse);
     expect(
       RewardType.enlargeSelfIcon.duration,
-      const Duration(minutes: 2, seconds: 30),
+      const Duration(minutes: 2),
     );
   });
 
-  test('durationLabelは秒・分秒・回数で出し、ハズレは出さない', () {
+  test('durationLabelは分・回数で出し、ハズレは出さない', () {
     expect(RewardType.blockClues.durationLabel, '3分');
-    expect(RewardType.enlargeSelfIcon.durationLabel, '2分30秒');
+    expect(RewardType.enlargeSelfIcon.durationLabel, '2分');
     expect(RewardType.skipFootPhoto.durationLabel, '1回');
     expect(RewardType.miss.durationLabel, isNull);
   });

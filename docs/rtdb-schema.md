@@ -109,7 +109,7 @@ rooms/
         type                "block_clues" | "enlarge_self_icon" | "skip_foot_photo" | "miss"
         byUid               引いた人のuid
         startedAt           発動した時刻(サーバー時刻のミリ秒)。block_clues は使った時刻
-        durationMs          効いている時間。block_clues は180000(3分)、enlarge_self_icon は150000(2分30秒)。skip_foot_photo は 0(回数もの)、miss も 0(何も起きない)
+        durationMs          効いている時間。block_clues は180000(3分)、enlarge_self_icon は120000(2分)。skip_foot_photo は 0(回数もの)、miss も 0(何も起きない)
         skipSlot            skip_foot_photo で飛ばす撮影スロットの番号(skip_foot_photo のみ。次の1回だけ)
     taunts/
       {tauntId}/            (予約。まだ書かない)逃走者から鬼への挑発
@@ -384,7 +384,7 @@ npm test
 | raw | 当/ハズレ | 確率 | 内容 |
 | --- | --- | --- | --- |
 | `block_clues` | 当たり | 約26.67% | 持っておいて好きなときに使う。使うと3分、鬼の端末で Wi-Fi と気圧の手がかりを隠す |
-| `enlarge_self_icon` | 当たり | 約26.67% | 2分30秒、全員の地図(本人を含む)で引いた本人のピンを2倍にする |
+| `enlarge_self_icon` | 当たり | 約26.67% | 2分、全員の地図(本人を含む)で引いた本人のピンを2倍にする |
 | `skip_foot_photo` | 当たり | 約26.67% | 次の足元写真の撮影タイムを1回まぬがれる(回数もの) |
 | `miss` | ハズレ | 20% | 何も起きない |
 

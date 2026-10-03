@@ -229,7 +229,7 @@ void main() {
       expect(find.text('ほかの人に取られた'), findsOneWidget);
     });
 
-    testWidgets('自分が取ったらごほうびと「自分がトクする」を出す', (tester) async {
+    testWidgets('自分が取ったらごほうびを出し、「自分がトクする」のタグは出さない', (tester) async {
       await pumpCard(
         tester,
         MissionCardStatus.claimedByMe,
@@ -237,16 +237,17 @@ void main() {
         myReward: RewardType.skipFootPhoto,
       );
       expect(find.text('足元写真を1回まぬがれる'), findsOneWidget);
-      expect(find.text('自分がトクする'), findsOneWidget);
+      expect(find.text('自分がトクする'), findsNothing);
     });
 
-    testWidgets('鬼に効くごほうびには「鬼をジャマする」を添える', (tester) async {
+    testWidgets('鬼に効くごほうびにも「鬼をジャマする」のタグは出さない', (tester) async {
       await pumpCard(
         tester,
         MissionCardStatus.claimedByMe,
         myReward: RewardType.blockClues,
       );
-      expect(find.text('鬼をジャマする'), findsOneWidget);
+      expect(find.text('鬼の手がかりを止める'), findsOneWidget);
+      expect(find.text('鬼をジャマする'), findsNothing);
     });
 
     testWidgets('畳むと旗のマークだけを左に出し、タップで開き直す', (tester) async {
@@ -391,7 +392,7 @@ void main() {
     });
   });
 
-  testWidgets('ごほうびの画面は引いたごほうびと「鬼をジャマする」、ほかのごほうびを出す', (
+  testWidgets('ごほうびの画面は引いたごほうびとほかのごほうびを出し、誰に効くかのタグは出さない', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -403,9 +404,8 @@ void main() {
     expect(find.text('地図の上の「つかう」を押すと効き始める'), findsOneWidget);
     expect(find.text('自分のアイコンを大きくする'), findsOneWidget);
     expect(find.text('足元写真を1回まぬがれる'), findsOneWidget);
-    // 鬼に効くのは引いたごほうびだけ。自分に効くものが2つ。
-    expect(find.text('鬼をジャマする'), findsOneWidget);
-    expect(find.text('自分がトクする'), findsNWidgets(2));
+    expect(find.text('鬼をジャマする'), findsNothing);
+    expect(find.text('自分がトクする'), findsNothing);
     expect(find.text('地図にもどる'), findsOneWidget);
   });
 

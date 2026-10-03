@@ -1,8 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:kakureru/features/mission/mission_timing.dart';
 
-/// ごほうびが誰に効くか。カードには必ずこれを書く(鬼をジャマするもの・
-/// 自分がトクするもの・ハズレが混ざるため)。
+/// ごほうびが誰に効くか。アイコンの色分けに使う(カードに文字のタグは出さない)。
 enum RewardTarget {
   /// 鬼をジャマする。効果はルーム全員の端末で同じ見え方にする。
   demon,
@@ -41,11 +40,11 @@ enum RewardType {
     oddsPercent: rewardWinningOddsPercentEach,
   ),
 
-  /// 2分30秒、全員の地図で引いた本人のピンを2倍にする。
+  /// 2分、全員の地図で引いた本人のピンを2倍にする。
   enlargeSelfIcon(
     raw: 'enlarge_self_icon',
     title: '自分のアイコンを大きくする',
-    description: '2分30秒のあいだ、みんなの地図で自分のアイコンが大きくなる',
+    description: '2分のあいだ、みんなの地図で自分のアイコンが大きくなる',
     target: RewardTarget.self,
     duration: enlargeSelfIconDuration,
     oddsPercent: rewardWinningOddsPercentEach,
@@ -106,7 +105,7 @@ enum RewardType {
   /// `effects` は使ったときに書く(`MissionRepository.useHeldReward`)。
   bool get isHeld => this == blockClues;
 
-  /// カードのタグに出す長さ(「3分」「2分30秒」「1回」)。ハズレは何も
+  /// カードのタグに出す長さ(「3分」「2分」「1回」)。ハズレは何も
   /// 起きないので出さない(null)。
   String? get durationLabel {
     if (isMiss) return null;

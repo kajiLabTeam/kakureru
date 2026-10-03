@@ -6,7 +6,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/view/gacha/focus_lines_painter.dart';
 import 'package:kakureru/features/mission/view/gacha/gacha_phase.dart';
-import 'package:kakureru/features/mission/view/mission_card.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
 
 /// 演出の地(暗い茶)。**この画面の中だけ**で使う(ゲーム中の画面には
@@ -1147,27 +1146,14 @@ class _ConfirmedOverlay extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _DarkTag(
-                            label: rewardTargetLabel(reward.target),
-                            background: reward.target == RewardTarget.demon
-                                ? const Color(0xFFC0343A)
-                                : _blue,
-                            foreground: Colors.white,
-                          ),
-                          if (durationLabel != null) ...[
-                            const SizedBox(width: 7),
-                            _DarkTag(
-                              label: durationLabel,
-                              background: gachaGold,
-                              foreground: const Color(0xFF241A0B),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 12),
+                      if (durationLabel != null) ...[
+                        _DarkTag(
+                          label: durationLabel,
+                          background: gachaGold,
+                          foreground: const Color(0xFF241A0B),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       Text(
                         reward.title,
                         textAlign: TextAlign.center,
@@ -1318,17 +1304,6 @@ class _MissedOverlay extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _DarkTag(
-                            label: rewardTargetLabel(reward.target),
-                            background: _red,
-                            foreground: Colors.white,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
                       Text(
                         reward.title,
                         textAlign: TextAlign.center,
