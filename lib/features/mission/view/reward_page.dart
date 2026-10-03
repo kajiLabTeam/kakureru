@@ -8,7 +8,8 @@ import 'package:kakureru/features/room/view/game/game_palette.dart';
 
 /// ごほうびを引いたあとに出す画面(モック4)。
 ///
-/// 引いた瞬間に効果は出ている(持ち歩かせない)。この画面は知らせるだけで、
+/// 引いた瞬間に効果は出ている。ただし持っておくごほうび(`RewardType.isHeld`)
+/// は、地図の「つかう」を押したときに効き始める。この画面は知らせるだけで、
 /// 閉じても効果は変わらない。
 class RewardPage extends StatelessWidget {
   /// [reward]は引いたごほうび。
@@ -121,7 +122,9 @@ class RewardPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    reward.duration > Duration.zero
+                    reward.isHeld
+                        ? '地図の上の「つかう」を押すと効き始める'
+                        : reward.duration > Duration.zero
                         ? '残り時間は地図の上の帯にも出る'
                         : '次の撮影タイムは知らせが来ない',
                     style: const TextStyle(fontSize: 11, color: gameMuted),

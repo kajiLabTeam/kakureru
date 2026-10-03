@@ -30,11 +30,12 @@ const rewardWinningOddsPercentEach = rewardWinningOddsPercent / 3;
 /// (抽選は[drawReward]で行う)。
 @JsonEnum(valueField: 'raw')
 enum RewardType {
-  /// 30秒、鬼の端末で Wi-Fi と気圧の手がかりを隠す。
+  /// 持っておいて好きなときに使う([isHeld])。使うと3分、鬼の端末で
+  /// Wi-Fi と気圧の手がかりを隠す。
   blockClues(
     raw: 'block_clues',
     title: '鬼の手がかりを止める',
-    description: '30秒のあいだ、鬼は Wi-Fi と気圧を見られなくなる',
+    description: '好きなときに使える。使うと3分のあいだ、鬼は Wi-Fi と気圧を見られなくなる',
     target: RewardTarget.demon,
     duration: rewardEffectDuration,
     oddsPercent: rewardWinningOddsPercentEach,
@@ -100,7 +101,12 @@ enum RewardType {
   /// ハズレかどうか。
   bool get isMiss => target == RewardTarget.selfMiss;
 
-  /// カードのタグに出す長さ(「30秒」「2分30秒」「1回」)。ハズレは何も
+  /// 引いた瞬間には効かず、持っておいて好きなときに使うごほうびか。
+  /// 引いたときは `missions/.../spots/{spotId}/reward` だけを書き、
+  /// `effects` は使ったときに書く(`MissionRepository.useHeldReward`)。
+  bool get isHeld => this == blockClues;
+
+  /// カードのタグに出す長さ(「3分」「2分30秒」「1回」)。ハズレは何も
   /// 起きないので出さない(null)。
   String? get durationLabel {
     if (isMiss) return null;

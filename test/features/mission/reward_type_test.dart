@@ -26,10 +26,18 @@ void main() {
   });
 
   test('durationLabelは秒・分秒・回数で出し、ハズレは出さない', () {
-    expect(RewardType.blockClues.durationLabel, '30秒');
+    expect(RewardType.blockClues.durationLabel, '3分');
     expect(RewardType.enlargeSelfIcon.durationLabel, '2分30秒');
     expect(RewardType.skipFootPhoto.durationLabel, '1回');
     expect(RewardType.miss.durationLabel, isNull);
+  });
+
+  test('鬼の手がかりを止めるは3分効き、持っておいて好きなときに使う', () {
+    expect(RewardType.blockClues.duration, const Duration(minutes: 3));
+    expect(RewardType.blockClues.isHeld, isTrue);
+    expect(RewardType.enlargeSelfIcon.isHeld, isFalse);
+    expect(RewardType.skipFootPhoto.isHeld, isFalse);
+    expect(RewardType.miss.isHeld, isFalse);
   });
 
   test('古い版の big_demon_icon は知らない値として読まない', () {

@@ -7,6 +7,7 @@ import 'package:kakureru/features/mission/model/mission_notice.dart';
 import 'package:kakureru/features/mission/model/mission_progress.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/view/effect_band.dart';
+import 'package:kakureru/features/mission/view/held_reward_bar.dart';
 import 'package:kakureru/features/mission/view/mission_card.dart';
 import 'package:kakureru/features/mission/view/mission_notice_banner.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
@@ -398,13 +399,53 @@ void main() {
     );
     expect(find.text('ごほうびをひいた！'), findsOneWidget);
     expect(find.text('鬼の手がかりを止める'), findsOneWidget);
-    expect(find.text('30秒'), findsOneWidget);
+    expect(find.text('3分'), findsOneWidget);
+    expect(find.text('地図の上の「つかう」を押すと効き始める'), findsOneWidget);
     expect(find.text('自分のアイコンを大きくする'), findsOneWidget);
     expect(find.text('足元写真を1回まぬがれる'), findsOneWidget);
     // 鬼に効くのは引いたごほうびだけ。自分に効くものが2つ。
     expect(find.text('鬼をジャマする'), findsOneWidget);
     expect(find.text('自分がトクする'), findsNWidgets(2));
     expect(find.text('地図にもどる'), findsOneWidget);
+  });
+
+  group('HeldRewardBar(持っているごほうびの「つかう」)', () {
+    testWidgets('名前と時間を出し、「つかう」で使う', (tester) async {
+      var used = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HeldRewardBar(
+              type: RewardType.blockClues,
+              onUse: () => used++,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('鬼の手がかりを止める(3分)'), findsOneWidget);
+      expect(find.text('持っている。好きなときに使える'), findsOneWidget);
+      await tester.tap(find.text('つかう'));
+      expect(used, 1);
+    });
+
+    testWidgets('onUseがnullなら押せず、理由を出す', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: HeldRewardBar(
+              type: RewardType.blockClues,
+              onUse: null,
+              disabledReason: 'いま効いているので、切れてから使える',
+            ),
+          ),
+        ),
+      );
+      expect(find.text('いま効いているので、切れてから使える'), findsOneWidget);
+      final button = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'つかう'),
+      );
+      expect(button.onPressed, isNull);
+    });
   });
 
   group('デバッグ用の「着いたことにする」', () {

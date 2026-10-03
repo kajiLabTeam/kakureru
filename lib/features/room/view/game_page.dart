@@ -17,6 +17,7 @@ import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/repository/mission_repository.dart';
 import 'package:kakureru/features/mission/view/effect_band.dart';
+import 'package:kakureru/features/mission/view/held_reward_bar.dart';
 import 'package:kakureru/features/mission/view/mission_card.dart';
 import 'package:kakureru/features/mission/view/gacha/gacha_page.dart';
 import 'package:kakureru/features/mission/view/mission_notice_banner.dart';
@@ -177,6 +178,9 @@ class GamePage extends HookConsumerWidget {
 
     // デバッグ用の「ミッションをいますぐ出す」の書き込み中(DEBUG_MISSION)。
     final debugCreateAction = useAsyncAction(context);
+
+    // 持っているごほうび(鬼の手がかりを止める)の「つかう」の書き込み中。
+    final useRewardAction = useAsyncAction(context);
 
     // 詳細カードで選択中の相手(UI改修モック2a-03「逃走者を選んで詳細を見る」)。
     // nullの間は既定で最も近い相手を選ぶ(下のeffectiveSelectedUid参照)。
@@ -415,6 +419,18 @@ class GamePage extends HookConsumerWidget {
             nowMillis: now,
           )
         : null;
+    // 持っていてまだ使っていないごほうび(逃走者だけ。引いた順)。
+    final heldRewards =
+        roleOf(room?.users ?? const [], myUid) == UserRole.fugitive
+        ? heldRewardsOf(
+            missions: missionsOfCurrentGame(
+              ref.watch(missionsStreamProvider(roomId)).value ?? const [],
+              startedAt: room?.startedAt,
+            ),
+            effects: roomEffects,
+            uid: myUid,
+          )
+        : const <HeldReward>[];
     // 向かう先は、いちばん近い空いている地点(取られたら次に近い地点へ移る)。
     final missionTargetSpot = mission == null
         ? null
@@ -493,6 +509,39 @@ class GamePage extends HookConsumerWidget {
             SnackBar(
               content: Text(
                 'ごほうびを受け取れませんでした。'
+                '${userFacingErrorMessage(result.error!)}',
+              ),
+            ),
+          );
+        case AsyncActionStatus.skipped:
+          break;
+      }
+    }
+
+    // 持っているごほうびの「つかう」。効果はこの時刻から効き始める。
+    // 2回押しても、効果は1回しか書かれない(useHeldReward)。
+    Future<void> handleUseHeldRewardPressed(HeldReward held) async {
+      var used = false;
+      final result = await useRewardAction.run(() async {
+        used = await ref
+            .read(missionRepositoryProvider)
+            .useHeldReward(roomId, held.missionId, held.spotId);
+      });
+      if (!context.mounted) return;
+      switch (result.status) {
+        case AsyncActionStatus.succeeded:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                used ? '「${held.type.title}」を使った' : 'このごほうびはもう使ってある',
+              ),
+            ),
+          );
+        case AsyncActionStatus.failed:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'ごほうびを使えませんでした。'
                 '${userFacingErrorMessage(result.error!)}',
               ),
             ),
@@ -973,6 +1022,26 @@ class GamePage extends HookConsumerWidget {
                           myEnlargeSelfIconEffect,
                           serverNowMillis: now,
                         ),
+                      ),
+                    // 持っているごほうび(先に引いたものから1つずつ出す)。
+                    // 同じ効果がいま効いているあいだは押せない(重ねても
+                    // 長くならず、無駄になるため)。
+                    if (heldRewards.firstOrNull case final held?)
+                      HeldRewardBar(
+                        type: held.type,
+                        onUse:
+                            useRewardAction.isRunning ||
+                                activeEffectOf(
+                                      roomEffects,
+                                      held.type,
+                                      serverNowMillis: now,
+                                    ) !=
+                                    null
+                            ? null
+                            : () => unawaited(handleUseHeldRewardPressed(held)),
+                        disabledReason: useRewardAction.isRunning
+                            ? '使っています…'
+                            : 'いま効いているので、切れてから使える',
                       ),
                     // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
                     // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係

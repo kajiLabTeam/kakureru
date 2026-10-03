@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/core/utils/server_time.dart';
 import 'package:kakureru/features/mission/effect_rules.dart';
+import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/model/room_effect.dart';
 import 'package:kakureru/features/room/model/photo_slot.dart';
@@ -23,7 +24,7 @@ RoomEffect _effect({
 void main() {
   group('効果の残り時間(startedAt + durationMs)', () {
     test('サーバー時刻で数える', () {
-      final effect = _effect(startedAt: 100000);
+      final effect = _effect(startedAt: 100000, durationMs: 30000);
       expect(effectRemainingMillis(effect, serverNowMillis: 100000), 30000);
       expect(effectRemainingMillis(effect, serverNowMillis: 112000), 18000);
       expect(effectRemainingMillis(effect, serverNowMillis: 130000), 0);
@@ -31,7 +32,7 @@ void main() {
     });
 
     test('端末の時計がずれていても、オフセットで補正すれば同じ残り時間になる', () {
-      final effect = _effect(startedAt: 1000000);
+      final effect = _effect(startedAt: 1000000, durationMs: 30000);
       // サーバー時刻 1,012,000 のときの2台。片方は時計が5秒進み、
       // もう片方は3秒遅れている。それぞれのオフセットで補正する。
       final fast = withClock(
@@ -237,6 +238,67 @@ void main() {
           scheduleStartMillis: null,
           intervalSec: interval,
         ),
+        isEmpty,
+      );
+    });
+  });
+
+  group('heldRewardsOf(持っていてまだ使っていないごほうび)', () {
+    MissionSpot spot(String id, {String? by, RewardType? reward}) =>
+        MissionSpot(
+          id: id,
+          lat: 35,
+          lng: 137,
+          radiusM: 15,
+          claimedBy: by,
+          reward: reward,
+        );
+    final missions = [
+      Mission(
+        id: 'm1',
+        round: 1,
+        createdAt: 0,
+        expiresAt: 1,
+        spots: [
+          spot('s0', by: 'me', reward: RewardType.blockClues),
+          spot('s1', by: 'other', reward: RewardType.blockClues),
+          spot('s2', by: 'me', reward: RewardType.enlargeSelfIcon),
+          spot('s3'),
+        ],
+      ),
+      Mission(
+        id: 'm2',
+        round: 2,
+        createdAt: 0,
+        expiresAt: 1,
+        spots: [spot('s0', by: 'me', reward: RewardType.blockClues)],
+      ),
+    ];
+
+    test('自分が引いた持っておくごほうびだけを返す', () {
+      expect(
+        heldRewardsOf(missions: missions, effects: const [], uid: 'me'),
+        [
+          (missionId: 'm1', spotId: 's0', type: RewardType.blockClues),
+          (missionId: 'm2', spotId: 's0', type: RewardType.blockClues),
+        ],
+      );
+    });
+
+    test('使ってある(effectsにある)ものは除く', () {
+      expect(
+        heldRewardsOf(
+          missions: missions,
+          effects: [_effect(id: 'm1_s0')],
+          uid: 'me',
+        ),
+        [(missionId: 'm2', spotId: 's0', type: RewardType.blockClues)],
+      );
+    });
+
+    test('uidが無ければ空', () {
+      expect(
+        heldRewardsOf(missions: missions, effects: const [], uid: null),
         isEmpty,
       );
     });

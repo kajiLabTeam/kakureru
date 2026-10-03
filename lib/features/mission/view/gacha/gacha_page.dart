@@ -37,7 +37,8 @@ const _purple = Color(0xFF8E5AC0);
 /// (カプセルの段だけはタップが「開ける」)。段の進み方は`gacha_phase.dart`。
 ///
 /// `GamePage`の上に重ねて開くだけで、ゲーム画面は破棄しない(位置情報の
-/// 送信は止まらない)。効果は引いた瞬間にもう出ている。
+/// 送信は止まらない)。効果は引いた瞬間にもう出ている(持っておくごほうびは
+/// 使ったときに出る)。
 class GachaPage extends HookWidget {
   /// [reward]は引いた特典(抽選はもう済んでいる)。
   const GachaPage({super.key, required this.reward});
@@ -1197,9 +1198,9 @@ class _ConfirmedOverlay extends StatelessWidget {
                   parent: confirm,
                   curve: const Interval(0.8, 1),
                 ),
-                child: const Text(
-                  '効果はもう出ている',
-                  style: TextStyle(fontSize: 11, color: _muted),
+                child: Text(
+                  reward.isHeld ? '地図の「つかう」で好きなときに使える' : '効果はもう出ている',
+                  style: const TextStyle(fontSize: 11, color: _muted),
                 ),
               ),
             ],

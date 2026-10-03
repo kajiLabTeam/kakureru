@@ -8,8 +8,11 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/model/room_effect.dart';
+import 'package:kakureru/features/mission/repository/mission_repository.dart'
+    show missionEffectId;
 import 'package:kakureru/features/room/model/photo_slot.dart';
 
 /// 今のゲームの効果だけを、発動した順(古い順)に返す。[startedAt]が
@@ -170,4 +173,32 @@ Set<int> skippedFootPhotoSlots({
     skipped.add(slot);
   }
   return skipped;
+}
+
+/// 持っていてまだ使っていないごほうび1つ。使うときは
+/// `MissionRepository.useHeldReward(roomId, missionId, spotId)` に渡す。
+typedef HeldReward = ({String missionId, String spotId, RewardType type});
+
+/// [uid]が持っていて、まだ使っていないごほうび(引いた順)。
+///
+/// 持っておくごほうび([RewardType.isHeld])は、引いたときは地点の `reward`
+/// だけを書き、使ったときに `effects/{missionId}_{spotId}` を書く。なので
+/// 「自分が取った地点の `reward` が持っておくもので、同じキーの効果がまだ
+/// 無い」ものが手元に残っている。[missions]は `missionsOfCurrentGame` で
+/// 今のゲームに絞ったもの、[effects]は効果の一覧を渡す。
+List<HeldReward> heldRewardsOf({
+  required List<Mission> missions,
+  required List<RoomEffect> effects,
+  required String? uid,
+}) {
+  if (uid == null) return const [];
+  final usedIds = effects.map((e) => e.id).toSet();
+  return [
+    for (final mission in missions)
+      for (final spot in mission.spots)
+        if (spot.claimedBy == uid &&
+            (spot.reward?.isHeld ?? false) &&
+            !usedIds.contains(missionEffectId(mission.id, spot.id)))
+          (missionId: mission.id, spotId: spot.id, type: spot.reward!),
+  ];
 }
