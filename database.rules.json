@@ -4,6 +4,8 @@
     ".write": false,
 
     "rooms": {
+      ".indexOn": ["meta/createdAt"],
+
       "$roomId": {
         "meta": {
           ".read": "auth != null",

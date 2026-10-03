@@ -4,6 +4,7 @@
 // 実行: cd rules-test && npm install && npm test
 // (Java と firebase CLI が要る。本番のFirebaseには一切つながない)
 
+import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import {
@@ -321,5 +322,15 @@ describe('既存の機能が壊れていない', () => {
     await seedCatch();
     await assertSucceeds(get(ref(db(OTHER), `${ROOM}/catches`)));
     await assertSucceeds(get(ref(db(OTHER), `${ROOM}/catchPhotos`)));
+  });
+});
+
+// 古いルームの掃除スクリプト(scripts/cleanup-old-rooms)は
+// rooms を meta/createdAt で絞る。インデックスが無いと rooms 全体を
+// ダウンロードしてから絞ることになるため、ルールに残っていることを確かめる。
+describe('rooms のインデックス', () => {
+  test('meta/createdAt に .indexOn がある', () => {
+    const rules = JSON.parse(readFileSync(new URL('../database.rules.json', import.meta.url), 'utf8'));
+    assert.ok(rules.rules.rooms['.indexOn'].includes('meta/createdAt'));
   });
 });
