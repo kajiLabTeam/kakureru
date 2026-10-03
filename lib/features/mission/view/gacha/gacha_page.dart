@@ -3,9 +3,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/view/gacha/focus_lines_painter.dart';
 import 'package:kakureru/features/mission/view/gacha/gacha_phase.dart';
+import 'package:kakureru/features/mission/view/gacha/gacha_sound.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
 
 /// 演出の地(暗い茶)。**この画面の中だけ**で使う(ゲーム中の画面には
@@ -38,7 +40,9 @@ const _purple = Color(0xFF8E5AC0);
 /// `GamePage`の上に重ねて開くだけで、ゲーム画面は破棄しない(位置情報の
 /// 送信は止まらない)。効果は引いた瞬間にもう出ている(持っておくごほうびは
 /// 使ったときに出る)。
-class GachaPage extends HookWidget {
+///
+/// 段ごとに音と振動を出す(`gacha_sound.dart`)。
+class GachaPage extends HookConsumerWidget {
   /// [reward]は引いたごほうび(抽選はもう済んでいる)。
   const GachaPage({super.key, required this.reward});
 
@@ -70,7 +74,7 @@ class GachaPage extends HookWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isMiss = reward.isMiss;
     final finalPhase = isMiss ? GachaPhase.missed : GachaPhase.confirmed;
     final phase = useState(GachaPhase.turning);
@@ -103,9 +107,21 @@ class GachaPage extends HookWidget {
       duration: const Duration(milliseconds: 1700),
     );
 
+    final feedback = ref.watch(gachaFeedbackProvider);
+
+    // 段に入ったときの音と振動。
+    void signal(GachaPhase entered) {
+      final vibrationMillis = gachaVibrationMillisFor(entered);
+      if (vibrationMillis != null) {
+        unawaited(feedback.vibrate(vibrationMillis));
+      }
+      unawaited(feedback.play(gachaCueFor(entered)));
+    }
+
     void enterPhase(GachaPhase next, {bool animateConfirm = true}) {
       if (phase.value == next) return;
       phase.value = next;
+      signal(next);
       switch (next) {
         case GachaPhase.turning:
           break;
@@ -163,7 +179,12 @@ class GachaPage extends HookWidget {
       unawaited(intro.forward());
       unawaited(lines.repeat());
       unawaited(shake.repeat());
-      return () => intro.removeListener(onIntro);
+      signal(GachaPhase.turning);
+      return () {
+        intro.removeListener(onIntro);
+        // 閉じたあとまでファンファーレ等が鳴り続けないようにする。
+        unawaited(feedback.stop());
+      };
     }, const []);
 
     void onTap() {

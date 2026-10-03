@@ -1,17 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/mission/view/gacha/gacha_page.dart';
 import 'package:kakureru/features/mission/view/gacha/gacha_phase.dart';
+import 'package:kakureru/features/mission/view/gacha/gacha_sound.dart';
 import 'package:kakureru/features/mission/view/reward_page.dart';
 
-Future<void> _pumpGacha(
+/// 鳴らした音・振動・停止を記録するだけの[GachaFeedback]。
+class _FakeFeedback implements GachaFeedback {
+  final played = <GachaCue>[];
+  final vibrations = <int>[];
+  var stopCount = 0;
+
+  @override
+  Future<void> play(GachaCue cue) async => played.add(cue);
+
+  @override
+  Future<void> stop() async => stopCount++;
+
+  @override
+  Future<void> vibrate(int durationMillis) async =>
+      vibrations.add(durationMillis);
+}
+
+/// 本物の音は鳴らさず、[feedback]で記録する。
+Widget _withFeedback(_FakeFeedback feedback, Widget child) => ProviderScope(
+  overrides: [gachaFeedbackProvider.overrideWithValue(feedback)],
+  child: child,
+);
+
+Future<_FakeFeedback> _pumpGacha(
   WidgetTester tester, {
   RewardType reward = RewardType.blockClues,
 }) async {
   await tester.binding.setSurfaceSize(const Size(393, 852));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(MaterialApp(home: GachaPage(reward: reward)));
+  final feedback = _FakeFeedback();
+  await tester.pumpWidget(
+    _withFeedback(feedback, MaterialApp(home: GachaPage(reward: reward))),
+  );
+  return feedback;
 }
 
 /// ゲーム画面と同じく[GachaPage.show]で重ねて開く。返す関数は
@@ -21,14 +50,17 @@ Future<bool Function()> _openGachaViaShow(WidgetTester tester) async {
   addTearDown(() => tester.binding.setSurfaceSize(null));
   var completed = false;
   await tester.pumpWidget(
-    MaterialApp(
-      home: Builder(
-        builder: (context) => TextButton(
-          onPressed: () async {
-            await GachaPage.show(context, RewardType.blockClues);
-            completed = true;
-          },
-          child: const Text('open'),
+    _withFeedback(
+      _FakeFeedback(),
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              await GachaPage.show(context, RewardType.blockClues);
+              completed = true;
+            },
+            child: const Text('open'),
+          ),
         ),
       ),
     ),
@@ -242,6 +274,79 @@ void main() {
       expect(find.byType(GachaPage), findsNothing);
       expect(find.byType(RewardPage), findsNothing);
       expect(done(), isTrue);
+    });
+  });
+
+  group('音と振動(gacha_sound)', () {
+    test('段ごとに決まった音を鳴らす', () {
+      expect(gachaCueFor(GachaPhase.turning), GachaCue.turning);
+      expect(gachaCueFor(GachaPhase.heat), GachaCue.heat);
+      expect(gachaCueFor(GachaPhase.capsule), GachaCue.drop);
+      expect(gachaCueFor(GachaPhase.confirmed), GachaCue.fanfare);
+      expect(gachaCueFor(GachaPhase.missed), GachaCue.miss);
+    });
+
+    test('振動は確定で長く1回、ハズレは短く、ほかの段は振動しない', () {
+      expect(gachaVibrationMillisFor(GachaPhase.confirmed), 700);
+      expect(
+        gachaVibrationMillisFor(GachaPhase.missed),
+        lessThan(gachaVibrationMillisFor(GachaPhase.confirmed)!),
+      );
+      expect(gachaVibrationMillisFor(GachaPhase.turning), isNull);
+      expect(gachaVibrationMillisFor(GachaPhase.heat), isNull);
+      expect(gachaVibrationMillisFor(GachaPhase.capsule), isNull);
+    });
+
+    testWidgets('当たりはハンドル → 激熱 → コロン → ファンファーレの順に鳴る', (tester) async {
+      final feedback = await _pumpGacha(tester);
+      await tester.pump();
+      expect(feedback.played, [GachaCue.turning]);
+
+      await tester.pump(const Duration(milliseconds: 1600));
+      expect(feedback.played, [GachaCue.turning, GachaCue.heat]);
+
+      await tester.pump(const Duration(milliseconds: 1400));
+      expect(feedback.played.last, GachaCue.drop);
+      expect(feedback.vibrations, isEmpty);
+
+      await tester.tap(find.text('カプセルを開ける'));
+      await tester.pump();
+      expect(feedback.played, [
+        GachaCue.turning,
+        GachaCue.heat,
+        GachaCue.drop,
+        GachaCue.fanfare,
+      ]);
+      expect(feedback.vibrations, [700]);
+    });
+
+    testWidgets('ハズレは激熱の音を出さず、短く低い音で終わる', (tester) async {
+      final feedback = await _pumpGacha(tester, reward: RewardType.miss);
+      await tester.pump(const Duration(milliseconds: 1600));
+      await tester.tap(find.text('カプセルを開ける'));
+      await tester.pump();
+
+      expect(feedback.played, [GachaCue.turning, GachaCue.drop, GachaCue.miss]);
+      expect(feedback.vibrations, [gachaVibrationMillisFor(GachaPhase.missed)]);
+    });
+
+    testWidgets('途中で飛ばすと、ファンファーレだけ鳴らして振動する', (tester) async {
+      final feedback = await _pumpGacha(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await tester.tapAt(const Offset(200, 400));
+      await tester.pump();
+
+      expect(feedback.played, [GachaCue.turning, GachaCue.fanfare]);
+      expect(feedback.vibrations, [700]);
+    });
+
+    testWidgets('閉じたら鳴っている音を止める', (tester) async {
+      final feedback = await _pumpGacha(tester);
+      await tester.pump();
+      await tester.pumpWidget(const SizedBox());
+
+      expect(feedback.stopCount, 1);
     });
   });
 }
