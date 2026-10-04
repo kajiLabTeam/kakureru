@@ -58,7 +58,7 @@ dependencies:
   vibration: ^3.2.1
   flutter_local_notifications: ^22.3.0
   flutter_blue_plus: ^2.3.12
-  flutter_ble_peripheral: ^2.1.1
+  flutter_ble_peripheral: ^3.1.0
   http: ^1.6.0
   image_picker: ^1.2.3
   # 写真ダウンロードのキャッシュ保存先(getTemporaryDirectory)を得るためだけに追加。
