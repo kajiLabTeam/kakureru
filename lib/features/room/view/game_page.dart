@@ -48,7 +48,6 @@ import 'package:kakureru/features/room/repository/event_log_repository.dart';
 import 'package:kakureru/features/room/restart_recovery.dart';
 import 'package:kakureru/features/room/role_theme.dart';
 import 'package:kakureru/features/room/role_visibility.dart';
-import 'package:kakureru/features/room/sighting_notifications.dart';
 import 'package:kakureru/features/room/view/catch_capture_page.dart';
 import 'package:kakureru/features/room/view/game/area_rules_dialog.dart';
 import 'package:kakureru/features/room/view/game/catch_announcement_card.dart';
@@ -373,10 +372,6 @@ class GamePage extends HookConsumerWidget {
 
     // 鬼のとき、逃走者が写真を撮ったら通知とSnackBarで知らせる(issue #120)。
     usePhotoTakenNotifications(ref, context, roomId: roomId, myUid: myUid);
-
-    // 鬼のとき、逃走者が目撃写真(鬼を見つけた写真)を撮ったら通知と
-    // SnackBarで知らせる。鬼全員に出す。
-    useSightingTakenNotifications(ref, context, roomId: roomId, myUid: myUid);
 
     // プレイエリア外のアラート(issue #61 / UI改修モック2a-07)。
     //
@@ -1234,8 +1229,9 @@ class GamePage extends HookConsumerWidget {
                           // (右下の「i」)を隠さないよう、その上に置く。
                           // 「ごほうびガチャを引く」が出ている間は、そのボタンに
                           // 重ならないようさらに上へずらす。
-                          // 写真機能が無効な環境では出さない。
-                          if (isPhotoFeatureConfigured)
+                          // 写真機能が無効な環境と、鬼には出さない。
+                          if (isPhotoFeatureConfigured &&
+                              shouldShowSightingPhotoButton(role: myRole))
                             Positioned(
                               right: 14,
                               bottom: showsMissionButton ? 120 : 60,
