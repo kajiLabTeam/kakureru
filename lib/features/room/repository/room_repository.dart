@@ -374,10 +374,12 @@ class RoomRepository {
       final photos = snapshot.value as Map<dynamic, dynamic>? ?? const {};
       await Future.wait([
         for (final entry in photos.entries)
-          if (entry.value case {
-            'catchId': final String id,
-            'fugitiveUid': final String fugitiveUid,
-          } when id == catchId && fugitiveUid == _uid)
+          if (entry.value
+              case {
+                'catchId': final String id,
+                'fugitiveUid': final String fugitiveUid,
+              }
+              when id == catchId && fugitiveUid == _uid)
             _db.ref('rooms/$roomId/catchPhotos/${entry.key}').set(null),
       ]);
     } on Object catch (e, st) {
