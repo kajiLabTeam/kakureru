@@ -424,7 +424,8 @@ void main() {
         ),
       );
       expect(find.text('鬼の手がかりを止める(3分)'), findsOneWidget);
-      expect(find.text('持っている。好きなときに使える'), findsOneWidget);
+      // 押せるときは背を低くするため、補足の行は出さない。
+      expect(find.text('持っている。好きなときに使える'), findsNothing);
       await tester.tap(find.text('つかう'));
       expect(used, 1);
     });

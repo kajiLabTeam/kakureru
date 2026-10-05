@@ -32,7 +32,7 @@ class HeldRewardBar extends StatelessWidget {
         color: missionSoft,
         borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
       child: Row(
         children: [
           Icon(rewardIcon(type), size: 18, color: missionInk),
@@ -52,12 +52,13 @@ class HeldRewardBar extends StatelessWidget {
                     color: missionInk,
                   ),
                 ),
-                Text(
-                  onUse == null && disabledReason != null
-                      ? disabledReason!
-                      : '持っている。好きなときに使える',
-                  style: const TextStyle(fontSize: 11, color: missionInk),
-                ),
+                // 押せるときは1行にして背を低くする。押せない理由があるときだけ
+                // 2行目に出す。
+                if (onUse == null && disabledReason != null)
+                  Text(
+                    disabledReason!,
+                    style: const TextStyle(fontSize: 11, color: missionInk),
+                  ),
               ],
             ),
           ),

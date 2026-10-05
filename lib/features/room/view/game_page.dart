@@ -1027,7 +1027,7 @@ class GamePage extends HookConsumerWidget {
                 // 使うまでカメラボタンの下に出し続ける。
                 final heldReward = heldRewards.firstOrNull;
                 // 帯と「つかう」の分だけ、下寄せのボタンを上へずらす。
-                final bottomLift = bandsLift + (heldReward == null ? 0 : 64.0);
+                final bottomLift = bandsLift + (heldReward == null ? 0 : 56.0);
 
                 final mapPageContent = Column(
                   children: [
@@ -1245,13 +1245,10 @@ class GamePage extends HookConsumerWidget {
                             ),
                           if (heldReward != null)
                             Positioned(
-                              right: 14,
+                              left: 12,
+                              right: 12,
                               bottom: 8 + bandsLift,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 280,
-                                ),
-                                child: ClipRRect(
+                              child: ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
                                   child: HeldRewardBar(
                                     type: heldReward.type,
@@ -1275,7 +1272,6 @@ class GamePage extends HookConsumerWidget {
                                         ? '使っています…'
                                         : 'いま効いているので、切れてから使える',
                                   ),
-                                ),
                               ),
                             ),
                           // 目撃写真のボタン(地図の右下)。地図の帰属表示
