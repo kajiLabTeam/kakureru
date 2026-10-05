@@ -987,37 +987,44 @@ class GamePage extends HookConsumerWidget {
                         myMissionSpot != null &&
                         !claimAction.isRunning);
 
+                // 効果が効いているあいだの細い帯(残り時間はサーバー時刻で数える)。
+                // 地図の右下、カメラボタンの下に重ねる(Columnに足すと地図が狭くなり
+                // 上の邪魔にもなるため)。
+                final effectBands = <Widget>[
+                  for (final effect in activeTimedEffects(
+                    roomEffects,
+                    serverNowMillis: now,
+                  ))
+                    EffectBand(
+                      type: effect.type,
+                      viewerRole: myRole,
+                      remainingMillis: effectRemainingMillis(
+                        effect,
+                        serverNowMillis: now,
+                      ),
+                      // 誰が引いたかは逃走者にだけ伝える(鬼に伝えると
+                      // 居場所の特定につながるため)。
+                      drawerName: myRole == UserRole.fugitive
+                          ? findUser(room.users, effect.byUid)?.displayName
+                          : null,
+                    ),
+                  // 「自分のアイコンを大きくする」は本人にだけ出す
+                  // 個人向けの帯(他の帯と違い全員共通では出さない)。
+                  if (myEnlargeSelfIconEffect != null)
+                    EffectBand(
+                      type: RewardType.enlargeSelfIcon,
+                      viewerRole: myRole,
+                      remainingMillis: effectRemainingMillis(
+                        myEnlargeSelfIconEffect,
+                        serverNowMillis: now,
+                      ),
+                    ),
+                ];
+                // 帯の分だけ、地図の下寄せのボタンを上へずらす。
+                final bandsLift = effectBands.length * 32.0;
+
                 final mapPageContent = Column(
                   children: [
-                    // 効果が効いているあいだの細い帯(残り時間はサーバー時刻で数える)。
-                    for (final effect in activeTimedEffects(
-                      roomEffects,
-                      serverNowMillis: now,
-                    ))
-                      EffectBand(
-                        type: effect.type,
-                        viewerRole: myRole,
-                        remainingMillis: effectRemainingMillis(
-                          effect,
-                          serverNowMillis: now,
-                        ),
-                        // 誰が引いたかは逃走者にだけ伝える(鬼に伝えると
-                        // 居場所の特定につながるため)。
-                        drawerName: myRole == UserRole.fugitive
-                            ? findUser(room.users, effect.byUid)?.displayName
-                            : null,
-                      ),
-                    // 「自分のアイコンを大きくする」は本人にだけ出す
-                    // 個人向けの帯(他の帯と違い全員共通では出さない)。
-                    if (myEnlargeSelfIconEffect != null)
-                      EffectBand(
-                        type: RewardType.enlargeSelfIcon,
-                        viewerRole: myRole,
-                        remainingMillis: effectRemainingMillis(
-                          myEnlargeSelfIconEffect,
-                          serverNowMillis: now,
-                        ),
-                      ),
                     // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
                     // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
                     // なので逃走者のみに出す。
@@ -1161,7 +1168,7 @@ class GamePage extends HookConsumerWidget {
                                       Positioned(
                                         left: 12,
                                         right: 12,
-                                        bottom: 14,
+                                        bottom: 14 + bandsLift,
                                         child: MissionClaimButton(
                                           isClaiming: claimAction.isRunning,
                                           onPressed: () => unawaited(
@@ -1180,7 +1187,7 @@ class GamePage extends HookConsumerWidget {
                                       Positioned(
                                         left: 12,
                                         right: 12,
-                                        bottom: 14,
+                                        bottom: 14 + bandsLift,
                                         child: MissionClaimButton(
                                           label: 'ごほうびを受け取る',
                                           isClaiming: false,
@@ -1205,7 +1212,7 @@ class GamePage extends HookConsumerWidget {
                                         Positioned(
                                           left: 12,
                                           right: 12,
-                                          bottom: 80,
+                                          bottom: 80 + bandsLift,
                                           child: MissionDebugArrivalButton(
                                             onPressed: claimAction.isRunning
                                                 ? null
@@ -1242,6 +1249,25 @@ class GamePage extends HookConsumerWidget {
                               ),
                             ),
                           ),
+                          if (effectBands.isNotEmpty)
+                            Positioned(
+                              left: 12,
+                              right: 12,
+                              bottom: 8,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (final band in effectBands)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: band,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
                           // 目撃写真のボタン(地図の右下)。地図の帰属表示
                           // (右下の「i」)を隠さないよう、その上に置く。
                           // 「ごほうびガチャを引く」が出ている間は、そのボタンに
@@ -1252,9 +1278,7 @@ class GamePage extends HookConsumerWidget {
                             Positioned(
                               right: 14,
                               bottom:
-                                  showsMissionButton || heldRewards.isNotEmpty
-                                  ? 120
-                                  : 60,
+                                  (showsMissionButton ? 120 : 60) + bandsLift,
                               child: SightingPhotoButton(
                                 unreadCount: sightingBadge.unreadCount,
                                 onPressed: () =>
