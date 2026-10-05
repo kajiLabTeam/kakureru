@@ -1249,29 +1249,29 @@ class GamePage extends HookConsumerWidget {
                               right: 12,
                               bottom: 8 + bandsLift,
                               child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: HeldRewardBar(
-                                    type: heldReward.type,
-                                    // 同じ効果がいま効いているあいだは押せない
-                                    // (重ねても長くならないため)。
-                                    onUse:
-                                        useRewardAction.isRunning ||
-                                            activeEffectOf(
-                                                  roomEffects,
-                                                  heldReward.type,
-                                                  serverNowMillis: now,
-                                                ) !=
-                                                null
-                                        ? null
-                                        : () => unawaited(
-                                            handleUseHeldRewardPressed(
-                                              heldReward,
-                                            ),
+                                borderRadius: BorderRadius.circular(12),
+                                child: HeldRewardBar(
+                                  type: heldReward.type,
+                                  // 同じ効果がいま効いているあいだは押せない
+                                  // (重ねても長くならないため)。
+                                  onUse:
+                                      useRewardAction.isRunning ||
+                                          activeEffectOf(
+                                                roomEffects,
+                                                heldReward.type,
+                                                serverNowMillis: now,
+                                              ) !=
+                                              null
+                                      ? null
+                                      : () => unawaited(
+                                          handleUseHeldRewardPressed(
+                                            heldReward,
                                           ),
-                                    disabledReason: useRewardAction.isRunning
-                                        ? '使っています…'
-                                        : 'いま効いているので、切れてから使える',
-                                  ),
+                                        ),
+                                  disabledReason: useRewardAction.isRunning
+                                      ? '使っています…'
+                                      : 'いま効いているので、切れてから使える',
+                                ),
                               ),
                             ),
                           // 目撃写真のボタン(地図の右下)。地図の帰属表示
