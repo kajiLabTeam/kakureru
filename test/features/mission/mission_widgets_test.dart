@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kakureru/core/theme/app_theme.dart';
 import 'package:kakureru/features/location/view_model/location_view_model.dart';
 import 'package:kakureru/features/mission/mission_rules.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
@@ -426,6 +427,27 @@ void main() {
       expect(find.text('持っている。好きなときに使える'), findsOneWidget);
       await tester.tap(find.text('つかう'));
       expect(used, 1);
+    });
+
+    testWidgets('アプリのテーマ(ボタンの最小幅が無限)でも例外なく描ける', (tester) async {
+      // テーマのFilledButtonは minimumSize: Size.fromHeight(48) で幅が無限。
+      // Rowの中でそのままだとレイアウトが失敗して画面が白くなっていた。
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 360,
+                child: HeldRewardBar(type: RewardType.blockClues, onUse: () {}),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('つかう'), findsOneWidget);
     });
 
     testWidgets('onUseがnullなら押せず、理由を出す', (tester) async {

@@ -28,7 +28,10 @@ class HeldRewardBar extends StatelessWidget {
     final durationLabel = type.durationLabel;
     return Container(
       width: double.infinity,
-      color: missionSoft,
+      decoration: BoxDecoration(
+        color: missionSoft,
+        borderRadius: BorderRadius.circular(12),
+      ),
       padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
       child: Row(
         children: [
@@ -64,6 +67,9 @@ class HeldRewardBar extends StatelessWidget {
             height: 44,
             child: FilledButton(
               style: FilledButton.styleFrom(
+                // テーマの最小サイズは幅が無限(Size.fromHeight)で、Rowの中では
+                // レイアウトが失敗して画面が白くなる。幅は0から始める。
+                minimumSize: const Size(0, 44),
                 backgroundColor: missionAccent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
