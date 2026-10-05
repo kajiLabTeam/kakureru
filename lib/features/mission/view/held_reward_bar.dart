@@ -28,8 +28,11 @@ class HeldRewardBar extends StatelessWidget {
     final durationLabel = type.durationLabel;
     return Container(
       width: double.infinity,
-      color: missionSoft,
-      padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: missionSoft,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
       child: Row(
         children: [
           Icon(rewardIcon(type), size: 18, color: missionInk),
@@ -49,12 +52,13 @@ class HeldRewardBar extends StatelessWidget {
                     color: missionInk,
                   ),
                 ),
-                Text(
-                  onUse == null && disabledReason != null
-                      ? disabledReason!
-                      : '持っている。好きなときに使える',
-                  style: const TextStyle(fontSize: 11, color: missionInk),
-                ),
+                // 押せるときは1行にして背を低くする。押せない理由があるときだけ
+                // 2行目に出す。
+                if (onUse == null && disabledReason != null)
+                  Text(
+                    disabledReason!,
+                    style: const TextStyle(fontSize: 11, color: missionInk),
+                  ),
               ],
             ),
           ),
@@ -64,6 +68,9 @@ class HeldRewardBar extends StatelessWidget {
             height: 44,
             child: FilledButton(
               style: FilledButton.styleFrom(
+                // テーマの最小サイズは幅が無限(Size.fromHeight)で、Rowの中では
+                // レイアウトが失敗して画面が白くなる。幅は0から始める。
+                minimumSize: const Size(0, 44),
                 backgroundColor: missionAccent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
