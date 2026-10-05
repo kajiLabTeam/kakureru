@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'ble_detection.dart';
@@ -9,6 +9,7 @@ part of 'ble_detection.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -25,16 +26,21 @@ $BleDetectionCopyWith<BleDetection> get copyWith => _$BleDetectionCopyWithImpl<B
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is BleDetection&&(identical(other.shortUid, shortUid) || other.shortUid == shortUid)&&(identical(other.rssiDbm, rssiDbm) || other.rssiDbm == rssiDbm)&&(identical(other.detectedAtMillis, detectedAtMillis) || other.detectedAtMillis == detectedAtMillis));
+  final _this = this as BleDetection;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BleDetection&&(identical(other.shortUid, _this.shortUid) || other.shortUid == _this.shortUid)&&(identical(other.rssiDbm, _this.rssiDbm) || other.rssiDbm == _this.rssiDbm)&&(identical(other.detectedAtMillis, _this.detectedAtMillis) || other.detectedAtMillis == _this.detectedAtMillis));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,shortUid,rssiDbm,detectedAtMillis);
+int get hashCode {
+  final _this = this as BleDetection;
+  return Object.hash(runtimeType,_this.shortUid,_this.rssiDbm,_this.detectedAtMillis);
+}
 
 @override
 String toString() {
-  return 'BleDetection(shortUid: $shortUid, rssiDbm: $rssiDbm, detectedAtMillis: $detectedAtMillis)';
+  final _this = this as BleDetection;
+  return 'BleDetection(shortUid: ${_this.shortUid}, rssiDbm: ${_this.rssiDbm}, detectedAtMillis: ${_this.detectedAtMillis})';
 }
 
 
@@ -63,7 +69,7 @@ class _$BleDetectionCopyWithImpl<$Res>
 /// Create a copy of BleDetection
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? shortUid = null,Object? rssiDbm = null,Object? detectedAtMillis = null,}) {
-  return _then(_self.copyWith(
+  return _then(BleDetection(
 shortUid: null == shortUid ? _self.shortUid : shortUid // ignore: cast_nullable_to_non_nullable
 as String,rssiDbm: null == rssiDbm ? _self.rssiDbm : rssiDbm // ignore: cast_nullable_to_non_nullable
 as int,detectedAtMillis: null == detectedAtMillis ? _self.detectedAtMillis : detectedAtMillis // ignore: cast_nullable_to_non_nullable
@@ -225,16 +231,18 @@ _$BleDetectionCopyWith<_BleDetection> get copyWith => __$BleDetectionCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _BleDetection&&(identical(other.shortUid, shortUid) || other.shortUid == shortUid)&&(identical(other.rssiDbm, rssiDbm) || other.rssiDbm == rssiDbm)&&(identical(other.detectedAtMillis, detectedAtMillis) || other.detectedAtMillis == detectedAtMillis));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _BleDetection&&(identical(other.shortUid, shortUid) || other.shortUid == shortUid)&&(identical(other.rssiDbm, rssiDbm) || other.rssiDbm == rssiDbm)&&(identical(other.detectedAtMillis, detectedAtMillis) || other.detectedAtMillis == detectedAtMillis));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,shortUid,rssiDbm,detectedAtMillis);
+int get hashCode {
+    return Object.hash(runtimeType,shortUid,rssiDbm,detectedAtMillis);
+}
 
 @override
 String toString() {
-  return 'BleDetection(shortUid: $shortUid, rssiDbm: $rssiDbm, detectedAtMillis: $detectedAtMillis)';
+    return 'BleDetection(shortUid: $shortUid, rssiDbm: $rssiDbm, detectedAtMillis: $detectedAtMillis)';
 }
 
 

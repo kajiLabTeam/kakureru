@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.12.2
+  sdk: ^3.13.0
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -43,7 +43,7 @@ dependencies:
   # hooks_riverpod は flutter_riverpod + flutter_hooks を統合したもの。
   # HookConsumerWidget で hooks と Riverpod を同じウィジェットで使える。
   hooks_riverpod: ^3.4.2
-  json_annotation: ^4.9.0
+  json_annotation: ^4.12.0
   permission_handler: ^11.3.1
   shared_preferences: ^2.5.5
   sensors_plus: ^6.1.1
@@ -80,7 +80,7 @@ dev_dependencies:
 
   flutter_test:
     sdk: flutter
-  freezed: ^3.2.5
+  freezed: ^4.0.2
   json_serializable: ^6.8.0
 
   # The "very_good_analysis" package below contains a set of strict lints to

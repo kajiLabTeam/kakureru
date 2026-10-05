@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'mission_progress.dart';
@@ -9,6 +9,7 @@ part of 'mission_progress.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -28,16 +29,21 @@ $MissionProgressCopyWith<MissionProgress> get copyWith => _$MissionProgressCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is MissionProgress&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.spotId, spotId) || other.spotId == spotId)&&(identical(other.arrival, arrival) || other.arrival == arrival));
+  final _this = this as MissionProgress;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MissionProgress&&(identical(other.missionId, _this.missionId) || other.missionId == _this.missionId)&&(identical(other.spotId, _this.spotId) || other.spotId == _this.spotId)&&(identical(other.arrival, _this.arrival) || other.arrival == _this.arrival));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,missionId,spotId,arrival);
+int get hashCode {
+  final _this = this as MissionProgress;
+  return Object.hash(runtimeType,_this.missionId,_this.spotId,_this.arrival);
+}
 
 @override
 String toString() {
-  return 'MissionProgress(missionId: $missionId, spotId: $spotId, arrival: $arrival)';
+  final _this = this as MissionProgress;
+  return 'MissionProgress(missionId: ${_this.missionId}, spotId: ${_this.spotId}, arrival: ${_this.arrival})';
 }
 
 
@@ -66,7 +72,7 @@ class _$MissionProgressCopyWithImpl<$Res>
 /// Create a copy of MissionProgress
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? missionId = freezed,Object? spotId = freezed,Object? arrival = null,}) {
-  return _then(_self.copyWith(
+  return _then(MissionProgress(
 missionId: freezed == missionId ? _self.missionId : missionId // ignore: cast_nullable_to_non_nullable
 as String?,spotId: freezed == spotId ? _self.spotId : spotId // ignore: cast_nullable_to_non_nullable
 as String?,arrival: null == arrival ? _self.arrival : arrival // ignore: cast_nullable_to_non_nullable
@@ -231,16 +237,18 @@ _$MissionProgressCopyWith<_MissionProgress> get copyWith => __$MissionProgressCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _MissionProgress&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.spotId, spotId) || other.spotId == spotId)&&(identical(other.arrival, arrival) || other.arrival == arrival));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _MissionProgress&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.spotId, spotId) || other.spotId == spotId)&&(identical(other.arrival, arrival) || other.arrival == arrival));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,missionId,spotId,arrival);
+int get hashCode {
+    return Object.hash(runtimeType,missionId,spotId,arrival);
+}
 
 @override
 String toString() {
-  return 'MissionProgress(missionId: $missionId, spotId: $spotId, arrival: $arrival)';
+    return 'MissionProgress(missionId: $missionId, spotId: $spotId, arrival: $arrival)';
 }
 
 

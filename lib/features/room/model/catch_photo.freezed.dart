@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'catch_photo.dart';
@@ -9,6 +9,7 @@ part of 'catch_photo.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 
@@ -28,16 +29,21 @@ $CatchPhotoCopyWith<CatchPhoto> get copyWith => _$CatchPhotoCopyWithImpl<CatchPh
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is CatchPhoto&&(identical(other.id, id) || other.id == id)&&(identical(other.catchId, catchId) || other.catchId == catchId)&&(identical(other.demonUid, demonUid) || other.demonUid == demonUid)&&(identical(other.fugitiveUid, fugitiveUid) || other.fugitiveUid == fugitiveUid)&&(identical(other.takenAt, takenAt) || other.takenAt == takenAt));
+  final _this = this as CatchPhoto;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CatchPhoto&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.catchId, _this.catchId) || other.catchId == _this.catchId)&&(identical(other.demonUid, _this.demonUid) || other.demonUid == _this.demonUid)&&(identical(other.fugitiveUid, _this.fugitiveUid) || other.fugitiveUid == _this.fugitiveUid)&&(identical(other.takenAt, _this.takenAt) || other.takenAt == _this.takenAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,catchId,demonUid,fugitiveUid,takenAt);
+int get hashCode {
+  final _this = this as CatchPhoto;
+  return Object.hash(runtimeType,_this.id,_this.catchId,_this.demonUid,_this.fugitiveUid,_this.takenAt);
+}
 
 @override
 String toString() {
-  return 'CatchPhoto(id: $id, catchId: $catchId, demonUid: $demonUid, fugitiveUid: $fugitiveUid, takenAt: $takenAt)';
+  final _this = this as CatchPhoto;
+  return 'CatchPhoto(id: ${_this.id}, catchId: ${_this.catchId}, demonUid: ${_this.demonUid}, fugitiveUid: ${_this.fugitiveUid}, takenAt: ${_this.takenAt})';
 }
 
 
@@ -66,7 +72,7 @@ class _$CatchPhotoCopyWithImpl<$Res>
 /// Create a copy of CatchPhoto
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? catchId = null,Object? demonUid = null,Object? fugitiveUid = null,Object? takenAt = null,}) {
-  return _then(_self.copyWith(
+  return _then(CatchPhoto(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,catchId: null == catchId ? _self.catchId : catchId // ignore: cast_nullable_to_non_nullable
 as String,demonUid: null == demonUid ? _self.demonUid : demonUid // ignore: cast_nullable_to_non_nullable
@@ -235,16 +241,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _CatchPhoto&&(identical(other.id, id) || other.id == id)&&(identical(other.catchId, catchId) || other.catchId == catchId)&&(identical(other.demonUid, demonUid) || other.demonUid == demonUid)&&(identical(other.fugitiveUid, fugitiveUid) || other.fugitiveUid == fugitiveUid)&&(identical(other.takenAt, takenAt) || other.takenAt == takenAt));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _CatchPhoto&&(identical(other.id, id) || other.id == id)&&(identical(other.catchId, catchId) || other.catchId == catchId)&&(identical(other.demonUid, demonUid) || other.demonUid == demonUid)&&(identical(other.fugitiveUid, fugitiveUid) || other.fugitiveUid == fugitiveUid)&&(identical(other.takenAt, takenAt) || other.takenAt == takenAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,catchId,demonUid,fugitiveUid,takenAt);
+int get hashCode {
+    return Object.hash(runtimeType,id,catchId,demonUid,fugitiveUid,takenAt);
+}
 
 @override
 String toString() {
-  return 'CatchPhoto(id: $id, catchId: $catchId, demonUid: $demonUid, fugitiveUid: $fugitiveUid, takenAt: $takenAt)';
+    return 'CatchPhoto(id: $id, catchId: $catchId, demonUid: $demonUid, fugitiveUid: $fugitiveUid, takenAt: $takenAt)';
 }
 
 

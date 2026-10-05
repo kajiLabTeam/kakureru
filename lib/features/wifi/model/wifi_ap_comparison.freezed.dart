@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'wifi_ap_comparison.dart';
@@ -9,6 +9,7 @@ part of 'wifi_ap_comparison.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -25,16 +26,21 @@ $WifiApComparisonCopyWith<WifiApComparison> get copyWith => _$WifiApComparisonCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is WifiApComparison&&(identical(other.bssid, bssid) || other.bssid == bssid)&&(identical(other.selfRssi, selfRssi) || other.selfRssi == selfRssi)&&(identical(other.targetRssi, targetRssi) || other.targetRssi == targetRssi));
+  final _this = this as WifiApComparison;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is WifiApComparison&&(identical(other.bssid, _this.bssid) || other.bssid == _this.bssid)&&(identical(other.selfRssi, _this.selfRssi) || other.selfRssi == _this.selfRssi)&&(identical(other.targetRssi, _this.targetRssi) || other.targetRssi == _this.targetRssi));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,bssid,selfRssi,targetRssi);
+int get hashCode {
+  final _this = this as WifiApComparison;
+  return Object.hash(runtimeType,_this.bssid,_this.selfRssi,_this.targetRssi);
+}
 
 @override
 String toString() {
-  return 'WifiApComparison(bssid: $bssid, selfRssi: $selfRssi, targetRssi: $targetRssi)';
+  final _this = this as WifiApComparison;
+  return 'WifiApComparison(bssid: ${_this.bssid}, selfRssi: ${_this.selfRssi}, targetRssi: ${_this.targetRssi})';
 }
 
 
@@ -63,7 +69,7 @@ class _$WifiApComparisonCopyWithImpl<$Res>
 /// Create a copy of WifiApComparison
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? bssid = null,Object? selfRssi = null,Object? targetRssi = null,}) {
-  return _then(_self.copyWith(
+  return _then(WifiApComparison(
 bssid: null == bssid ? _self.bssid : bssid // ignore: cast_nullable_to_non_nullable
 as String,selfRssi: null == selfRssi ? _self.selfRssi : selfRssi // ignore: cast_nullable_to_non_nullable
 as int,targetRssi: null == targetRssi ? _self.targetRssi : targetRssi // ignore: cast_nullable_to_non_nullable
@@ -225,16 +231,18 @@ _$WifiApComparisonCopyWith<_WifiApComparison> get copyWith => __$WifiApCompariso
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WifiApComparison&&(identical(other.bssid, bssid) || other.bssid == bssid)&&(identical(other.selfRssi, selfRssi) || other.selfRssi == selfRssi)&&(identical(other.targetRssi, targetRssi) || other.targetRssi == targetRssi));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _WifiApComparison&&(identical(other.bssid, bssid) || other.bssid == bssid)&&(identical(other.selfRssi, selfRssi) || other.selfRssi == selfRssi)&&(identical(other.targetRssi, targetRssi) || other.targetRssi == targetRssi));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,bssid,selfRssi,targetRssi);
+int get hashCode {
+    return Object.hash(runtimeType,bssid,selfRssi,targetRssi);
+}
 
 @override
 String toString() {
-  return 'WifiApComparison(bssid: $bssid, selfRssi: $selfRssi, targetRssi: $targetRssi)';
+    return 'WifiApComparison(bssid: $bssid, selfRssi: $selfRssi, targetRssi: $targetRssi)';
 }
 
 

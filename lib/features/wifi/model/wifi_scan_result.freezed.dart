@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'wifi_scan_result.dart';
@@ -9,6 +9,7 @@ part of 'wifi_scan_result.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 
@@ -31,16 +32,21 @@ $WifiScanResultCopyWith<WifiScanResult> get copyWith => _$WifiScanResultCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is WifiScanResult&&const DeepCollectionEquality().equals(other.bssidRssi, bssidRssi)&&(identical(other.scannedAt, scannedAt) || other.scannedAt == scannedAt)&&(identical(other.hotspotBssid, hotspotBssid) || other.hotspotBssid == hotspotBssid));
+  final _this = this as WifiScanResult;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is WifiScanResult&&const DeepCollectionEquality().equals(other.bssidRssi, _this.bssidRssi)&&(identical(other.scannedAt, _this.scannedAt) || other.scannedAt == _this.scannedAt)&&(identical(other.hotspotBssid, _this.hotspotBssid) || other.hotspotBssid == _this.hotspotBssid));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(bssidRssi),scannedAt,hotspotBssid);
+int get hashCode {
+  final _this = this as WifiScanResult;
+  return Object.hash(runtimeType,const DeepCollectionEquality().hash(_this.bssidRssi),_this.scannedAt,_this.hotspotBssid);
+}
 
 @override
 String toString() {
-  return 'WifiScanResult(bssidRssi: $bssidRssi, scannedAt: $scannedAt, hotspotBssid: $hotspotBssid)';
+  final _this = this as WifiScanResult;
+  return 'WifiScanResult(bssidRssi: ${_this.bssidRssi}, scannedAt: ${_this.scannedAt}, hotspotBssid: ${_this.hotspotBssid})';
 }
 
 
@@ -69,7 +75,7 @@ class _$WifiScanResultCopyWithImpl<$Res>
 /// Create a copy of WifiScanResult
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? bssidRssi = null,Object? scannedAt = null,Object? hotspotBssid = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(WifiScanResult(
 bssidRssi: null == bssidRssi ? _self.bssidRssi : bssidRssi // ignore: cast_nullable_to_non_nullable
 as Map<String, int>,scannedAt: null == scannedAt ? _self.scannedAt : scannedAt // ignore: cast_nullable_to_non_nullable
 as int,hotspotBssid: freezed == hotspotBssid ? _self.hotspotBssid : hotspotBssid // ignore: cast_nullable_to_non_nullable
@@ -214,7 +220,7 @@ return $default(_that.bssidRssi,_that.scannedAt,_that.hotspotBssid);case _:
 @JsonSerializable()
 
 class _WifiScanResult extends WifiScanResult {
-  const _WifiScanResult({final  Map<String, int> bssidRssi = const {}, this.scannedAt = 0, this.hotspotBssid}): _bssidRssi = bssidRssi,super._();
+  const _WifiScanResult({ Map<String, int> bssidRssi = const {}, this.scannedAt = 0, this.hotspotBssid}): _bssidRssi = bssidRssi,super._();
   factory _WifiScanResult.fromJson(Map<String, dynamic> json) => _$WifiScanResultFromJson(json);
 
  final  Map<String, int> _bssidRssi;
@@ -243,16 +249,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WifiScanResult&&const DeepCollectionEquality().equals(other._bssidRssi, _bssidRssi)&&(identical(other.scannedAt, scannedAt) || other.scannedAt == scannedAt)&&(identical(other.hotspotBssid, hotspotBssid) || other.hotspotBssid == hotspotBssid));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _WifiScanResult&&const DeepCollectionEquality().equals(other.bssidRssi, _bssidRssi)&&(identical(other.scannedAt, scannedAt) || other.scannedAt == scannedAt)&&(identical(other.hotspotBssid, hotspotBssid) || other.hotspotBssid == hotspotBssid));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_bssidRssi),scannedAt,hotspotBssid);
+int get hashCode {
+    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_bssidRssi),scannedAt,hotspotBssid);
+}
 
 @override
 String toString() {
-  return 'WifiScanResult(bssidRssi: $bssidRssi, scannedAt: $scannedAt, hotspotBssid: $hotspotBssid)';
+    return 'WifiScanResult(bssidRssi: $bssidRssi, scannedAt: $scannedAt, hotspotBssid: $hotspotBssid)';
 }
 
 

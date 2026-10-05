@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'photo_capture_state.dart';
@@ -9,6 +9,7 @@ part of 'photo_capture_state.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -30,16 +31,21 @@ $PhotoCaptureStateCopyWith<PhotoCaptureState> get copyWith => _$PhotoCaptureStat
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PhotoCaptureState&&(identical(other.isDue, isDue) || other.isDue == isDue)&&(identical(other.isUploading, isUploading) || other.isUploading == isUploading)&&const DeepCollectionEquality().equals(other.pendingBytes, pendingBytes)&&(identical(other.lastErrorMessage, lastErrorMessage) || other.lastErrorMessage == lastErrorMessage));
+  final _this = this as PhotoCaptureState;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PhotoCaptureState&&(identical(other.isDue, _this.isDue) || other.isDue == _this.isDue)&&(identical(other.isUploading, _this.isUploading) || other.isUploading == _this.isUploading)&&const DeepCollectionEquality().equals(other.pendingBytes, _this.pendingBytes)&&(identical(other.lastErrorMessage, _this.lastErrorMessage) || other.lastErrorMessage == _this.lastErrorMessage));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,isDue,isUploading,const DeepCollectionEquality().hash(pendingBytes),lastErrorMessage);
+int get hashCode {
+  final _this = this as PhotoCaptureState;
+  return Object.hash(runtimeType,_this.isDue,_this.isUploading,const DeepCollectionEquality().hash(_this.pendingBytes),_this.lastErrorMessage);
+}
 
 @override
 String toString() {
-  return 'PhotoCaptureState(isDue: $isDue, isUploading: $isUploading, pendingBytes: $pendingBytes, lastErrorMessage: $lastErrorMessage)';
+  final _this = this as PhotoCaptureState;
+  return 'PhotoCaptureState(isDue: ${_this.isDue}, isUploading: ${_this.isUploading}, pendingBytes: ${_this.pendingBytes}, lastErrorMessage: ${_this.lastErrorMessage})';
 }
 
 
@@ -68,7 +74,7 @@ class _$PhotoCaptureStateCopyWithImpl<$Res>
 /// Create a copy of PhotoCaptureState
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? isDue = null,Object? isUploading = null,Object? pendingBytes = freezed,Object? lastErrorMessage = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(PhotoCaptureState(
 isDue: null == isDue ? _self.isDue : isDue // ignore: cast_nullable_to_non_nullable
 as bool,isUploading: null == isUploading ? _self.isUploading : isUploading // ignore: cast_nullable_to_non_nullable
 as bool,pendingBytes: freezed == pendingBytes ? _self.pendingBytes : pendingBytes // ignore: cast_nullable_to_non_nullable
@@ -237,16 +243,18 @@ _$PhotoCaptureStateCopyWith<_PhotoCaptureState> get copyWith => __$PhotoCaptureS
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PhotoCaptureState&&(identical(other.isDue, isDue) || other.isDue == isDue)&&(identical(other.isUploading, isUploading) || other.isUploading == isUploading)&&const DeepCollectionEquality().equals(other.pendingBytes, pendingBytes)&&(identical(other.lastErrorMessage, lastErrorMessage) || other.lastErrorMessage == lastErrorMessage));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PhotoCaptureState&&(identical(other.isDue, isDue) || other.isDue == isDue)&&(identical(other.isUploading, isUploading) || other.isUploading == isUploading)&&const DeepCollectionEquality().equals(other.pendingBytes, pendingBytes)&&(identical(other.lastErrorMessage, lastErrorMessage) || other.lastErrorMessage == lastErrorMessage));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,isDue,isUploading,const DeepCollectionEquality().hash(pendingBytes),lastErrorMessage);
+int get hashCode {
+    return Object.hash(runtimeType,isDue,isUploading,const DeepCollectionEquality().hash(pendingBytes),lastErrorMessage);
+}
 
 @override
 String toString() {
-  return 'PhotoCaptureState(isDue: $isDue, isUploading: $isUploading, pendingBytes: $pendingBytes, lastErrorMessage: $lastErrorMessage)';
+    return 'PhotoCaptureState(isDue: $isDue, isUploading: $isUploading, pendingBytes: $pendingBytes, lastErrorMessage: $lastErrorMessage)';
 }
 
 

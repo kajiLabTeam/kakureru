@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'room_effect.dart';
@@ -9,6 +9,7 @@ part of 'room_effect.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 
@@ -34,16 +35,21 @@ $RoomEffectCopyWith<RoomEffect> get copyWith => _$RoomEffectCopyWithImpl<RoomEff
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomEffect&&(identical(other.id, id) || other.id == id)&&(identical(other.type, type) || other.type == type)&&(identical(other.byUid, byUid) || other.byUid == byUid)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.durationMs, durationMs) || other.durationMs == durationMs)&&(identical(other.skipSlot, skipSlot) || other.skipSlot == skipSlot));
+  final _this = this as RoomEffect;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomEffect&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.type, _this.type) || other.type == _this.type)&&(identical(other.byUid, _this.byUid) || other.byUid == _this.byUid)&&(identical(other.startedAt, _this.startedAt) || other.startedAt == _this.startedAt)&&(identical(other.durationMs, _this.durationMs) || other.durationMs == _this.durationMs)&&(identical(other.skipSlot, _this.skipSlot) || other.skipSlot == _this.skipSlot));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,type,byUid,startedAt,durationMs,skipSlot);
+int get hashCode {
+  final _this = this as RoomEffect;
+  return Object.hash(runtimeType,_this.id,_this.type,_this.byUid,_this.startedAt,_this.durationMs,_this.skipSlot);
+}
 
 @override
 String toString() {
-  return 'RoomEffect(id: $id, type: $type, byUid: $byUid, startedAt: $startedAt, durationMs: $durationMs, skipSlot: $skipSlot)';
+  final _this = this as RoomEffect;
+  return 'RoomEffect(id: ${_this.id}, type: ${_this.type}, byUid: ${_this.byUid}, startedAt: ${_this.startedAt}, durationMs: ${_this.durationMs}, skipSlot: ${_this.skipSlot})';
 }
 
 
@@ -72,7 +78,7 @@ class _$RoomEffectCopyWithImpl<$Res>
 /// Create a copy of RoomEffect
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? type = null,Object? byUid = null,Object? startedAt = null,Object? durationMs = null,Object? skipSlot = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(RoomEffect(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,type: null == type ? _self.type : type // ignore: cast_nullable_to_non_nullable
 as RewardType,byUid: null == byUid ? _self.byUid : byUid // ignore: cast_nullable_to_non_nullable
@@ -249,16 +255,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomEffect&&(identical(other.id, id) || other.id == id)&&(identical(other.type, type) || other.type == type)&&(identical(other.byUid, byUid) || other.byUid == byUid)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.durationMs, durationMs) || other.durationMs == durationMs)&&(identical(other.skipSlot, skipSlot) || other.skipSlot == skipSlot));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomEffect&&(identical(other.id, id) || other.id == id)&&(identical(other.type, type) || other.type == type)&&(identical(other.byUid, byUid) || other.byUid == byUid)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.durationMs, durationMs) || other.durationMs == durationMs)&&(identical(other.skipSlot, skipSlot) || other.skipSlot == skipSlot));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,type,byUid,startedAt,durationMs,skipSlot);
+int get hashCode {
+    return Object.hash(runtimeType,id,type,byUid,startedAt,durationMs,skipSlot);
+}
 
 @override
 String toString() {
-  return 'RoomEffect(id: $id, type: $type, byUid: $byUid, startedAt: $startedAt, durationMs: $durationMs, skipSlot: $skipSlot)';
+    return 'RoomEffect(id: $id, type: $type, byUid: $byUid, startedAt: $startedAt, durationMs: $durationMs, skipSlot: $skipSlot)';
 }
 
 

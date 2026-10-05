@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'pressure_view_model.dart';
@@ -9,6 +9,7 @@ part of 'pressure_view_model.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -25,16 +26,21 @@ $PressureStateCopyWith<PressureState> get copyWith => _$PressureStateCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PressureState&&(identical(other.sensorAvailability, sensorAvailability) || other.sensorAvailability == sensorAvailability)&&(identical(other.myPressureHPa, myPressureHPa) || other.myPressureHPa == myPressureHPa)&&(identical(other.isCalibrating, isCalibrating) || other.isCalibrating == isCalibrating)&&(identical(other.calibrationFailure, calibrationFailure) || other.calibrationFailure == calibrationFailure));
+  final _this = this as PressureState;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PressureState&&(identical(other.sensorAvailability, _this.sensorAvailability) || other.sensorAvailability == _this.sensorAvailability)&&(identical(other.myPressureHPa, _this.myPressureHPa) || other.myPressureHPa == _this.myPressureHPa)&&(identical(other.isCalibrating, _this.isCalibrating) || other.isCalibrating == _this.isCalibrating)&&(identical(other.calibrationFailure, _this.calibrationFailure) || other.calibrationFailure == _this.calibrationFailure));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,sensorAvailability,myPressureHPa,isCalibrating,calibrationFailure);
+int get hashCode {
+  final _this = this as PressureState;
+  return Object.hash(runtimeType,_this.sensorAvailability,_this.myPressureHPa,_this.isCalibrating,_this.calibrationFailure);
+}
 
 @override
 String toString() {
-  return 'PressureState(sensorAvailability: $sensorAvailability, myPressureHPa: $myPressureHPa, isCalibrating: $isCalibrating, calibrationFailure: $calibrationFailure)';
+  final _this = this as PressureState;
+  return 'PressureState(sensorAvailability: ${_this.sensorAvailability}, myPressureHPa: ${_this.myPressureHPa}, isCalibrating: ${_this.isCalibrating}, calibrationFailure: ${_this.calibrationFailure})';
 }
 
 
@@ -63,7 +69,7 @@ class _$PressureStateCopyWithImpl<$Res>
 /// Create a copy of PressureState
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? sensorAvailability = null,Object? myPressureHPa = freezed,Object? isCalibrating = null,Object? calibrationFailure = null,}) {
-  return _then(_self.copyWith(
+  return _then(PressureState(
 sensorAvailability: null == sensorAvailability ? _self.sensorAvailability : sensorAvailability // ignore: cast_nullable_to_non_nullable
 as PressureSensorAvailability,myPressureHPa: freezed == myPressureHPa ? _self.myPressureHPa : myPressureHPa // ignore: cast_nullable_to_non_nullable
 as double?,isCalibrating: null == isCalibrating ? _self.isCalibrating : isCalibrating // ignore: cast_nullable_to_non_nullable
@@ -227,16 +233,18 @@ _$PressureStateCopyWith<_PressureState> get copyWith => __$PressureStateCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PressureState&&(identical(other.sensorAvailability, sensorAvailability) || other.sensorAvailability == sensorAvailability)&&(identical(other.myPressureHPa, myPressureHPa) || other.myPressureHPa == myPressureHPa)&&(identical(other.isCalibrating, isCalibrating) || other.isCalibrating == isCalibrating)&&(identical(other.calibrationFailure, calibrationFailure) || other.calibrationFailure == calibrationFailure));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PressureState&&(identical(other.sensorAvailability, sensorAvailability) || other.sensorAvailability == sensorAvailability)&&(identical(other.myPressureHPa, myPressureHPa) || other.myPressureHPa == myPressureHPa)&&(identical(other.isCalibrating, isCalibrating) || other.isCalibrating == isCalibrating)&&(identical(other.calibrationFailure, calibrationFailure) || other.calibrationFailure == calibrationFailure));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,sensorAvailability,myPressureHPa,isCalibrating,calibrationFailure);
+int get hashCode {
+    return Object.hash(runtimeType,sensorAvailability,myPressureHPa,isCalibrating,calibrationFailure);
+}
 
 @override
 String toString() {
-  return 'PressureState(sensorAvailability: $sensorAvailability, myPressureHPa: $myPressureHPa, isCalibrating: $isCalibrating, calibrationFailure: $calibrationFailure)';
+    return 'PressureState(sensorAvailability: $sensorAvailability, myPressureHPa: $myPressureHPa, isCalibrating: $isCalibrating, calibrationFailure: $calibrationFailure)';
 }
 
 

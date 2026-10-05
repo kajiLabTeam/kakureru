@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'clue_meter_sample.dart';
@@ -9,6 +9,7 @@ part of 'clue_meter_sample.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -27,16 +28,21 @@ $ClueMeterSampleCopyWith<ClueMeterSample> get copyWith => _$ClueMeterSampleCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ClueMeterSample&&(identical(other.at, at) || other.at == at)&&(identical(other.meter, meter) || other.meter == meter));
+  final _this = this as ClueMeterSample;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ClueMeterSample&&(identical(other.at, _this.at) || other.at == _this.at)&&(identical(other.meter, _this.meter) || other.meter == _this.meter));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,at,meter);
+int get hashCode {
+  final _this = this as ClueMeterSample;
+  return Object.hash(runtimeType,_this.at,_this.meter);
+}
 
 @override
 String toString() {
-  return 'ClueMeterSample(at: $at, meter: $meter)';
+  final _this = this as ClueMeterSample;
+  return 'ClueMeterSample(at: ${_this.at}, meter: ${_this.meter})';
 }
 
 
@@ -65,7 +71,7 @@ class _$ClueMeterSampleCopyWithImpl<$Res>
 /// Create a copy of ClueMeterSample
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? at = null,Object? meter = null,}) {
-  return _then(_self.copyWith(
+  return _then(ClueMeterSample(
 at: null == at ? _self.at : at // ignore: cast_nullable_to_non_nullable
 as DateTime,meter: null == meter ? _self.meter : meter // ignore: cast_nullable_to_non_nullable
 as double,
@@ -227,16 +233,18 @@ _$ClueMeterSampleCopyWith<_ClueMeterSample> get copyWith => __$ClueMeterSampleCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ClueMeterSample&&(identical(other.at, at) || other.at == at)&&(identical(other.meter, meter) || other.meter == meter));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _ClueMeterSample&&(identical(other.at, at) || other.at == at)&&(identical(other.meter, meter) || other.meter == meter));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,at,meter);
+int get hashCode {
+    return Object.hash(runtimeType,at,meter);
+}
 
 @override
 String toString() {
-  return 'ClueMeterSample(at: $at, meter: $meter)';
+    return 'ClueMeterSample(at: $at, meter: $meter)';
 }
 
 

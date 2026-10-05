@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'room_setting.dart';
@@ -9,6 +9,7 @@ part of 'room_setting.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 
@@ -28,16 +29,21 @@ $LatLngCopyWith<LatLng> get copyWith => _$LatLngCopyWithImpl<LatLng>(this as Lat
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LatLng&&(identical(other.lat, lat) || other.lat == lat)&&(identical(other.lng, lng) || other.lng == lng));
+  final _this = this as LatLng;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LatLng&&(identical(other.lat, _this.lat) || other.lat == _this.lat)&&(identical(other.lng, _this.lng) || other.lng == _this.lng));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,lat,lng);
+int get hashCode {
+  final _this = this as LatLng;
+  return Object.hash(runtimeType,_this.lat,_this.lng);
+}
 
 @override
 String toString() {
-  return 'LatLng(lat: $lat, lng: $lng)';
+  final _this = this as LatLng;
+  return 'LatLng(lat: ${_this.lat}, lng: ${_this.lng})';
 }
 
 
@@ -66,7 +72,7 @@ class _$LatLngCopyWithImpl<$Res>
 /// Create a copy of LatLng
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? lat = null,Object? lng = null,}) {
-  return _then(_self.copyWith(
+  return _then(LatLng(
 lat: null == lat ? _self.lat : lat // ignore: cast_nullable_to_non_nullable
 as double,lng: null == lng ? _self.lng : lng // ignore: cast_nullable_to_non_nullable
 as double,
@@ -229,16 +235,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LatLng&&(identical(other.lat, lat) || other.lat == lat)&&(identical(other.lng, lng) || other.lng == lng));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _LatLng&&(identical(other.lat, lat) || other.lat == lat)&&(identical(other.lng, lng) || other.lng == lng));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,lat,lng);
+int get hashCode {
+    return Object.hash(runtimeType,lat,lng);
+}
 
 @override
 String toString() {
-  return 'LatLng(lat: $lat, lng: $lng)';
+    return 'LatLng(lat: $lat, lng: $lng)';
 }
 
 
@@ -294,16 +302,21 @@ $RoomSettingCopyWith<RoomSetting> get copyWith => _$RoomSettingCopyWithImpl<Room
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomSetting&&const DeepCollectionEquality().equals(other.gameArea, gameArea)&&(identical(other.releaseWaitSec, releaseWaitSec) || other.releaseWaitSec == releaseWaitSec)&&(identical(other.gameDurationSec, gameDurationSec) || other.gameDurationSec == gameDurationSec)&&(identical(other.photoIntervalSec, photoIntervalSec) || other.photoIntervalSec == photoIntervalSec)&&(identical(other.fugitiveInfoDelaySec, fugitiveInfoDelaySec) || other.fugitiveInfoDelaySec == fugitiveInfoDelaySec)&&(identical(other.senseDistanceRadiusM, senseDistanceRadiusM) || other.senseDistanceRadiusM == senseDistanceRadiusM)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  final _this = this as RoomSetting;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomSetting&&const DeepCollectionEquality().equals(other.gameArea, _this.gameArea)&&(identical(other.releaseWaitSec, _this.releaseWaitSec) || other.releaseWaitSec == _this.releaseWaitSec)&&(identical(other.gameDurationSec, _this.gameDurationSec) || other.gameDurationSec == _this.gameDurationSec)&&(identical(other.photoIntervalSec, _this.photoIntervalSec) || other.photoIntervalSec == _this.photoIntervalSec)&&(identical(other.fugitiveInfoDelaySec, _this.fugitiveInfoDelaySec) || other.fugitiveInfoDelaySec == _this.fugitiveInfoDelaySec)&&(identical(other.senseDistanceRadiusM, _this.senseDistanceRadiusM) || other.senseDistanceRadiusM == _this.senseDistanceRadiusM)&&(identical(other.updatedAt, _this.updatedAt) || other.updatedAt == _this.updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(gameArea),releaseWaitSec,gameDurationSec,photoIntervalSec,fugitiveInfoDelaySec,senseDistanceRadiusM,updatedAt);
+int get hashCode {
+  final _this = this as RoomSetting;
+  return Object.hash(runtimeType,const DeepCollectionEquality().hash(_this.gameArea),_this.releaseWaitSec,_this.gameDurationSec,_this.photoIntervalSec,_this.fugitiveInfoDelaySec,_this.senseDistanceRadiusM,_this.updatedAt);
+}
 
 @override
 String toString() {
-  return 'RoomSetting(gameArea: $gameArea, releaseWaitSec: $releaseWaitSec, gameDurationSec: $gameDurationSec, photoIntervalSec: $photoIntervalSec, fugitiveInfoDelaySec: $fugitiveInfoDelaySec, senseDistanceRadiusM: $senseDistanceRadiusM, updatedAt: $updatedAt)';
+  final _this = this as RoomSetting;
+  return 'RoomSetting(gameArea: ${_this.gameArea}, releaseWaitSec: ${_this.releaseWaitSec}, gameDurationSec: ${_this.gameDurationSec}, photoIntervalSec: ${_this.photoIntervalSec}, fugitiveInfoDelaySec: ${_this.fugitiveInfoDelaySec}, senseDistanceRadiusM: ${_this.senseDistanceRadiusM}, updatedAt: ${_this.updatedAt})';
 }
 
 
@@ -332,7 +345,7 @@ class _$RoomSettingCopyWithImpl<$Res>
 /// Create a copy of RoomSetting
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? gameArea = null,Object? releaseWaitSec = null,Object? gameDurationSec = null,Object? photoIntervalSec = null,Object? fugitiveInfoDelaySec = null,Object? senseDistanceRadiusM = null,Object? updatedAt = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(RoomSetting(
 gameArea: null == gameArea ? _self.gameArea : gameArea // ignore: cast_nullable_to_non_nullable
 as List<LatLng>,releaseWaitSec: null == releaseWaitSec ? _self.releaseWaitSec : releaseWaitSec // ignore: cast_nullable_to_non_nullable
 as int,gameDurationSec: null == gameDurationSec ? _self.gameDurationSec : gameDurationSec // ignore: cast_nullable_to_non_nullable
@@ -481,7 +494,7 @@ return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.
 @JsonSerializable()
 
 class _RoomSetting extends RoomSetting {
-  const _RoomSetting({final  List<LatLng> gameArea = const [], this.releaseWaitSec = 60, this.gameDurationSec = 1800, this.photoIntervalSec = 300, this.fugitiveInfoDelaySec = 0, this.senseDistanceRadiusM = 50, this.updatedAt}): _gameArea = gameArea,super._();
+  const _RoomSetting({ List<LatLng> gameArea = const [], this.releaseWaitSec = 60, this.gameDurationSec = 1800, this.photoIntervalSec = 300, this.fugitiveInfoDelaySec = 0, this.senseDistanceRadiusM = 50, this.updatedAt}): _gameArea = gameArea,super._();
   factory _RoomSetting.fromJson(Map<String, dynamic> json) => _$RoomSettingFromJson(json);
 
  final  List<LatLng> _gameArea;
@@ -511,16 +524,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomSetting&&const DeepCollectionEquality().equals(other._gameArea, _gameArea)&&(identical(other.releaseWaitSec, releaseWaitSec) || other.releaseWaitSec == releaseWaitSec)&&(identical(other.gameDurationSec, gameDurationSec) || other.gameDurationSec == gameDurationSec)&&(identical(other.photoIntervalSec, photoIntervalSec) || other.photoIntervalSec == photoIntervalSec)&&(identical(other.fugitiveInfoDelaySec, fugitiveInfoDelaySec) || other.fugitiveInfoDelaySec == fugitiveInfoDelaySec)&&(identical(other.senseDistanceRadiusM, senseDistanceRadiusM) || other.senseDistanceRadiusM == senseDistanceRadiusM)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomSetting&&const DeepCollectionEquality().equals(other.gameArea, _gameArea)&&(identical(other.releaseWaitSec, releaseWaitSec) || other.releaseWaitSec == releaseWaitSec)&&(identical(other.gameDurationSec, gameDurationSec) || other.gameDurationSec == gameDurationSec)&&(identical(other.photoIntervalSec, photoIntervalSec) || other.photoIntervalSec == photoIntervalSec)&&(identical(other.fugitiveInfoDelaySec, fugitiveInfoDelaySec) || other.fugitiveInfoDelaySec == fugitiveInfoDelaySec)&&(identical(other.senseDistanceRadiusM, senseDistanceRadiusM) || other.senseDistanceRadiusM == senseDistanceRadiusM)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_gameArea),releaseWaitSec,gameDurationSec,photoIntervalSec,fugitiveInfoDelaySec,senseDistanceRadiusM,updatedAt);
+int get hashCode {
+    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_gameArea),releaseWaitSec,gameDurationSec,photoIntervalSec,fugitiveInfoDelaySec,senseDistanceRadiusM,updatedAt);
+}
 
 @override
 String toString() {
-  return 'RoomSetting(gameArea: $gameArea, releaseWaitSec: $releaseWaitSec, gameDurationSec: $gameDurationSec, photoIntervalSec: $photoIntervalSec, fugitiveInfoDelaySec: $fugitiveInfoDelaySec, senseDistanceRadiusM: $senseDistanceRadiusM, updatedAt: $updatedAt)';
+    return 'RoomSetting(gameArea: $gameArea, releaseWaitSec: $releaseWaitSec, gameDurationSec: $gameDurationSec, photoIntervalSec: $photoIntervalSec, fugitiveInfoDelaySec: $fugitiveInfoDelaySec, senseDistanceRadiusM: $senseDistanceRadiusM, updatedAt: $updatedAt)';
 }
 
 

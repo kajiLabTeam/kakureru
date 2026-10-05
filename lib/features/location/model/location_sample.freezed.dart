@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'location_sample.dart';
@@ -9,6 +9,7 @@ part of 'location_sample.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -27,16 +28,21 @@ $LocationSampleCopyWith<LocationSample> get copyWith => _$LocationSampleCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LocationSample&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.accuracy, accuracy) || other.accuracy == accuracy)&&(identical(other.timestampMs, timestampMs) || other.timestampMs == timestampMs));
+  final _this = this as LocationSample;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LocationSample&&(identical(other.latitude, _this.latitude) || other.latitude == _this.latitude)&&(identical(other.longitude, _this.longitude) || other.longitude == _this.longitude)&&(identical(other.altitude, _this.altitude) || other.altitude == _this.altitude)&&(identical(other.accuracy, _this.accuracy) || other.accuracy == _this.accuracy)&&(identical(other.timestampMs, _this.timestampMs) || other.timestampMs == _this.timestampMs));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,latitude,longitude,altitude,accuracy,timestampMs);
+int get hashCode {
+  final _this = this as LocationSample;
+  return Object.hash(runtimeType,_this.latitude,_this.longitude,_this.altitude,_this.accuracy,_this.timestampMs);
+}
 
 @override
 String toString() {
-  return 'LocationSample(latitude: $latitude, longitude: $longitude, altitude: $altitude, accuracy: $accuracy, timestampMs: $timestampMs)';
+  final _this = this as LocationSample;
+  return 'LocationSample(latitude: ${_this.latitude}, longitude: ${_this.longitude}, altitude: ${_this.altitude}, accuracy: ${_this.accuracy}, timestampMs: ${_this.timestampMs})';
 }
 
 
@@ -65,7 +71,7 @@ class _$LocationSampleCopyWithImpl<$Res>
 /// Create a copy of LocationSample
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? latitude = null,Object? longitude = null,Object? altitude = freezed,Object? accuracy = freezed,Object? timestampMs = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(LocationSample(
 latitude: null == latitude ? _self.latitude : latitude // ignore: cast_nullable_to_non_nullable
 as double,longitude: null == longitude ? _self.longitude : longitude // ignore: cast_nullable_to_non_nullable
 as double,altitude: freezed == altitude ? _self.altitude : altitude // ignore: cast_nullable_to_non_nullable
@@ -233,16 +239,18 @@ _$LocationSampleCopyWith<_LocationSample> get copyWith => __$LocationSampleCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LocationSample&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.accuracy, accuracy) || other.accuracy == accuracy)&&(identical(other.timestampMs, timestampMs) || other.timestampMs == timestampMs));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _LocationSample&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.accuracy, accuracy) || other.accuracy == accuracy)&&(identical(other.timestampMs, timestampMs) || other.timestampMs == timestampMs));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,latitude,longitude,altitude,accuracy,timestampMs);
+int get hashCode {
+    return Object.hash(runtimeType,latitude,longitude,altitude,accuracy,timestampMs);
+}
 
 @override
 String toString() {
-  return 'LocationSample(latitude: $latitude, longitude: $longitude, altitude: $altitude, accuracy: $accuracy, timestampMs: $timestampMs)';
+    return 'LocationSample(latitude: $latitude, longitude: $longitude, altitude: $altitude, accuracy: $accuracy, timestampMs: $timestampMs)';
 }
 
 
