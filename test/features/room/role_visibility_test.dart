@@ -511,4 +511,12 @@ void main() {
       }
     });
   });
+
+  group('shouldShowSightingPhotoButton', () {
+    test('逃走者にだけ出し、鬼と役割未確定には出さない', () {
+      expect(shouldShowSightingPhotoButton(role: UserRole.fugitive), isTrue);
+      expect(shouldShowSightingPhotoButton(role: UserRole.demon), isFalse);
+      expect(shouldShowSightingPhotoButton(role: null), isFalse);
+    });
+  });
 }

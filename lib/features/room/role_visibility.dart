@@ -86,6 +86,14 @@ bool shouldShowCatchButton({required UserRole? role}) {
   return role == UserRole.demon;
 }
 
+/// 地図の右下の目撃写真ボタンを出すか。
+///
+/// 目撃写真は鬼の居場所の手がかりになるため、鬼には見せない。役割が
+/// 分からない間も出さない(一瞬でも鬼に見えてしまうのを避けるため)。
+bool shouldShowSightingPhotoButton({required UserRole? role}) {
+  return role == UserRole.fugitive;
+}
+
 /// 「捕まえた」を押せるフェーズか。放出前の鬼はまだ捕まえられない。
 /// 3m以内に逃走者がいるかどうか(BLE)は別に判定する。
 bool canPressCatchButton({required UserRole? role, required GamePhase phase}) {
