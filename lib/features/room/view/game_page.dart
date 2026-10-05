@@ -1022,6 +1022,12 @@ class GamePage extends HookConsumerWidget {
                 ];
                 // 帯の分だけ、地図の下寄せのボタンを上へずらす。
                 final bandsLift = effectBands.length * 32.0;
+                // 持っているごほうび(先に引いたものから1つずつ)の「つかう」。
+                // ミッションの終了(15秒後にカードごと消える)とは関係なく、
+                // 使うまでカメラボタンの下に出し続ける。
+                final heldReward = heldRewards.firstOrNull;
+                // 帯と「つかう」の分だけ、下寄せのボタンを上へずらす。
+                final bottomLift = bandsLift + (heldReward == null ? 0 : 64.0);
 
                 final mapPageContent = Column(
                   children: [
@@ -1128,37 +1134,6 @@ class GamePage extends HookConsumerWidget {
                                                     !missionCardExpanded.value,
                                             myReward: myMissionSpot?.reward,
                                           ),
-                                          // 持っているごほうび(先に引いたものから
-                                          // 1つずつ)。Columnに足すと地図と下のカードを
-                                          // 押し出すため、地図の上の旗のマークの下に
-                                          // 重ねる。同じ効果がいま効いているあいだは
-                                          // 押せない(重ねても長くならないため)。
-                                          if (heldRewards.firstOrNull
-                                              case final held?) ...[
-                                            const SizedBox(height: 8),
-                                            HeldRewardBar(
-                                              type: held.type,
-                                              onUse:
-                                                  useRewardAction.isRunning ||
-                                                      activeEffectOf(
-                                                            roomEffects,
-                                                            held.type,
-                                                            serverNowMillis:
-                                                                now,
-                                                          ) !=
-                                                          null
-                                                  ? null
-                                                  : () => unawaited(
-                                                      handleUseHeldRewardPressed(
-                                                        held,
-                                                      ),
-                                                    ),
-                                              disabledReason:
-                                                  useRewardAction.isRunning
-                                                  ? '使っています…'
-                                                  : 'いま効いているので、切れてから使える',
-                                            ),
-                                          ],
                                         ],
                                       ),
                                     ),
@@ -1168,7 +1143,7 @@ class GamePage extends HookConsumerWidget {
                                       Positioned(
                                         left: 12,
                                         right: 12,
-                                        bottom: 14 + bandsLift,
+                                        bottom: 14 + bottomLift,
                                         child: MissionClaimButton(
                                           isClaiming: claimAction.isRunning,
                                           onPressed: () => unawaited(
@@ -1187,7 +1162,7 @@ class GamePage extends HookConsumerWidget {
                                       Positioned(
                                         left: 12,
                                         right: 12,
-                                        bottom: 14 + bandsLift,
+                                        bottom: 14 + bottomLift,
                                         child: MissionClaimButton(
                                           label: 'ごほうびを受け取る',
                                           isClaiming: false,
@@ -1212,7 +1187,7 @@ class GamePage extends HookConsumerWidget {
                                         Positioned(
                                           left: 12,
                                           right: 12,
-                                          bottom: 80 + bandsLift,
+                                          bottom: 80 + bottomLift,
                                           child: MissionDebugArrivalButton(
                                             onPressed: claimAction.isRunning
                                                 ? null
@@ -1268,6 +1243,41 @@ class GamePage extends HookConsumerWidget {
                                 ],
                               ),
                             ),
+                          if (heldReward != null)
+                            Positioned(
+                              right: 14,
+                              bottom: 8 + bandsLift,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 280,
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: HeldRewardBar(
+                                    type: heldReward.type,
+                                    // 同じ効果がいま効いているあいだは押せない
+                                    // (重ねても長くならないため)。
+                                    onUse:
+                                        useRewardAction.isRunning ||
+                                            activeEffectOf(
+                                                  roomEffects,
+                                                  heldReward.type,
+                                                  serverNowMillis: now,
+                                                ) !=
+                                                null
+                                        ? null
+                                        : () => unawaited(
+                                            handleUseHeldRewardPressed(
+                                              heldReward,
+                                            ),
+                                          ),
+                                    disabledReason: useRewardAction.isRunning
+                                        ? '使っています…'
+                                        : 'いま効いているので、切れてから使える',
+                                  ),
+                                ),
+                              ),
+                            ),
                           // 目撃写真のボタン(地図の右下)。地図の帰属表示
                           // (右下の「i」)を隠さないよう、その上に置く。
                           // 「ごほうびガチャを引く」が出ている間は、そのボタンに
@@ -1278,7 +1288,7 @@ class GamePage extends HookConsumerWidget {
                             Positioned(
                               right: 14,
                               bottom:
-                                  (showsMissionButton ? 120 : 60) + bandsLift,
+                                  (showsMissionButton ? 120 : 60) + bottomLift,
                               child: SightingPhotoButton(
                                 unreadCount: sightingBadge.unreadCount,
                                 onPressed: () =>
