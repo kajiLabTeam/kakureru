@@ -8,8 +8,8 @@ part 'mission.g.dart';
 /// RTDB `rooms/{roomId}/missions/{missionId}` 1件ぶん(アクセスポイント)。
 ///
 /// サーバーが無いので**ホストの端末が書く**(`MissionController`)。同時に
-/// 出すのは1件だけ。地点([spots])の数は回で変わり(`missionSpotCount`)、1地点に1人まで・
-/// 先着。取り合いは `missions/{missionId}` へのトランザクションで決める
+/// 出すのは1件だけ。地点([spots])の数は回で変わり(`missionSpotCount`)、
+/// 1地点に1人まで・先着(1人が何地点でも取れる)。取り合いは `missions/{missionId}` へのトランザクションで決める
 /// (`MissionRepository.claimMission`)。
 @freezed
 abstract class Mission with _$Mission {

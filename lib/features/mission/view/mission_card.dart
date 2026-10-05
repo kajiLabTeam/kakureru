@@ -58,13 +58,17 @@ MissionCardStatus missionCardStatusOf({
   required MissionProgress progress,
   required String? targetSpotId,
 }) {
-  if (spotClaimedBy(mission, myUid) case final mine?) {
-    return mine.reward == null
-        ? MissionCardStatus.claimedWithoutReward
-        : MissionCardStatus.claimedByMe;
+  // 取ったのにごほうびが無い地点があれば、受け取り直しを最優先で出す。
+  if (unrewardedSpotClaimedBy(mission, myUid) != null) {
+    return MissionCardStatus.claimedWithoutReward;
   }
+  // 空きが残っているあいだは、自分が取っていても次の地点へ向かう。
+  // 取り終わった後(全部埋まった・終わった)に、自分が取っていれば
+  // 「引いた」、取っていなければ「取られた」にする。
   if (openSpots(mission).isEmpty || mission.finishedAt != null) {
-    return MissionCardStatus.takenByOther;
+    return spotsClaimedBy(mission, myUid).isNotEmpty
+        ? MissionCardStatus.claimedByMe
+        : MissionCardStatus.takenByOther;
   }
   if (locationFailure == LocationFailure.locationPermission) {
     return MissionCardStatus.needsLocationPermission;
@@ -652,35 +656,31 @@ class MissionDebugCreateButton extends StatelessWidget {
 /// デバッグ用に、何回目のミッションを出すかを選ばせる。選ばなければnull。
 ///
 /// 回ごとに地点の数が違う([debugMissionRoundChoices])ので、それも並べる。
-Future<int?> showMissionDebugRoundPicker(
-  BuildContext context, {
-  required int fugitiveCount,
-}) => showModalBottomSheet<int>(
-  context: context,
-  builder: (context) => SafeArea(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            'どのミッションを出す?(デバッグ)',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
+Future<int?> showMissionDebugRoundPicker(BuildContext context) =>
+    showModalBottomSheet<int>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'どのミッションを出す?(デバッグ)',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final choice in debugMissionRoundChoices())
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: Text('${choice.round}回目のミッション'),
+                subtitle: Text('地点 ${choice.spotCount}か所'),
+                onTap: () => Navigator.of(context).pop(choice.round),
+              ),
+          ],
         ),
-        for (final choice in debugMissionRoundChoices(
-          fugitiveCount: fugitiveCount,
-        ))
-          ListTile(
-            leading: const Icon(Icons.flag_outlined),
-            title: Text('${choice.round}回目のミッション'),
-            subtitle: Text('地点 ${choice.spotCount}か所'),
-            onTap: () => Navigator.of(context).pop(choice.round),
-          ),
-      ],
-    ),
-  ),
-);
+      ),
+    );
 
 /// デバッグ用のボタンの見た目(点線の枠・虫のアイコン・高さ44)。
 class _DebugDashedButton extends StatelessWidget {

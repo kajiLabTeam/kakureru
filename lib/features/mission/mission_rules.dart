@@ -34,33 +34,23 @@ const _maxPointAttempts = 400;
 double distanceMeters(double lat1, double lng1, double lat2, double lng2) =>
     Geolocator.distanceBetween(lat1, lng1, lat2, lng2);
 
-/// 回ごとの地点の数の上限。`missionSpotCounts[0]`が1回目。
+/// 回ごとの地点の数。`missionSpotCounts[0]`が1回目。
 /// 序盤は多めに置いて全員が動くようにし、最後の回は絞って取り合いにする。
 /// 長さは[missionDueDelays]と揃える。
 const List<int> missionSpotCounts = [4, 4, 3];
 
 /// [round]回目(1始まり)の地点の数。
 ///
-/// [missionSpotCounts]の値を上限に、いまの逃走者の人数([fugitiveCount])
-/// より多くは置かない。1人1地点までなので、それより多い地点は誰も取れず、
-/// 「すべて取られたらその場で終わる」も起きなくなるため。逃走者がいなくても
-/// 0個にはしない(範囲外の回は最後の回と同じ上限にする)。
-int missionSpotCount({required int round, required int fugitiveCount}) {
-  final max =
-      missionSpotCounts[(round - 1).clamp(0, missionSpotCounts.length - 1)];
-  return fugitiveCount.clamp(1, max);
-}
+/// [missionSpotCounts]の値そのまま(範囲外の回は最後の回と同じ数にする)。
+/// 1人が何地点でも取れるので、逃走者の人数では減らさない。
+int missionSpotCount({required int round}) =>
+    missionSpotCounts[(round - 1).clamp(0, missionSpotCounts.length - 1)];
 
 /// デバッグで選べる回(1始まり)と、その回で置く地点の数。
 /// 回の数は[missionDueDelays]の長さと同じ。
-List<({int round, int spotCount})> debugMissionRoundChoices({
-  required int fugitiveCount,
-}) => [
+List<({int round, int spotCount})> debugMissionRoundChoices() => [
   for (var round = 1; round <= missionDueDelays.length; round++)
-    (
-      round: round,
-      spotCount: missionSpotCount(round: round, fugitiveCount: fugitiveCount),
-    ),
+    (round: round, spotCount: missionSpotCount(round: round)),
 ];
 
 /// 今のゲームのミッションだけを、出した順(古い順)に返す。
@@ -124,11 +114,16 @@ List<MissionSpot> visibleMissionSpots(Mission mission, {String? myUid}) {
   return mission.spots.where((s) => s.claimedBy != myUid).toList();
 }
 
-/// [uid]が取った地点。無ければnull(1人1地点まで)。
-MissionSpot? spotClaimedBy(Mission mission, String? uid) {
-  if (uid == null) return null;
-  return mission.spots.where((s) => s.claimedBy == uid).firstOrNull;
+/// [uid]が取った地点(取った順は問わない)。1人が何地点でも取れる。
+List<MissionSpot> spotsClaimedBy(Mission mission, String? uid) {
+  if (uid == null) return const [];
+  return mission.spots.where((s) => s.claimedBy == uid).toList();
 }
+
+/// [uid]が取ったのにごほうびがまだ書かれていない地点(受け取り直しの対象)。
+/// 無ければnull。
+MissionSpot? unrewardedSpotClaimedBy(Mission mission, String? uid) =>
+    spotsClaimedBy(mission, uid).where((s) => s.reward == null).firstOrNull;
 
 /// いま画面に出すミッション(今のゲームの最新1件)。
 ///
@@ -424,7 +419,7 @@ bool canClaimAccessPoint({
 ///   ため、nullのまま成功を返す(サーバーにミッションがあれば実際の値で
 ///   呼び直され、本当に無ければnullのまま確定する。`attachCatchPhoto`と同じ)
 /// - 期限切れ・終わっている・地点が無い・**その地点の `claimedBy` が
-///   nullでない**・自分が既にほかの地点を取っている、のどれかならabort
+///   nullでない**、のどれかならabort(1人が何地点取ってもよい)
 /// - それ以外は地点に自分のuidと取った時刻を入れる。これですべての地点が
 ///   埋まったら `finishedAt` も入れる(その場で終わる)
 ///
@@ -446,9 +441,6 @@ Transaction claimSpotUpdate(
   if (spots is! Map) return Transaction.abort();
   final spot = spots[spotId];
   if (spot is! Map || spot['claimedBy'] != null) return Transaction.abort();
-  if (spots.values.any((s) => s is Map && s['claimedBy'] == uid)) {
-    return Transaction.abort();
-  }
   final nextSpots = {
     ...spots,
     spotId: {...spot, 'claimedBy': uid, 'claimedAt': nowMillis},
