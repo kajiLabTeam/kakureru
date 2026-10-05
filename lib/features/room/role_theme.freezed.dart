@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'role_theme.dart';
@@ -9,6 +9,7 @@ part of 'role_theme.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -25,16 +26,21 @@ $RoleThemeCopyWith<RoleTheme> get copyWith => _$RoleThemeCopyWithImpl<RoleTheme>
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoleTheme&&(identical(other.color, color) || other.color == color)&&(identical(other.surfaceColor, surfaceColor) || other.surfaceColor == surfaceColor)&&(identical(other.label, label) || other.label == label)&&(identical(other.icon, icon) || other.icon == icon));
+  final _this = this as RoleTheme;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoleTheme&&(identical(other.color, _this.color) || other.color == _this.color)&&(identical(other.surfaceColor, _this.surfaceColor) || other.surfaceColor == _this.surfaceColor)&&(identical(other.label, _this.label) || other.label == _this.label)&&(identical(other.icon, _this.icon) || other.icon == _this.icon));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,color,surfaceColor,label,icon);
+int get hashCode {
+  final _this = this as RoleTheme;
+  return Object.hash(runtimeType,_this.color,_this.surfaceColor,_this.label,_this.icon);
+}
 
 @override
 String toString() {
-  return 'RoleTheme(color: $color, surfaceColor: $surfaceColor, label: $label, icon: $icon)';
+  final _this = this as RoleTheme;
+  return 'RoleTheme(color: ${_this.color}, surfaceColor: ${_this.surfaceColor}, label: ${_this.label}, icon: ${_this.icon})';
 }
 
 
@@ -63,7 +69,7 @@ class _$RoleThemeCopyWithImpl<$Res>
 /// Create a copy of RoleTheme
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? color = null,Object? surfaceColor = null,Object? label = null,Object? icon = null,}) {
-  return _then(_self.copyWith(
+  return _then(RoleTheme(
 color: null == color ? _self.color : color // ignore: cast_nullable_to_non_nullable
 as Color,surfaceColor: null == surfaceColor ? _self.surfaceColor : surfaceColor // ignore: cast_nullable_to_non_nullable
 as Color,label: null == label ? _self.label : label // ignore: cast_nullable_to_non_nullable
@@ -227,16 +233,18 @@ _$RoleThemeCopyWith<_RoleTheme> get copyWith => __$RoleThemeCopyWithImpl<_RoleTh
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoleTheme&&(identical(other.color, color) || other.color == color)&&(identical(other.surfaceColor, surfaceColor) || other.surfaceColor == surfaceColor)&&(identical(other.label, label) || other.label == label)&&(identical(other.icon, icon) || other.icon == icon));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoleTheme&&(identical(other.color, color) || other.color == color)&&(identical(other.surfaceColor, surfaceColor) || other.surfaceColor == surfaceColor)&&(identical(other.label, label) || other.label == label)&&(identical(other.icon, icon) || other.icon == icon));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,color,surfaceColor,label,icon);
+int get hashCode {
+    return Object.hash(runtimeType,color,surfaceColor,label,icon);
+}
 
 @override
 String toString() {
-  return 'RoleTheme(color: $color, surfaceColor: $surfaceColor, label: $label, icon: $icon)';
+    return 'RoleTheme(color: $color, surfaceColor: $surfaceColor, label: $label, icon: $icon)';
 }
 
 

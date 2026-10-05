@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'user_location.dart';
@@ -9,6 +9,7 @@ part of 'user_location.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 
@@ -28,16 +29,21 @@ $UserLocationCopyWith<UserLocation> get copyWith => _$UserLocationCopyWithImpl<U
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is UserLocation&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.accuracy, accuracy) || other.accuracy == accuracy)&&(identical(other.pressure, pressure) || other.pressure == pressure)&&(identical(other.wifiScan, wifiScan) || other.wifiScan == wifiScan)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+  final _this = this as UserLocation;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UserLocation&&(identical(other.uid, _this.uid) || other.uid == _this.uid)&&(identical(other.latitude, _this.latitude) || other.latitude == _this.latitude)&&(identical(other.longitude, _this.longitude) || other.longitude == _this.longitude)&&(identical(other.altitude, _this.altitude) || other.altitude == _this.altitude)&&(identical(other.accuracy, _this.accuracy) || other.accuracy == _this.accuracy)&&(identical(other.pressure, _this.pressure) || other.pressure == _this.pressure)&&(identical(other.wifiScan, _this.wifiScan) || other.wifiScan == _this.wifiScan)&&(identical(other.updatedAt, _this.updatedAt) || other.updatedAt == _this.updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,uid,latitude,longitude,altitude,accuracy,pressure,wifiScan,updatedAt);
+int get hashCode {
+  final _this = this as UserLocation;
+  return Object.hash(runtimeType,_this.uid,_this.latitude,_this.longitude,_this.altitude,_this.accuracy,_this.pressure,_this.wifiScan,_this.updatedAt);
+}
 
 @override
 String toString() {
-  return 'UserLocation(uid: $uid, latitude: $latitude, longitude: $longitude, altitude: $altitude, accuracy: $accuracy, pressure: $pressure, wifiScan: $wifiScan, updatedAt: $updatedAt)';
+  final _this = this as UserLocation;
+  return 'UserLocation(uid: ${_this.uid}, latitude: ${_this.latitude}, longitude: ${_this.longitude}, altitude: ${_this.altitude}, accuracy: ${_this.accuracy}, pressure: ${_this.pressure}, wifiScan: ${_this.wifiScan}, updatedAt: ${_this.updatedAt})';
 }
 
 
@@ -66,7 +72,7 @@ class _$UserLocationCopyWithImpl<$Res>
 /// Create a copy of UserLocation
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? uid = null,Object? latitude = null,Object? longitude = null,Object? altitude = freezed,Object? accuracy = freezed,Object? pressure = freezed,Object? wifiScan = freezed,Object? updatedAt = null,}) {
-  return _then(_self.copyWith(
+  return _then(UserLocation(
 uid: null == uid ? _self.uid : uid // ignore: cast_nullable_to_non_nullable
 as String,latitude: null == latitude ? _self.latitude : latitude // ignore: cast_nullable_to_non_nullable
 as double,longitude: null == longitude ? _self.longitude : longitude // ignore: cast_nullable_to_non_nullable
@@ -253,16 +259,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _UserLocation&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.accuracy, accuracy) || other.accuracy == accuracy)&&(identical(other.pressure, pressure) || other.pressure == pressure)&&(identical(other.wifiScan, wifiScan) || other.wifiScan == wifiScan)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _UserLocation&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.latitude, latitude) || other.latitude == latitude)&&(identical(other.longitude, longitude) || other.longitude == longitude)&&(identical(other.altitude, altitude) || other.altitude == altitude)&&(identical(other.accuracy, accuracy) || other.accuracy == accuracy)&&(identical(other.pressure, pressure) || other.pressure == pressure)&&(identical(other.wifiScan, wifiScan) || other.wifiScan == wifiScan)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,uid,latitude,longitude,altitude,accuracy,pressure,wifiScan,updatedAt);
+int get hashCode {
+    return Object.hash(runtimeType,uid,latitude,longitude,altitude,accuracy,pressure,wifiScan,updatedAt);
+}
 
 @override
 String toString() {
-  return 'UserLocation(uid: $uid, latitude: $latitude, longitude: $longitude, altitude: $altitude, accuracy: $accuracy, pressure: $pressure, wifiScan: $wifiScan, updatedAt: $updatedAt)';
+    return 'UserLocation(uid: $uid, latitude: $latitude, longitude: $longitude, altitude: $altitude, accuracy: $accuracy, pressure: $pressure, wifiScan: $wifiScan, updatedAt: $updatedAt)';
 }
 
 

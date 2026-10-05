@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'room_user.dart';
@@ -9,6 +9,7 @@ part of 'room_user.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 
@@ -34,16 +35,21 @@ $RoomUserCopyWith<RoomUser> get copyWith => _$RoomUserCopyWithImpl<RoomUser>(thi
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomUser&&(identical(other.id, id) || other.id == id)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.isHost, isHost) || other.isHost == isHost)&&(identical(other.role, role) || other.role == role)&&(identical(other.pressureOffset, pressureOffset) || other.pressureOffset == pressureOffset)&&(identical(other.pressureSensorAvailable, pressureSensorAvailable) || other.pressureSensorAvailable == pressureSensorAvailable)&&(identical(other.usesTethering, usesTethering) || other.usesTethering == usesTethering)&&(identical(other.becameDemonAt, becameDemonAt) || other.becameDemonAt == becameDemonAt)&&(identical(other.lastPhotoAt, lastPhotoAt) || other.lastPhotoAt == lastPhotoAt)&&(identical(other.joinedAt, joinedAt) || other.joinedAt == joinedAt)&&(identical(other.online, online) || other.online == online)&&(identical(other.leftAt, leftAt) || other.leftAt == leftAt));
+  final _this = this as RoomUser;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomUser&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.displayName, _this.displayName) || other.displayName == _this.displayName)&&(identical(other.isHost, _this.isHost) || other.isHost == _this.isHost)&&(identical(other.role, _this.role) || other.role == _this.role)&&(identical(other.pressureOffset, _this.pressureOffset) || other.pressureOffset == _this.pressureOffset)&&(identical(other.pressureSensorAvailable, _this.pressureSensorAvailable) || other.pressureSensorAvailable == _this.pressureSensorAvailable)&&(identical(other.usesTethering, _this.usesTethering) || other.usesTethering == _this.usesTethering)&&(identical(other.becameDemonAt, _this.becameDemonAt) || other.becameDemonAt == _this.becameDemonAt)&&(identical(other.lastPhotoAt, _this.lastPhotoAt) || other.lastPhotoAt == _this.lastPhotoAt)&&(identical(other.joinedAt, _this.joinedAt) || other.joinedAt == _this.joinedAt)&&(identical(other.online, _this.online) || other.online == _this.online)&&(identical(other.leftAt, _this.leftAt) || other.leftAt == _this.leftAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,displayName,isHost,role,pressureOffset,pressureSensorAvailable,usesTethering,becameDemonAt,lastPhotoAt,joinedAt,online,leftAt);
+int get hashCode {
+  final _this = this as RoomUser;
+  return Object.hash(runtimeType,_this.id,_this.displayName,_this.isHost,_this.role,_this.pressureOffset,_this.pressureSensorAvailable,_this.usesTethering,_this.becameDemonAt,_this.lastPhotoAt,_this.joinedAt,_this.online,_this.leftAt);
+}
 
 @override
 String toString() {
-  return 'RoomUser(id: $id, displayName: $displayName, isHost: $isHost, role: $role, pressureOffset: $pressureOffset, pressureSensorAvailable: $pressureSensorAvailable, usesTethering: $usesTethering, becameDemonAt: $becameDemonAt, lastPhotoAt: $lastPhotoAt, joinedAt: $joinedAt, online: $online, leftAt: $leftAt)';
+  final _this = this as RoomUser;
+  return 'RoomUser(id: ${_this.id}, displayName: ${_this.displayName}, isHost: ${_this.isHost}, role: ${_this.role}, pressureOffset: ${_this.pressureOffset}, pressureSensorAvailable: ${_this.pressureSensorAvailable}, usesTethering: ${_this.usesTethering}, becameDemonAt: ${_this.becameDemonAt}, lastPhotoAt: ${_this.lastPhotoAt}, joinedAt: ${_this.joinedAt}, online: ${_this.online}, leftAt: ${_this.leftAt})';
 }
 
 
@@ -72,7 +78,7 @@ class _$RoomUserCopyWithImpl<$Res>
 /// Create a copy of RoomUser
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? displayName = null,Object? isHost = null,Object? role = null,Object? pressureOffset = freezed,Object? pressureSensorAvailable = freezed,Object? usesTethering = freezed,Object? becameDemonAt = freezed,Object? lastPhotoAt = freezed,Object? joinedAt = null,Object? online = freezed,Object? leftAt = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(RoomUser(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,displayName: null == displayName ? _self.displayName : displayName // ignore: cast_nullable_to_non_nullable
 as String,isHost: null == isHost ? _self.isHost : isHost // ignore: cast_nullable_to_non_nullable
@@ -261,16 +267,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomUser&&(identical(other.id, id) || other.id == id)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.isHost, isHost) || other.isHost == isHost)&&(identical(other.role, role) || other.role == role)&&(identical(other.pressureOffset, pressureOffset) || other.pressureOffset == pressureOffset)&&(identical(other.pressureSensorAvailable, pressureSensorAvailable) || other.pressureSensorAvailable == pressureSensorAvailable)&&(identical(other.usesTethering, usesTethering) || other.usesTethering == usesTethering)&&(identical(other.becameDemonAt, becameDemonAt) || other.becameDemonAt == becameDemonAt)&&(identical(other.lastPhotoAt, lastPhotoAt) || other.lastPhotoAt == lastPhotoAt)&&(identical(other.joinedAt, joinedAt) || other.joinedAt == joinedAt)&&(identical(other.online, online) || other.online == online)&&(identical(other.leftAt, leftAt) || other.leftAt == leftAt));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomUser&&(identical(other.id, id) || other.id == id)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.isHost, isHost) || other.isHost == isHost)&&(identical(other.role, role) || other.role == role)&&(identical(other.pressureOffset, pressureOffset) || other.pressureOffset == pressureOffset)&&(identical(other.pressureSensorAvailable, pressureSensorAvailable) || other.pressureSensorAvailable == pressureSensorAvailable)&&(identical(other.usesTethering, usesTethering) || other.usesTethering == usesTethering)&&(identical(other.becameDemonAt, becameDemonAt) || other.becameDemonAt == becameDemonAt)&&(identical(other.lastPhotoAt, lastPhotoAt) || other.lastPhotoAt == lastPhotoAt)&&(identical(other.joinedAt, joinedAt) || other.joinedAt == joinedAt)&&(identical(other.online, online) || other.online == online)&&(identical(other.leftAt, leftAt) || other.leftAt == leftAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,displayName,isHost,role,pressureOffset,pressureSensorAvailable,usesTethering,becameDemonAt,lastPhotoAt,joinedAt,online,leftAt);
+int get hashCode {
+    return Object.hash(runtimeType,id,displayName,isHost,role,pressureOffset,pressureSensorAvailable,usesTethering,becameDemonAt,lastPhotoAt,joinedAt,online,leftAt);
+}
 
 @override
 String toString() {
-  return 'RoomUser(id: $id, displayName: $displayName, isHost: $isHost, role: $role, pressureOffset: $pressureOffset, pressureSensorAvailable: $pressureSensorAvailable, usesTethering: $usesTethering, becameDemonAt: $becameDemonAt, lastPhotoAt: $lastPhotoAt, joinedAt: $joinedAt, online: $online, leftAt: $leftAt)';
+    return 'RoomUser(id: $id, displayName: $displayName, isHost: $isHost, role: $role, pressureOffset: $pressureOffset, pressureSensorAvailable: $pressureSensorAvailable, usesTethering: $usesTethering, becameDemonAt: $becameDemonAt, lastPhotoAt: $lastPhotoAt, joinedAt: $joinedAt, online: $online, leftAt: $leftAt)';
 }
 
 

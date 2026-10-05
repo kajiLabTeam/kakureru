@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'location_view_model.dart';
@@ -9,6 +9,7 @@ part of 'location_view_model.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -25,16 +26,21 @@ $LocationStateCopyWith<LocationState> get copyWith => _$LocationStateCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LocationState&&const DeepCollectionEquality().equals(other.locations, locations)&&(identical(other.failure, failure) || other.failure == failure)&&(identical(other.isSending, isSending) || other.isSending == isSending));
+  final _this = this as LocationState;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LocationState&&const DeepCollectionEquality().equals(other.locations, _this.locations)&&(identical(other.failure, _this.failure) || other.failure == _this.failure)&&(identical(other.isSending, _this.isSending) || other.isSending == _this.isSending));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(locations),failure,isSending);
+int get hashCode {
+  final _this = this as LocationState;
+  return Object.hash(runtimeType,const DeepCollectionEquality().hash(_this.locations),_this.failure,_this.isSending);
+}
 
 @override
 String toString() {
-  return 'LocationState(locations: $locations, failure: $failure, isSending: $isSending)';
+  final _this = this as LocationState;
+  return 'LocationState(locations: ${_this.locations}, failure: ${_this.failure}, isSending: ${_this.isSending})';
 }
 
 
@@ -63,7 +69,7 @@ class _$LocationStateCopyWithImpl<$Res>
 /// Create a copy of LocationState
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? locations = null,Object? failure = null,Object? isSending = null,}) {
-  return _then(_self.copyWith(
+  return _then(LocationState(
 locations: null == locations ? _self.locations : locations // ignore: cast_nullable_to_non_nullable
 as List<UserLocation>,failure: null == failure ? _self.failure : failure // ignore: cast_nullable_to_non_nullable
 as LocationFailure,isSending: null == isSending ? _self.isSending : isSending // ignore: cast_nullable_to_non_nullable
@@ -208,7 +214,7 @@ return $default(_that.locations,_that.failure,_that.isSending);case _:
 
 
 class _LocationState implements LocationState {
-  const _LocationState({final  List<UserLocation> locations = const [], this.failure = LocationFailure.none, this.isSending = false}): _locations = locations;
+  const _LocationState({ List<UserLocation> locations = const [], this.failure = LocationFailure.none, this.isSending = false}): _locations = locations;
   
 
  final  List<UserLocation> _locations;
@@ -231,16 +237,18 @@ _$LocationStateCopyWith<_LocationState> get copyWith => __$LocationStateCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LocationState&&const DeepCollectionEquality().equals(other._locations, _locations)&&(identical(other.failure, failure) || other.failure == failure)&&(identical(other.isSending, isSending) || other.isSending == isSending));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _LocationState&&const DeepCollectionEquality().equals(other.locations, _locations)&&(identical(other.failure, failure) || other.failure == failure)&&(identical(other.isSending, isSending) || other.isSending == isSending));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_locations),failure,isSending);
+int get hashCode {
+    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_locations),failure,isSending);
+}
 
 @override
 String toString() {
-  return 'LocationState(locations: $locations, failure: $failure, isSending: $isSending)';
+    return 'LocationState(locations: $locations, failure: $failure, isSending: $isSending)';
 }
 
 

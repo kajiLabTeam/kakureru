@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'room_catch.dart';
@@ -9,6 +9,7 @@ part of 'room_catch.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 
@@ -30,16 +31,21 @@ $RoomCatchCopyWith<RoomCatch> get copyWith => _$RoomCatchCopyWithImpl<RoomCatch>
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomCatch&&(identical(other.id, id) || other.id == id)&&(identical(other.demonUserId, demonUserId) || other.demonUserId == demonUserId)&&(identical(other.fugitiveUserId, fugitiveUserId) || other.fugitiveUserId == fugitiveUserId)&&(identical(other.caughtAt, caughtAt) || other.caughtAt == caughtAt)&&(identical(other.catchPhotoId, catchPhotoId) || other.catchPhotoId == catchPhotoId));
+  final _this = this as RoomCatch;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomCatch&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.demonUserId, _this.demonUserId) || other.demonUserId == _this.demonUserId)&&(identical(other.fugitiveUserId, _this.fugitiveUserId) || other.fugitiveUserId == _this.fugitiveUserId)&&(identical(other.caughtAt, _this.caughtAt) || other.caughtAt == _this.caughtAt)&&(identical(other.catchPhotoId, _this.catchPhotoId) || other.catchPhotoId == _this.catchPhotoId));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,demonUserId,fugitiveUserId,caughtAt,catchPhotoId);
+int get hashCode {
+  final _this = this as RoomCatch;
+  return Object.hash(runtimeType,_this.id,_this.demonUserId,_this.fugitiveUserId,_this.caughtAt,_this.catchPhotoId);
+}
 
 @override
 String toString() {
-  return 'RoomCatch(id: $id, demonUserId: $demonUserId, fugitiveUserId: $fugitiveUserId, caughtAt: $caughtAt, catchPhotoId: $catchPhotoId)';
+  final _this = this as RoomCatch;
+  return 'RoomCatch(id: ${_this.id}, demonUserId: ${_this.demonUserId}, fugitiveUserId: ${_this.fugitiveUserId}, caughtAt: ${_this.caughtAt}, catchPhotoId: ${_this.catchPhotoId})';
 }
 
 
@@ -68,7 +74,7 @@ class _$RoomCatchCopyWithImpl<$Res>
 /// Create a copy of RoomCatch
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? demonUserId = freezed,Object? fugitiveUserId = null,Object? caughtAt = null,Object? catchPhotoId = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(RoomCatch(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,demonUserId: freezed == demonUserId ? _self.demonUserId : demonUserId // ignore: cast_nullable_to_non_nullable
 as String?,fugitiveUserId: null == fugitiveUserId ? _self.fugitiveUserId : fugitiveUserId // ignore: cast_nullable_to_non_nullable
@@ -239,16 +245,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomCatch&&(identical(other.id, id) || other.id == id)&&(identical(other.demonUserId, demonUserId) || other.demonUserId == demonUserId)&&(identical(other.fugitiveUserId, fugitiveUserId) || other.fugitiveUserId == fugitiveUserId)&&(identical(other.caughtAt, caughtAt) || other.caughtAt == caughtAt)&&(identical(other.catchPhotoId, catchPhotoId) || other.catchPhotoId == catchPhotoId));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomCatch&&(identical(other.id, id) || other.id == id)&&(identical(other.demonUserId, demonUserId) || other.demonUserId == demonUserId)&&(identical(other.fugitiveUserId, fugitiveUserId) || other.fugitiveUserId == fugitiveUserId)&&(identical(other.caughtAt, caughtAt) || other.caughtAt == caughtAt)&&(identical(other.catchPhotoId, catchPhotoId) || other.catchPhotoId == catchPhotoId));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,demonUserId,fugitiveUserId,caughtAt,catchPhotoId);
+int get hashCode {
+    return Object.hash(runtimeType,id,demonUserId,fugitiveUserId,caughtAt,catchPhotoId);
+}
 
 @override
 String toString() {
-  return 'RoomCatch(id: $id, demonUserId: $demonUserId, fugitiveUserId: $fugitiveUserId, caughtAt: $caughtAt, catchPhotoId: $catchPhotoId)';
+    return 'RoomCatch(id: $id, demonUserId: $demonUserId, fugitiveUserId: $fugitiveUserId, caughtAt: $caughtAt, catchPhotoId: $catchPhotoId)';
 }
 
 

@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'room.dart';
@@ -9,6 +9,7 @@ part of 'room.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -25,16 +26,21 @@ $RoomCopyWith<Room> get copyWith => _$RoomCopyWithImpl<Room>(this as Room, _$ide
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Room&&(identical(other.id, id) || other.id == id)&&(identical(other.roomCode, roomCode) || other.roomCode == roomCode)&&(identical(other.hostUserId, hostUserId) || other.hostUserId == hostUserId)&&(identical(other.status, status) || other.status == status)&&(identical(other.basePressure, basePressure) || other.basePressure == basePressure)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.releasedAt, releasedAt) || other.releasedAt == releasedAt)&&(identical(other.endsAt, endsAt) || other.endsAt == endsAt)&&(identical(other.endedAt, endedAt) || other.endedAt == endedAt)&&(identical(other.pendingDemonUid, pendingDemonUid) || other.pendingDemonUid == pendingDemonUid)&&(identical(other.demonRevokeUid, demonRevokeUid) || other.demonRevokeUid == demonRevokeUid)&&(identical(other.setting, setting) || other.setting == setting)&&const DeepCollectionEquality().equals(other.users, users));
+  final _this = this as Room;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Room&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.roomCode, _this.roomCode) || other.roomCode == _this.roomCode)&&(identical(other.hostUserId, _this.hostUserId) || other.hostUserId == _this.hostUserId)&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.basePressure, _this.basePressure) || other.basePressure == _this.basePressure)&&(identical(other.createdAt, _this.createdAt) || other.createdAt == _this.createdAt)&&(identical(other.startedAt, _this.startedAt) || other.startedAt == _this.startedAt)&&(identical(other.releasedAt, _this.releasedAt) || other.releasedAt == _this.releasedAt)&&(identical(other.endsAt, _this.endsAt) || other.endsAt == _this.endsAt)&&(identical(other.endedAt, _this.endedAt) || other.endedAt == _this.endedAt)&&(identical(other.pendingDemonUid, _this.pendingDemonUid) || other.pendingDemonUid == _this.pendingDemonUid)&&(identical(other.demonRevokeUid, _this.demonRevokeUid) || other.demonRevokeUid == _this.demonRevokeUid)&&(identical(other.setting, _this.setting) || other.setting == _this.setting)&&const DeepCollectionEquality().equals(other.users, _this.users));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,roomCode,hostUserId,status,basePressure,createdAt,startedAt,releasedAt,endsAt,endedAt,pendingDemonUid,demonRevokeUid,setting,const DeepCollectionEquality().hash(users));
+int get hashCode {
+  final _this = this as Room;
+  return Object.hash(runtimeType,_this.id,_this.roomCode,_this.hostUserId,_this.status,_this.basePressure,_this.createdAt,_this.startedAt,_this.releasedAt,_this.endsAt,_this.endedAt,_this.pendingDemonUid,_this.demonRevokeUid,_this.setting,const DeepCollectionEquality().hash(_this.users));
+}
 
 @override
 String toString() {
-  return 'Room(id: $id, roomCode: $roomCode, hostUserId: $hostUserId, status: $status, basePressure: $basePressure, createdAt: $createdAt, startedAt: $startedAt, releasedAt: $releasedAt, endsAt: $endsAt, endedAt: $endedAt, pendingDemonUid: $pendingDemonUid, demonRevokeUid: $demonRevokeUid, setting: $setting, users: $users)';
+  final _this = this as Room;
+  return 'Room(id: ${_this.id}, roomCode: ${_this.roomCode}, hostUserId: ${_this.hostUserId}, status: ${_this.status}, basePressure: ${_this.basePressure}, createdAt: ${_this.createdAt}, startedAt: ${_this.startedAt}, releasedAt: ${_this.releasedAt}, endsAt: ${_this.endsAt}, endedAt: ${_this.endedAt}, pendingDemonUid: ${_this.pendingDemonUid}, demonRevokeUid: ${_this.demonRevokeUid}, setting: ${_this.setting}, users: ${_this.users})';
 }
 
 
@@ -63,7 +69,7 @@ class _$RoomCopyWithImpl<$Res>
 /// Create a copy of Room
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? roomCode = null,Object? hostUserId = null,Object? status = null,Object? basePressure = freezed,Object? createdAt = null,Object? startedAt = freezed,Object? releasedAt = freezed,Object? endsAt = freezed,Object? endedAt = freezed,Object? pendingDemonUid = freezed,Object? demonRevokeUid = freezed,Object? setting = null,Object? users = null,}) {
-  return _then(_self.copyWith(
+  return _then(Room(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,roomCode: null == roomCode ? _self.roomCode : roomCode // ignore: cast_nullable_to_non_nullable
 as String,hostUserId: null == hostUserId ? _self.hostUserId : hostUserId // ignore: cast_nullable_to_non_nullable
@@ -228,7 +234,7 @@ return $default(_that.id,_that.roomCode,_that.hostUserId,_that.status,_that.base
 
 
 class _Room implements Room {
-  const _Room({required this.id, required this.roomCode, required this.hostUserId, required this.status, this.basePressure, required this.createdAt, this.startedAt, this.releasedAt, this.endsAt, this.endedAt, this.pendingDemonUid, this.demonRevokeUid, required this.setting, required final  List<RoomUser> users}): _users = users;
+  const _Room({required this.id, required this.roomCode, required this.hostUserId, required this.status, this.basePressure, required this.createdAt, this.startedAt, this.releasedAt, this.endsAt, this.endedAt, this.pendingDemonUid, this.demonRevokeUid, required this.setting, required  List<RoomUser> users}): _users = users;
   
 
 @override final  String id;
@@ -262,16 +268,18 @@ _$RoomCopyWith<_Room> get copyWith => __$RoomCopyWithImpl<_Room>(this, _$identit
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Room&&(identical(other.id, id) || other.id == id)&&(identical(other.roomCode, roomCode) || other.roomCode == roomCode)&&(identical(other.hostUserId, hostUserId) || other.hostUserId == hostUserId)&&(identical(other.status, status) || other.status == status)&&(identical(other.basePressure, basePressure) || other.basePressure == basePressure)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.releasedAt, releasedAt) || other.releasedAt == releasedAt)&&(identical(other.endsAt, endsAt) || other.endsAt == endsAt)&&(identical(other.endedAt, endedAt) || other.endedAt == endedAt)&&(identical(other.pendingDemonUid, pendingDemonUid) || other.pendingDemonUid == pendingDemonUid)&&(identical(other.demonRevokeUid, demonRevokeUid) || other.demonRevokeUid == demonRevokeUid)&&(identical(other.setting, setting) || other.setting == setting)&&const DeepCollectionEquality().equals(other._users, _users));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Room&&(identical(other.id, id) || other.id == id)&&(identical(other.roomCode, roomCode) || other.roomCode == roomCode)&&(identical(other.hostUserId, hostUserId) || other.hostUserId == hostUserId)&&(identical(other.status, status) || other.status == status)&&(identical(other.basePressure, basePressure) || other.basePressure == basePressure)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.startedAt, startedAt) || other.startedAt == startedAt)&&(identical(other.releasedAt, releasedAt) || other.releasedAt == releasedAt)&&(identical(other.endsAt, endsAt) || other.endsAt == endsAt)&&(identical(other.endedAt, endedAt) || other.endedAt == endedAt)&&(identical(other.pendingDemonUid, pendingDemonUid) || other.pendingDemonUid == pendingDemonUid)&&(identical(other.demonRevokeUid, demonRevokeUid) || other.demonRevokeUid == demonRevokeUid)&&(identical(other.setting, setting) || other.setting == setting)&&const DeepCollectionEquality().equals(other.users, _users));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,roomCode,hostUserId,status,basePressure,createdAt,startedAt,releasedAt,endsAt,endedAt,pendingDemonUid,demonRevokeUid,setting,const DeepCollectionEquality().hash(_users));
+int get hashCode {
+    return Object.hash(runtimeType,id,roomCode,hostUserId,status,basePressure,createdAt,startedAt,releasedAt,endsAt,endedAt,pendingDemonUid,demonRevokeUid,setting,const DeepCollectionEquality().hash(_users));
+}
 
 @override
 String toString() {
-  return 'Room(id: $id, roomCode: $roomCode, hostUserId: $hostUserId, status: $status, basePressure: $basePressure, createdAt: $createdAt, startedAt: $startedAt, releasedAt: $releasedAt, endsAt: $endsAt, endedAt: $endedAt, pendingDemonUid: $pendingDemonUid, demonRevokeUid: $demonRevokeUid, setting: $setting, users: $users)';
+    return 'Room(id: $id, roomCode: $roomCode, hostUserId: $hostUserId, status: $status, basePressure: $basePressure, createdAt: $createdAt, startedAt: $startedAt, releasedAt: $releasedAt, endsAt: $endsAt, endedAt: $endedAt, pendingDemonUid: $pendingDemonUid, demonRevokeUid: $demonRevokeUid, setting: $setting, users: $users)';
 }
 
 

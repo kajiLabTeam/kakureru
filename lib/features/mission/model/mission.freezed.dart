@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'mission.dart';
@@ -9,6 +9,7 @@ part of 'mission.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 
@@ -33,16 +34,21 @@ $MissionCopyWith<Mission> get copyWith => _$MissionCopyWithImpl<Mission>(this as
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Mission&&(identical(other.id, id) || other.id == id)&&(identical(other.round, round) || other.round == round)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.finishedAt, finishedAt) || other.finishedAt == finishedAt)&&const DeepCollectionEquality().equals(other.spots, spots));
+  final _this = this as Mission;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Mission&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.round, _this.round) || other.round == _this.round)&&(identical(other.createdAt, _this.createdAt) || other.createdAt == _this.createdAt)&&(identical(other.expiresAt, _this.expiresAt) || other.expiresAt == _this.expiresAt)&&(identical(other.finishedAt, _this.finishedAt) || other.finishedAt == _this.finishedAt)&&const DeepCollectionEquality().equals(other.spots, _this.spots));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,round,createdAt,expiresAt,finishedAt,const DeepCollectionEquality().hash(spots));
+int get hashCode {
+  final _this = this as Mission;
+  return Object.hash(runtimeType,_this.id,_this.round,_this.createdAt,_this.expiresAt,_this.finishedAt,const DeepCollectionEquality().hash(_this.spots));
+}
 
 @override
 String toString() {
-  return 'Mission(id: $id, round: $round, createdAt: $createdAt, expiresAt: $expiresAt, finishedAt: $finishedAt, spots: $spots)';
+  final _this = this as Mission;
+  return 'Mission(id: ${_this.id}, round: ${_this.round}, createdAt: ${_this.createdAt}, expiresAt: ${_this.expiresAt}, finishedAt: ${_this.finishedAt}, spots: ${_this.spots})';
 }
 
 
@@ -71,7 +77,7 @@ class _$MissionCopyWithImpl<$Res>
 /// Create a copy of Mission
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? round = null,Object? createdAt = null,Object? expiresAt = null,Object? finishedAt = freezed,Object? spots = null,}) {
-  return _then(_self.copyWith(
+  return _then(Mission(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,round: null == round ? _self.round : round // ignore: cast_nullable_to_non_nullable
 as int,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
@@ -219,7 +225,7 @@ return $default(_that.id,_that.round,_that.createdAt,_that.expiresAt,_that.finis
 @JsonSerializable()
 
 class _Mission implements Mission {
-  const _Mission({required this.id, required this.round, required this.createdAt, required this.expiresAt, this.finishedAt, final  List<MissionSpot> spots = const <MissionSpot>[]}): _spots = spots;
+  const _Mission({required this.id, required this.round, required this.createdAt, required this.expiresAt, this.finishedAt,  List<MissionSpot> spots = const <MissionSpot>[]}): _spots = spots;
   factory _Mission.fromJson(Map<String, dynamic> json) => _$MissionFromJson(json);
 
 @override final  String id;
@@ -254,16 +260,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Mission&&(identical(other.id, id) || other.id == id)&&(identical(other.round, round) || other.round == round)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.finishedAt, finishedAt) || other.finishedAt == finishedAt)&&const DeepCollectionEquality().equals(other._spots, _spots));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Mission&&(identical(other.id, id) || other.id == id)&&(identical(other.round, round) || other.round == round)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.finishedAt, finishedAt) || other.finishedAt == finishedAt)&&const DeepCollectionEquality().equals(other.spots, _spots));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,round,createdAt,expiresAt,finishedAt,const DeepCollectionEquality().hash(_spots));
+int get hashCode {
+    return Object.hash(runtimeType,id,round,createdAt,expiresAt,finishedAt,const DeepCollectionEquality().hash(_spots));
+}
 
 @override
 String toString() {
-  return 'Mission(id: $id, round: $round, createdAt: $createdAt, expiresAt: $expiresAt, finishedAt: $finishedAt, spots: $spots)';
+    return 'Mission(id: $id, round: $round, createdAt: $createdAt, expiresAt: $expiresAt, finishedAt: $finishedAt, spots: $spots)';
 }
 
 
@@ -327,16 +335,21 @@ $MissionSpotCopyWith<MissionSpot> get copyWith => _$MissionSpotCopyWithImpl<Miss
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is MissionSpot&&(identical(other.id, id) || other.id == id)&&(identical(other.lat, lat) || other.lat == lat)&&(identical(other.lng, lng) || other.lng == lng)&&(identical(other.radiusM, radiusM) || other.radiusM == radiusM)&&(identical(other.claimedBy, claimedBy) || other.claimedBy == claimedBy)&&(identical(other.claimedAt, claimedAt) || other.claimedAt == claimedAt)&&(identical(other.reward, reward) || other.reward == reward));
+  final _this = this as MissionSpot;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MissionSpot&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.lat, _this.lat) || other.lat == _this.lat)&&(identical(other.lng, _this.lng) || other.lng == _this.lng)&&(identical(other.radiusM, _this.radiusM) || other.radiusM == _this.radiusM)&&(identical(other.claimedBy, _this.claimedBy) || other.claimedBy == _this.claimedBy)&&(identical(other.claimedAt, _this.claimedAt) || other.claimedAt == _this.claimedAt)&&(identical(other.reward, _this.reward) || other.reward == _this.reward));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,lat,lng,radiusM,claimedBy,claimedAt,reward);
+int get hashCode {
+  final _this = this as MissionSpot;
+  return Object.hash(runtimeType,_this.id,_this.lat,_this.lng,_this.radiusM,_this.claimedBy,_this.claimedAt,_this.reward);
+}
 
 @override
 String toString() {
-  return 'MissionSpot(id: $id, lat: $lat, lng: $lng, radiusM: $radiusM, claimedBy: $claimedBy, claimedAt: $claimedAt, reward: $reward)';
+  final _this = this as MissionSpot;
+  return 'MissionSpot(id: ${_this.id}, lat: ${_this.lat}, lng: ${_this.lng}, radiusM: ${_this.radiusM}, claimedBy: ${_this.claimedBy}, claimedAt: ${_this.claimedAt}, reward: ${_this.reward})';
 }
 
 
@@ -365,7 +378,7 @@ class _$MissionSpotCopyWithImpl<$Res>
 /// Create a copy of MissionSpot
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? lat = null,Object? lng = null,Object? radiusM = null,Object? claimedBy = freezed,Object? claimedAt = freezed,Object? reward = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(MissionSpot(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,lat: null == lat ? _self.lat : lat // ignore: cast_nullable_to_non_nullable
 as double,lng: null == lng ? _self.lng : lng // ignore: cast_nullable_to_non_nullable
@@ -542,16 +555,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _MissionSpot&&(identical(other.id, id) || other.id == id)&&(identical(other.lat, lat) || other.lat == lat)&&(identical(other.lng, lng) || other.lng == lng)&&(identical(other.radiusM, radiusM) || other.radiusM == radiusM)&&(identical(other.claimedBy, claimedBy) || other.claimedBy == claimedBy)&&(identical(other.claimedAt, claimedAt) || other.claimedAt == claimedAt)&&(identical(other.reward, reward) || other.reward == reward));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _MissionSpot&&(identical(other.id, id) || other.id == id)&&(identical(other.lat, lat) || other.lat == lat)&&(identical(other.lng, lng) || other.lng == lng)&&(identical(other.radiusM, radiusM) || other.radiusM == radiusM)&&(identical(other.claimedBy, claimedBy) || other.claimedBy == claimedBy)&&(identical(other.claimedAt, claimedAt) || other.claimedAt == claimedAt)&&(identical(other.reward, reward) || other.reward == reward));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,lat,lng,radiusM,claimedBy,claimedAt,reward);
+int get hashCode {
+    return Object.hash(runtimeType,id,lat,lng,radiusM,claimedBy,claimedAt,reward);
+}
 
 @override
 String toString() {
-  return 'MissionSpot(id: $id, lat: $lat, lng: $lng, radiusM: $radiusM, claimedBy: $claimedBy, claimedAt: $claimedAt, reward: $reward)';
+    return 'MissionSpot(id: $id, lat: $lat, lng: $lng, radiusM: $radiusM, claimedBy: $claimedBy, claimedAt: $claimedAt, reward: $reward)';
 }
 
 

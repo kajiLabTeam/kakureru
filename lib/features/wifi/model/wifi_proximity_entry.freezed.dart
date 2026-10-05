@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'wifi_proximity_entry.dart';
@@ -9,6 +9,7 @@ part of 'wifi_proximity_entry.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -25,16 +26,21 @@ $WifiProximityEntryCopyWith<WifiProximityEntry> get copyWith => _$WifiProximityE
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is WifiProximityEntry&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.level, level) || other.level == level));
+  final _this = this as WifiProximityEntry;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is WifiProximityEntry&&(identical(other.uid, _this.uid) || other.uid == _this.uid)&&(identical(other.level, _this.level) || other.level == _this.level));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,uid,level);
+int get hashCode {
+  final _this = this as WifiProximityEntry;
+  return Object.hash(runtimeType,_this.uid,_this.level);
+}
 
 @override
 String toString() {
-  return 'WifiProximityEntry(uid: $uid, level: $level)';
+  final _this = this as WifiProximityEntry;
+  return 'WifiProximityEntry(uid: ${_this.uid}, level: ${_this.level})';
 }
 
 
@@ -63,7 +69,7 @@ class _$WifiProximityEntryCopyWithImpl<$Res>
 /// Create a copy of WifiProximityEntry
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? uid = null,Object? level = null,}) {
-  return _then(_self.copyWith(
+  return _then(WifiProximityEntry(
 uid: null == uid ? _self.uid : uid // ignore: cast_nullable_to_non_nullable
 as String,level: null == level ? _self.level : level // ignore: cast_nullable_to_non_nullable
 as ProximityLevel,
@@ -223,16 +229,18 @@ _$WifiProximityEntryCopyWith<_WifiProximityEntry> get copyWith => __$WifiProximi
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _WifiProximityEntry&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.level, level) || other.level == level));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _WifiProximityEntry&&(identical(other.uid, uid) || other.uid == uid)&&(identical(other.level, level) || other.level == level));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,uid,level);
+int get hashCode {
+    return Object.hash(runtimeType,uid,level);
+}
 
 @override
 String toString() {
-  return 'WifiProximityEntry(uid: $uid, level: $level)';
+    return 'WifiProximityEntry(uid: $uid, level: $level)';
 }
 
 

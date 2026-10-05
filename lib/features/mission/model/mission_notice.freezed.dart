@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'mission_notice.dart';
@@ -9,6 +9,7 @@ part of 'mission_notice.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -25,16 +26,21 @@ $MissionNoticeCopyWith<MissionNotice> get copyWith => _$MissionNoticeCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is MissionNotice&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.message, message) || other.message == message));
+  final _this = this as MissionNotice;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MissionNotice&&(identical(other.kind, _this.kind) || other.kind == _this.kind)&&(identical(other.missionId, _this.missionId) || other.missionId == _this.missionId)&&(identical(other.message, _this.message) || other.message == _this.message));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,kind,missionId,message);
+int get hashCode {
+  final _this = this as MissionNotice;
+  return Object.hash(runtimeType,_this.kind,_this.missionId,_this.message);
+}
 
 @override
 String toString() {
-  return 'MissionNotice(kind: $kind, missionId: $missionId, message: $message)';
+  final _this = this as MissionNotice;
+  return 'MissionNotice(kind: ${_this.kind}, missionId: ${_this.missionId}, message: ${_this.message})';
 }
 
 
@@ -63,7 +69,7 @@ class _$MissionNoticeCopyWithImpl<$Res>
 /// Create a copy of MissionNotice
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? kind = null,Object? missionId = null,Object? message = null,}) {
-  return _then(_self.copyWith(
+  return _then(MissionNotice(
 kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as MissionNoticeKind,missionId: null == missionId ? _self.missionId : missionId // ignore: cast_nullable_to_non_nullable
 as String,message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
@@ -225,16 +231,18 @@ _$MissionNoticeCopyWith<_MissionNotice> get copyWith => __$MissionNoticeCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _MissionNotice&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.message, message) || other.message == message));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _MissionNotice&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.missionId, missionId) || other.missionId == missionId)&&(identical(other.message, message) || other.message == message));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,kind,missionId,message);
+int get hashCode {
+    return Object.hash(runtimeType,kind,missionId,message);
+}
 
 @override
 String toString() {
-  return 'MissionNotice(kind: $kind, missionId: $missionId, message: $message)';
+    return 'MissionNotice(kind: $kind, missionId: $missionId, message: $message)';
 }
 
 
