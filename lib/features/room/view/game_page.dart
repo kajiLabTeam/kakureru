@@ -1018,26 +1018,6 @@ class GamePage extends HookConsumerWidget {
                           serverNowMillis: now,
                         ),
                       ),
-                    // 持っているごほうび(先に引いたものから1つずつ出す)。
-                    // 同じ効果がいま効いているあいだは押せない(重ねても
-                    // 長くならず、無駄になるため)。
-                    if (heldRewards.firstOrNull case final held?)
-                      HeldRewardBar(
-                        type: held.type,
-                        onUse:
-                            useRewardAction.isRunning ||
-                                activeEffectOf(
-                                      roomEffects,
-                                      held.type,
-                                      serverNowMillis: now,
-                                    ) !=
-                                    null
-                            ? null
-                            : () => unawaited(handleUseHeldRewardPressed(held)),
-                        disabledReason: useRewardAction.isRunning
-                            ? '使っています…'
-                            : 'いま効いているので、切れてから使える',
-                      ),
                     // 鬼放出前、逃走者に「いまのうちに離れる」ことを促す
                     // バナー(UI改修モック2a-04)。鬼にはこの助言は無関係
                     // なので逃走者のみに出す。
@@ -1202,6 +1182,43 @@ class GamePage extends HookConsumerWidget {
                                           ),
                                         ),
                                   ],
+                                  // 持っているごほうび(先に引いたものから1つずつ出す)。
+                                  // Columnに足すと、その分だけ地図と下のカードが
+                                  // 押し出されて消える(ごほうびを引いた逃走者の
+                                  // 画面が白くなり、地図が動かなくなった原因)ため、
+                                  // 地図の上に重ねる。同じ効果がいま効いている
+                                  // あいだは押せない(重ねても長くならず、無駄に
+                                  // なるため)。
+                                  if (heldRewards.firstOrNull case final held?)
+                                    Positioned(
+                                      left: 12,
+                                      right: 12,
+                                      bottom: showsMissionButton ? 76 : 14,
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: HeldRewardBar(
+                                          type: held.type,
+                                          onUse:
+                                              useRewardAction.isRunning ||
+                                                  activeEffectOf(
+                                                        roomEffects,
+                                                        held.type,
+                                                        serverNowMillis: now,
+                                                      ) !=
+                                                      null
+                                              ? null
+                                              : () => unawaited(
+                                                  handleUseHeldRewardPressed(
+                                                    held,
+                                                  ),
+                                                ),
+                                          disabledReason:
+                                              useRewardAction.isRunning
+                                              ? '使っています…'
+                                              : 'いま効いているので、切れてから使える',
+                                        ),
+                                      ),
+                                    ),
                                   // デバッグ用(DEBUG_MISSION=trueのときだけ)。
                                   // ミッションが出ていなければ、カードの位置に
                                   // 「ミッションをいますぐ出す」を置く(放出から
@@ -1234,7 +1251,10 @@ class GamePage extends HookConsumerWidget {
                               shouldShowSightingPhotoButton(role: myRole))
                             Positioned(
                               right: 14,
-                              bottom: showsMissionButton ? 120 : 60,
+                              bottom:
+                                  showsMissionButton || heldRewards.isNotEmpty
+                                  ? 120
+                                  : 60,
                               child: SightingPhotoButton(
                                 unreadCount: sightingBadge.unreadCount,
                                 onPressed: () =>
