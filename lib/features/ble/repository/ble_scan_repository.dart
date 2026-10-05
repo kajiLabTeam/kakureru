@@ -32,9 +32,16 @@ class BleScanRepository {
   /// 自分のuidを広告し始める。ゲーム画面滞在中だけ行う。
   Future<void> startAdvertising(String uid) async {
     await _peripheral.start(
-      advertiseData: AdvertiseData(
+      advertiseData: AdvertiseDataCore(
         manufacturerId: BleProximityThresholds.manufacturerId,
         manufacturerData: Uint8List.fromList(encodeAdvertisePayload(uid)),
+      ),
+      // 3.xで既定値が変わった(送信出力 low→high)。距離推定のRSSI閾値は
+      // 2.x時代の出力で調整されているので、明示して据え置く。
+      androidSettings: const AndroidAdvertiseSettings(
+        advertiseSettings: AdvertiseSettings(
+          txPowerLevel: AdvertiseTxPower.advertiseTxPowerLow,
+        ),
       ),
     );
   }
