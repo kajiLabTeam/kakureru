@@ -158,15 +158,17 @@ void main() {
       expect(_effects(db), hasLength(effectsBefore));
     });
 
-    test('1人で2つ目の地点は取れない', () async {
+    test('1人で2つ目の地点も取れて、ごほうびも地点ごとに書かれる', () async {
       final db = _dbWithMission();
       await _repo(db, 'alice').claimMission(_roomId, 'm1', 's0');
       final result = await _repo(
         db,
         'alice',
       ).claimMission(_roomId, 'm1', 's1');
-      expect(result.outcome, ClaimOutcome.unavailable);
-      expect(db.read('$_missionPath/spots/s1/claimedBy'), isNull);
+      expect(result.outcome, ClaimOutcome.claimed);
+      expect(db.read('$_missionPath/spots/s0/claimedBy'), 'alice');
+      expect(db.read('$_missionPath/spots/s1/claimedBy'), 'alice');
+      expect(db.read('$_missionPath/spots/s1/reward'), isNotNull);
     });
 
     test('期限が切れていたら取れない', () async {

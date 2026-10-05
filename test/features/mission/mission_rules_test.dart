@@ -5,6 +5,7 @@ import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/mission/mission_rules.dart';
 import 'package:kakureru/features/mission/mission_timing.dart';
 import 'package:kakureru/features/mission/model/mission.dart';
+import 'package:kakureru/features/mission/model/reward_type.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 
 /// 名古屋あたりの基準点。緯度1度 ≒ 111km、経度1度 ≒ 91km(北緯35度)。
@@ -19,6 +20,7 @@ MissionSpot _spot({
   double northM = 0,
   String? claimedBy,
   int? claimedAt,
+  RewardType? reward,
 }) => MissionSpot(
   id: id,
   lat: _north(northM),
@@ -26,6 +28,7 @@ MissionSpot _spot({
   radiusM: accessPointRadiusM,
   claimedBy: claimedBy,
   claimedAt: claimedAt,
+  reward: reward,
 );
 
 Mission _mission({
@@ -54,36 +57,27 @@ UserLocation _at(double lat, {double? accuracy = 5, int updatedAt = 1}) =>
     );
 
 void main() {
-  test('逃走者が多ければ、地点の数は1回目4・2回目4・3回目3', () {
-    expect(missionSpotCount(round: 1, fugitiveCount: 5), 4);
-    expect(missionSpotCount(round: 2, fugitiveCount: 5), 4);
-    expect(missionSpotCount(round: 3, fugitiveCount: 5), 3);
+  test('地点の数は1回目4・2回目4・3回目3で、逃走者の人数では減らない', () {
+    expect(missionSpotCount(round: 1), 4);
+    expect(missionSpotCount(round: 2), 4);
+    expect(missionSpotCount(round: 3), 3);
   });
 
-  test('地点の数は逃走者の人数より多くならない', () {
-    expect(missionSpotCount(round: 1, fugitiveCount: 3), 3);
-    expect(missionSpotCount(round: 2, fugitiveCount: 2), 2);
-    expect(missionSpotCount(round: 3, fugitiveCount: 1), 1);
-  });
-
-  test('逃走者がいなくても地点は0個にならない', () {
-    expect(missionSpotCount(round: 1, fugitiveCount: 0), 1);
+  test('範囲外の回は最後の回と同じ数', () {
+    expect(missionSpotCount(round: 0), 4);
+    expect(missionSpotCount(round: 9), 3);
   });
 
   test('地点の数の表は回数と同じ長さ', () {
     expect(missionSpotCounts.length, missionDueDelays.length);
   });
 
-  test('デバッグで選べる回は1〜3回目で、地点の数は回と逃走者の人数で決まる', () {
-    expect(debugMissionRoundChoices(fugitiveCount: 5), [
+  test('デバッグで選べる回は1〜3回目で、地点の数は回で決まる', () {
+    expect(debugMissionRoundChoices(), [
       (round: 1, spotCount: 4),
       (round: 2, spotCount: 4),
       (round: 3, spotCount: 3),
     ]);
-    expect(
-      debugMissionRoundChoices(fugitiveCount: 2).map((c) => c.spotCount),
-      [2, 2, 2],
-    );
   });
 
   group('missionsOfCurrentGame', () {
@@ -154,16 +148,31 @@ void main() {
       );
     });
 
-    test('spotClaimedByは自分が取った地点を返す', () {
+    test('spotsClaimedByは自分が取った地点をすべて返す', () {
       final mission = _mission(
         spots: [
           _spot(),
           _spot(id: 's1', claimedBy: 'me'),
+          _spot(id: 's2', claimedBy: 'other'),
+          _spot(id: 's3', claimedBy: 'me'),
         ],
       );
-      expect(spotClaimedBy(mission, 'me')?.id, 's1');
-      expect(spotClaimedBy(mission, 'other'), isNull);
-      expect(spotClaimedBy(mission, null), isNull);
+      expect(spotsClaimedBy(mission, 'me').map((s) => s.id), ['s1', 's3']);
+      expect(spotsClaimedBy(mission, 'nobody'), isEmpty);
+      expect(spotsClaimedBy(mission, null), isEmpty);
+    });
+
+    test('unrewardedSpotClaimedByはごほうびが無い自分の地点だけ返す', () {
+      final mission = _mission(
+        spots: [
+          _spot(id: 's0', claimedBy: 'me', reward: RewardType.miss),
+          _spot(id: 's1', claimedBy: 'me'),
+          _spot(id: 's2', claimedBy: 'other'),
+        ],
+      );
+      expect(unrewardedSpotClaimedBy(mission, 'me')?.id, 's1');
+      expect(unrewardedSpotClaimedBy(mission, 'other')?.id, 's2');
+      expect(unrewardedSpotClaimedBy(mission, null), isNull);
     });
 
     test('visibleMissionSpotsは自分が取った地点を除き、ほかの地点は取られていても残す', () {
@@ -594,7 +603,26 @@ void main() {
       expect((afterB.value! as Map)['finishedAt'], 6000);
     });
 
-    test('1人で2つの地点は取れない', () {
+    test('1人で2つの地点を取れて、全部埋まれば終わる', () {
+      final afterS0 = claimSpotUpdate(
+        fresh(),
+        spotId: 's0',
+        uid: 'a',
+        nowMillis: 5000,
+      );
+      final afterS1 = claimSpotUpdate(
+        afterS0.value,
+        spotId: 's1',
+        uid: 'a',
+        nowMillis: 6000,
+      );
+      expect(afterS1.aborted, isFalse);
+      expect(spotOf(afterS1.value, 's0'), containsPair('claimedBy', 'a'));
+      expect(spotOf(afterS1.value, 's1'), containsPair('claimedBy', 'a'));
+      expect((afterS1.value! as Map)['finishedAt'], 6000);
+    });
+
+    test('自分が取った地点をもう一度取ることはできない', () {
       final afterA = claimSpotUpdate(
         fresh(),
         spotId: 's0',
@@ -604,7 +632,7 @@ void main() {
       expect(
         claimSpotUpdate(
           afterA.value,
-          spotId: 's1',
+          spotId: 's0',
           uid: 'a',
           nowMillis: 6000,
         ).aborted,

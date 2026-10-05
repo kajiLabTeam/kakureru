@@ -549,12 +549,7 @@ class GamePage extends HookConsumerWidget {
     // デバッグ用の「ミッションをいますぐ出す」(DEBUG_MISSION)。何回目を
     // 出すかを選ばせ、時刻やホストかどうかに関係なくその場で書く。
     Future<void> handleDebugCreatePressed(Room current) async {
-      final round = await showMissionDebugRoundPicker(
-        context,
-        fugitiveCount: current.users
-            .where((u) => u.role == UserRole.fugitive)
-            .length,
-      );
+      final round = await showMissionDebugRoundPicker(context);
       if (round == null || !context.mounted) return;
       var written = false;
       final result = await debugCreateAction.run(() async {
@@ -976,15 +971,24 @@ class GamePage extends HookConsumerWidget {
                         progress: missionProgress,
                         targetSpotId: missionTargetSpot?.id,
                       );
-                final myMissionSpot = mission == null
+                // ごほうびを受け取り直す地点(取ったのにごほうびが無いもの)。
+                final myUnrewardedSpot = mission == null
                     ? null
-                    : spotClaimedBy(mission, myUid);
+                    : unrewardedSpotClaimedBy(mission, myUid);
+                // 最後に取った地点。取り終わったカードに、そのごほうびを出す。
+                final myLastClaimedSpot = mission == null
+                    ? null
+                    : (spotsClaimedBy(mission, myUid).toList()..sort(
+                            (a, b) =>
+                                (a.claimedAt ?? 0).compareTo(b.claimedAt ?? 0),
+                          ))
+                          .lastOrNull;
                 // 地図の下寄せに「ごほうびガチャを引く/受け取る」が出ているか。
                 final showsMissionButton =
                     (missionStatus == MissionCardStatus.arrived &&
                         missionTargetSpot != null) ||
                     (missionStatus == MissionCardStatus.claimedWithoutReward &&
-                        myMissionSpot != null &&
+                        myUnrewardedSpot != null &&
                         !claimAction.isRunning);
 
                 // 効果が効いているあいだの細い帯(残り時間はサーバー時刻で数える)。
@@ -1118,23 +1122,17 @@ class GamePage extends HookConsumerWidget {
                                       left: 12,
                                       right: 12,
                                       top: 12,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          MissionCard(
-                                            mission: mission,
-                                            status: missionStatus,
-                                            reading: missionReading,
-                                            remainingMillis:
-                                                mission.expiresAt - now,
-                                            expanded: missionCardExpanded.value,
-                                            onToggleExpanded: () =>
-                                                missionCardExpanded.value =
-                                                    !missionCardExpanded.value,
-                                            myReward: myMissionSpot?.reward,
-                                          ),
-                                        ],
+                                      child: MissionCard(
+                                        mission: mission,
+                                        status: missionStatus,
+                                        reading: missionReading,
+                                        remainingMillis:
+                                            mission.expiresAt - now,
+                                        expanded: missionCardExpanded.value,
+                                        onToggleExpanded: () =>
+                                            missionCardExpanded.value =
+                                                !missionCardExpanded.value,
+                                        myReward: myLastClaimedSpot?.reward,
                                       ),
                                     ),
                                     if (missionStatus ==
@@ -1157,7 +1155,7 @@ class GamePage extends HookConsumerWidget {
                                     if (missionStatus ==
                                             MissionCardStatus
                                                 .claimedWithoutReward &&
-                                        myMissionSpot != null &&
+                                        myUnrewardedSpot != null &&
                                         !claimAction.isRunning)
                                       Positioned(
                                         left: 12,
@@ -1169,7 +1167,7 @@ class GamePage extends HookConsumerWidget {
                                           onPressed: () => unawaited(
                                             handleCompleteClaimPressed(
                                               mission,
-                                              myMissionSpot,
+                                              myUnrewardedSpot,
                                             ),
                                           ),
                                         ),
@@ -1180,7 +1178,9 @@ class GamePage extends HookConsumerWidget {
                                     if (debugMissionArrivalEnabled &&
                                         missionStatus !=
                                             MissionCardStatus.takenByOther &&
-                                        myMissionSpot == null)
+                                        missionStatus !=
+                                            MissionCardStatus.claimedByMe &&
+                                        myUnrewardedSpot == null)
                                       if (missionTargetSpot ??
                                               openSpots(mission).firstOrNull
                                           case final debugSpot?)

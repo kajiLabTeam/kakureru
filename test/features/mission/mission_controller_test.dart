@@ -94,7 +94,7 @@ void main() {
   }
 
   group('ミッションの生成', () {
-    test('ホストの端末だけが、放出から3分で1件だけ書く(地点は逃走者の人数まで)', () {
+    test('ホストの端末だけが、放出から3分で1件だけ書く(地点は1回目の4か所)', () {
       fakeAsync((async) {
         final repository = _RecordingRepository();
         final container = containerWith(
@@ -106,7 +106,7 @@ void main() {
         // 書いたミッションが購読に戻ってこない状態で毎秒判定が回っても、
         // 二重に書かないよう間隔を置く(5秒に1回まで)。
         async.elapse(const Duration(seconds: 3));
-        expect(repository.calls, [(spotCount: 2, round: 1)]);
+        expect(repository.calls, [(spotCount: 4, round: 1)]);
       });
     });
 
@@ -154,7 +154,7 @@ void main() {
         unawaited(controller.debugCreateMission(3).then((w) => written = w));
         async.flushMicrotasks();
         expect(written, isTrue);
-        expect(repository.calls, [(spotCount: 2, round: 3)]);
+        expect(repository.calls, [(spotCount: 3, round: 3)]);
       });
     });
 

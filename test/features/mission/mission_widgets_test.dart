@@ -148,12 +148,32 @@ void main() {
       );
     });
 
-    test('自分が取った地点があれば「引いた」', () {
+    test('自分が1つ取っても、空きがあれば次の地点へ向かう', () {
       expect(
         status(
           mission: _claimed('s1', 'me', reward: RewardType.blockClues),
         ),
+        MissionCardStatus.approaching,
+      );
+    });
+
+    test('全部埋まって自分が取った地点があれば「引いた」', () {
+      expect(
+        status(
+          mission: _claimed(
+            's0',
+            'other',
+            mission: _claimed('s1', 'me', reward: RewardType.blockClues),
+          ),
+        ),
         MissionCardStatus.claimedByMe,
+      );
+    });
+
+    test('1つ取ってごほうびが未受け取りなら、空きがあっても受け取り直しが先', () {
+      expect(
+        status(mission: _claimed('s0', 'me')),
+        MissionCardStatus.claimedWithoutReward,
       );
     });
 
@@ -516,10 +536,7 @@ void main() {
             builder: (context) => MissionDebugCreateButton(
               enabled: true,
               onPressed: () async {
-                picked = await showMissionDebugRoundPicker(
-                  context,
-                  fugitiveCount: 5,
-                );
+                picked = await showMissionDebugRoundPicker(context);
               },
             ),
           ),

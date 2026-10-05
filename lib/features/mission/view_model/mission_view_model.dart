@@ -277,17 +277,13 @@ class MissionController extends Notifier<MissionProgress> {
     return true;
   }
 
-  /// [round]回目のミッションを書く。地点の数はいまの逃走者の人数で決める。
+  /// [round]回目のミッションを書く。
   Future<void> _writeMission(
     String roomId,
     Room room, {
     required int round,
     required int nowMillis,
   }) {
-    // 捕まった人は役が鬼に変わるので、役が逃走者の人だけを数えればよい。
-    final fugitiveCount = room.users
-        .where((u) => u.role == UserRole.fugitive)
-        .length;
     _creating = true;
     _lastCreatedAt = nowMillis;
     final generation = _generation;
@@ -296,10 +292,7 @@ class MissionController extends Notifier<MissionProgress> {
         .createMission(
           roomId,
           area: room.setting.gameArea,
-          spotCount: missionSpotCount(
-            round: round,
-            fugitiveCount: fugitiveCount,
-          ),
+          spotCount: missionSpotCount(round: round),
           round: round,
           nowMillis: nowMillis,
         )
@@ -330,7 +323,6 @@ class MissionController extends Notifier<MissionProgress> {
     }
     if (mission != null &&
         isFugitive &&
-        spotClaimedBy(mission, myUid) == null &&
         isMissionActive(mission, nowMillis: nowMillis)) {
       final spot = nearestOpenSpot(mission, myLocation);
       // 向かう地点が変わったら(取られた・近い方が入れ替わった)数え直す。
