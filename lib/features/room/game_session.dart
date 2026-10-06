@@ -25,6 +25,7 @@ void useGameSession(
   WidgetRef ref, {
   required String roomId,
   required String? myUid,
+  bool gpsOnly = false,
 }) {
   // 位置の送信・購読。
   //
@@ -49,22 +50,26 @@ void useGameSession(
 
   // 気圧の送信。センサー購読自体は待機画面のキャリブレーションで既に
   // 始まっている想定(PressureViewModel.initは判定済みなら再判定しない)。
+  // GPSのみモード(room.setting.gpsOnly)では止める。
   useEffect(() {
+    if (gpsOnly) return null;
     final pressure = ref.read(pressureViewModelProvider.notifier);
     unawaited(pressure.init(roomId));
     pressure.startSendingToRoom(roomId);
     return pressure.stopSendingAndDispose;
-  }, [roomId]);
+  }, [roomId, gpsOnly]);
 
   // Wi-Fiスキャン。位置情報・気圧とは別の、`WifiScanRepository` が持つ
   // 独自の間隔(`_scanInterval`)のタイマーで動く(Androidのスキャン
   // スロットリング対策。具体的な秒数はここに書き写さない — 書き写すと
   // 実装側を変えたときに片方だけ腐るため)。
+  // GPSのみモードでは止める。
   useEffect(() {
+    if (gpsOnly) return null;
     final wifiScan = ref.read(wifiScanRepositoryProvider)
       ..startScanning(roomId);
     return wifiScan.stopScanning;
-  }, [roomId]);
+  }, [roomId, gpsOnly]);
 
   // 時間で発火する判定(鬼放出・ゲーム終了・エリア外)。**画面が消えていても
   // 進む**ように、ウィジェットの再描画ではなく自前のタイマーで回している
@@ -76,11 +81,13 @@ void useGameSession(
 
   // ミッションの生成(ホストの端末だけ)と、自分の到着・達成の判定。
   // GameAlertsと同じく画面が消えていても進むよう、自前のタイマーで回す。
+  // GPSのみモードではミッションを出さない(ごほうびがWi-Fi・気圧に絡むため)。
   useEffect(() {
+    if (gpsOnly) return null;
     final missions = ref.read(missionControllerProvider.notifier)
       ..start(roomId);
     return missions.stop;
-  }, [roomId]);
+  }, [roomId, gpsOnly]);
 
   // BLEの広告・スキャン(issue #16)。myUidが確定するまで
   // (FirebaseAuthの復元前など)は開始できない。

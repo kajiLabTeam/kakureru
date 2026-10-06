@@ -26,6 +26,7 @@ rooms/
       photoIntervalSec
       fugitiveInfoDelaySec  鬼の放出後、逃走者が鬼の位置を見られるまでの秒数（既定0＝すぐ見える）
       senseDistanceRadiusM
+      gpsOnly             GPSのみモード(A/Bテスト用。既定false)。trueの部屋はWi-Fi・気圧を使わず、ミッションも出さない(BLEは使う)
       meetingPointLat
       meetingPointLng
     users/

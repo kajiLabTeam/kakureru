@@ -289,7 +289,7 @@ as double,
 /// @nodoc
 mixin _$RoomSetting {
 
- List<LatLng> get gameArea; int get releaseWaitSec; int get gameDurationSec; int get photoIntervalSec; int get fugitiveInfoDelaySec; int get senseDistanceRadiusM; int? get updatedAt;
+ List<LatLng> get gameArea; int get releaseWaitSec; int get gameDurationSec; int get photoIntervalSec; int get fugitiveInfoDelaySec; int get senseDistanceRadiusM; bool get gpsOnly; int? get updatedAt;
 /// Create a copy of RoomSetting
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -303,20 +303,20 @@ $RoomSettingCopyWith<RoomSetting> get copyWith => _$RoomSettingCopyWithImpl<Room
 @override
 bool operator ==(Object other) {
   final _this = this as RoomSetting;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomSetting&&const DeepCollectionEquality().equals(other.gameArea, _this.gameArea)&&(identical(other.releaseWaitSec, _this.releaseWaitSec) || other.releaseWaitSec == _this.releaseWaitSec)&&(identical(other.gameDurationSec, _this.gameDurationSec) || other.gameDurationSec == _this.gameDurationSec)&&(identical(other.photoIntervalSec, _this.photoIntervalSec) || other.photoIntervalSec == _this.photoIntervalSec)&&(identical(other.fugitiveInfoDelaySec, _this.fugitiveInfoDelaySec) || other.fugitiveInfoDelaySec == _this.fugitiveInfoDelaySec)&&(identical(other.senseDistanceRadiusM, _this.senseDistanceRadiusM) || other.senseDistanceRadiusM == _this.senseDistanceRadiusM)&&(identical(other.updatedAt, _this.updatedAt) || other.updatedAt == _this.updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RoomSetting&&const DeepCollectionEquality().equals(other.gameArea, _this.gameArea)&&(identical(other.releaseWaitSec, _this.releaseWaitSec) || other.releaseWaitSec == _this.releaseWaitSec)&&(identical(other.gameDurationSec, _this.gameDurationSec) || other.gameDurationSec == _this.gameDurationSec)&&(identical(other.photoIntervalSec, _this.photoIntervalSec) || other.photoIntervalSec == _this.photoIntervalSec)&&(identical(other.fugitiveInfoDelaySec, _this.fugitiveInfoDelaySec) || other.fugitiveInfoDelaySec == _this.fugitiveInfoDelaySec)&&(identical(other.senseDistanceRadiusM, _this.senseDistanceRadiusM) || other.senseDistanceRadiusM == _this.senseDistanceRadiusM)&&(identical(other.gpsOnly, _this.gpsOnly) || other.gpsOnly == _this.gpsOnly)&&(identical(other.updatedAt, _this.updatedAt) || other.updatedAt == _this.updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as RoomSetting;
-  return Object.hash(runtimeType,const DeepCollectionEquality().hash(_this.gameArea),_this.releaseWaitSec,_this.gameDurationSec,_this.photoIntervalSec,_this.fugitiveInfoDelaySec,_this.senseDistanceRadiusM,_this.updatedAt);
+  return Object.hash(runtimeType,const DeepCollectionEquality().hash(_this.gameArea),_this.releaseWaitSec,_this.gameDurationSec,_this.photoIntervalSec,_this.fugitiveInfoDelaySec,_this.senseDistanceRadiusM,_this.gpsOnly,_this.updatedAt);
 }
 
 @override
 String toString() {
   final _this = this as RoomSetting;
-  return 'RoomSetting(gameArea: ${_this.gameArea}, releaseWaitSec: ${_this.releaseWaitSec}, gameDurationSec: ${_this.gameDurationSec}, photoIntervalSec: ${_this.photoIntervalSec}, fugitiveInfoDelaySec: ${_this.fugitiveInfoDelaySec}, senseDistanceRadiusM: ${_this.senseDistanceRadiusM}, updatedAt: ${_this.updatedAt})';
+  return 'RoomSetting(gameArea: ${_this.gameArea}, releaseWaitSec: ${_this.releaseWaitSec}, gameDurationSec: ${_this.gameDurationSec}, photoIntervalSec: ${_this.photoIntervalSec}, fugitiveInfoDelaySec: ${_this.fugitiveInfoDelaySec}, senseDistanceRadiusM: ${_this.senseDistanceRadiusM}, gpsOnly: ${_this.gpsOnly}, updatedAt: ${_this.updatedAt})';
 }
 
 
@@ -327,7 +327,7 @@ abstract mixin class $RoomSettingCopyWith<$Res>  {
   factory $RoomSettingCopyWith(RoomSetting value, $Res Function(RoomSetting) _then) = _$RoomSettingCopyWithImpl;
 @useResult
 $Res call({
- List<LatLng> gameArea, int releaseWaitSec, int gameDurationSec, int photoIntervalSec, int fugitiveInfoDelaySec, int senseDistanceRadiusM, int? updatedAt
+ List<LatLng> gameArea, int releaseWaitSec, int gameDurationSec, int photoIntervalSec, int fugitiveInfoDelaySec, int senseDistanceRadiusM, bool gpsOnly, int? updatedAt
 });
 
 
@@ -344,7 +344,7 @@ class _$RoomSettingCopyWithImpl<$Res>
 
 /// Create a copy of RoomSetting
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? gameArea = null,Object? releaseWaitSec = null,Object? gameDurationSec = null,Object? photoIntervalSec = null,Object? fugitiveInfoDelaySec = null,Object? senseDistanceRadiusM = null,Object? updatedAt = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? gameArea = null,Object? releaseWaitSec = null,Object? gameDurationSec = null,Object? photoIntervalSec = null,Object? fugitiveInfoDelaySec = null,Object? senseDistanceRadiusM = null,Object? gpsOnly = null,Object? updatedAt = freezed,}) {
   return _then(RoomSetting(
 gameArea: null == gameArea ? _self.gameArea : gameArea // ignore: cast_nullable_to_non_nullable
 as List<LatLng>,releaseWaitSec: null == releaseWaitSec ? _self.releaseWaitSec : releaseWaitSec // ignore: cast_nullable_to_non_nullable
@@ -352,7 +352,8 @@ as int,gameDurationSec: null == gameDurationSec ? _self.gameDurationSec : gameDu
 as int,photoIntervalSec: null == photoIntervalSec ? _self.photoIntervalSec : photoIntervalSec // ignore: cast_nullable_to_non_nullable
 as int,fugitiveInfoDelaySec: null == fugitiveInfoDelaySec ? _self.fugitiveInfoDelaySec : fugitiveInfoDelaySec // ignore: cast_nullable_to_non_nullable
 as int,senseDistanceRadiusM: null == senseDistanceRadiusM ? _self.senseDistanceRadiusM : senseDistanceRadiusM // ignore: cast_nullable_to_non_nullable
-as int,updatedAt: freezed == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
+as int,gpsOnly: null == gpsOnly ? _self.gpsOnly : gpsOnly // ignore: cast_nullable_to_non_nullable
+as bool,updatedAt: freezed == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
 as int?,
   ));
 }
@@ -438,10 +439,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<LatLng> gameArea,  int releaseWaitSec,  int gameDurationSec,  int photoIntervalSec,  int fugitiveInfoDelaySec,  int senseDistanceRadiusM,  int? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<LatLng> gameArea,  int releaseWaitSec,  int gameDurationSec,  int photoIntervalSec,  int fugitiveInfoDelaySec,  int senseDistanceRadiusM,  bool gpsOnly,  int? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _RoomSetting() when $default != null:
-return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.photoIntervalSec,_that.fugitiveInfoDelaySec,_that.senseDistanceRadiusM,_that.updatedAt);case _:
+return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.photoIntervalSec,_that.fugitiveInfoDelaySec,_that.senseDistanceRadiusM,_that.gpsOnly,_that.updatedAt);case _:
   return orElse();
 
 }
@@ -459,10 +460,10 @@ return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<LatLng> gameArea,  int releaseWaitSec,  int gameDurationSec,  int photoIntervalSec,  int fugitiveInfoDelaySec,  int senseDistanceRadiusM,  int? updatedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<LatLng> gameArea,  int releaseWaitSec,  int gameDurationSec,  int photoIntervalSec,  int fugitiveInfoDelaySec,  int senseDistanceRadiusM,  bool gpsOnly,  int? updatedAt)  $default,) {final _that = this;
 switch (_that) {
 case _RoomSetting():
-return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.photoIntervalSec,_that.fugitiveInfoDelaySec,_that.senseDistanceRadiusM,_that.updatedAt);case _:
+return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.photoIntervalSec,_that.fugitiveInfoDelaySec,_that.senseDistanceRadiusM,_that.gpsOnly,_that.updatedAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -479,10 +480,10 @@ return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<LatLng> gameArea,  int releaseWaitSec,  int gameDurationSec,  int photoIntervalSec,  int fugitiveInfoDelaySec,  int senseDistanceRadiusM,  int? updatedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<LatLng> gameArea,  int releaseWaitSec,  int gameDurationSec,  int photoIntervalSec,  int fugitiveInfoDelaySec,  int senseDistanceRadiusM,  bool gpsOnly,  int? updatedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _RoomSetting() when $default != null:
-return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.photoIntervalSec,_that.fugitiveInfoDelaySec,_that.senseDistanceRadiusM,_that.updatedAt);case _:
+return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.photoIntervalSec,_that.fugitiveInfoDelaySec,_that.senseDistanceRadiusM,_that.gpsOnly,_that.updatedAt);case _:
   return null;
 
 }
@@ -494,7 +495,7 @@ return $default(_that.gameArea,_that.releaseWaitSec,_that.gameDurationSec,_that.
 @JsonSerializable()
 
 class _RoomSetting extends RoomSetting {
-  const _RoomSetting({ List<LatLng> gameArea = const [], this.releaseWaitSec = 60, this.gameDurationSec = 1800, this.photoIntervalSec = 300, this.fugitiveInfoDelaySec = 0, this.senseDistanceRadiusM = 50, this.updatedAt}): _gameArea = gameArea,super._();
+  const _RoomSetting({ List<LatLng> gameArea = const [], this.releaseWaitSec = 60, this.gameDurationSec = 1800, this.photoIntervalSec = 300, this.fugitiveInfoDelaySec = 0, this.senseDistanceRadiusM = 50, this.gpsOnly = false, this.updatedAt}): _gameArea = gameArea,super._();
   factory _RoomSetting.fromJson(Map<String, dynamic> json) => _$RoomSettingFromJson(json);
 
  final  List<LatLng> _gameArea;
@@ -509,6 +510,7 @@ class _RoomSetting extends RoomSetting {
 @override@JsonKey() final  int photoIntervalSec;
 @override@JsonKey() final  int fugitiveInfoDelaySec;
 @override@JsonKey() final  int senseDistanceRadiusM;
+@override@JsonKey() final  bool gpsOnly;
 @override final  int? updatedAt;
 
 /// Create a copy of RoomSetting
@@ -524,18 +526,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomSetting&&const DeepCollectionEquality().equals(other.gameArea, _gameArea)&&(identical(other.releaseWaitSec, releaseWaitSec) || other.releaseWaitSec == releaseWaitSec)&&(identical(other.gameDurationSec, gameDurationSec) || other.gameDurationSec == gameDurationSec)&&(identical(other.photoIntervalSec, photoIntervalSec) || other.photoIntervalSec == photoIntervalSec)&&(identical(other.fugitiveInfoDelaySec, fugitiveInfoDelaySec) || other.fugitiveInfoDelaySec == fugitiveInfoDelaySec)&&(identical(other.senseDistanceRadiusM, senseDistanceRadiusM) || other.senseDistanceRadiusM == senseDistanceRadiusM)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RoomSetting&&const DeepCollectionEquality().equals(other.gameArea, _gameArea)&&(identical(other.releaseWaitSec, releaseWaitSec) || other.releaseWaitSec == releaseWaitSec)&&(identical(other.gameDurationSec, gameDurationSec) || other.gameDurationSec == gameDurationSec)&&(identical(other.photoIntervalSec, photoIntervalSec) || other.photoIntervalSec == photoIntervalSec)&&(identical(other.fugitiveInfoDelaySec, fugitiveInfoDelaySec) || other.fugitiveInfoDelaySec == fugitiveInfoDelaySec)&&(identical(other.senseDistanceRadiusM, senseDistanceRadiusM) || other.senseDistanceRadiusM == senseDistanceRadiusM)&&(identical(other.gpsOnly, gpsOnly) || other.gpsOnly == gpsOnly)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_gameArea),releaseWaitSec,gameDurationSec,photoIntervalSec,fugitiveInfoDelaySec,senseDistanceRadiusM,updatedAt);
+    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_gameArea),releaseWaitSec,gameDurationSec,photoIntervalSec,fugitiveInfoDelaySec,senseDistanceRadiusM,gpsOnly,updatedAt);
 }
 
 @override
 String toString() {
-    return 'RoomSetting(gameArea: $gameArea, releaseWaitSec: $releaseWaitSec, gameDurationSec: $gameDurationSec, photoIntervalSec: $photoIntervalSec, fugitiveInfoDelaySec: $fugitiveInfoDelaySec, senseDistanceRadiusM: $senseDistanceRadiusM, updatedAt: $updatedAt)';
+    return 'RoomSetting(gameArea: $gameArea, releaseWaitSec: $releaseWaitSec, gameDurationSec: $gameDurationSec, photoIntervalSec: $photoIntervalSec, fugitiveInfoDelaySec: $fugitiveInfoDelaySec, senseDistanceRadiusM: $senseDistanceRadiusM, gpsOnly: $gpsOnly, updatedAt: $updatedAt)';
 }
 
 
@@ -546,7 +548,7 @@ abstract mixin class _$RoomSettingCopyWith<$Res> implements $RoomSettingCopyWith
   factory _$RoomSettingCopyWith(_RoomSetting value, $Res Function(_RoomSetting) _then) = __$RoomSettingCopyWithImpl;
 @override @useResult
 $Res call({
- List<LatLng> gameArea, int releaseWaitSec, int gameDurationSec, int photoIntervalSec, int fugitiveInfoDelaySec, int senseDistanceRadiusM, int? updatedAt
+ List<LatLng> gameArea, int releaseWaitSec, int gameDurationSec, int photoIntervalSec, int fugitiveInfoDelaySec, int senseDistanceRadiusM, bool gpsOnly, int? updatedAt
 });
 
 
@@ -563,7 +565,7 @@ class __$RoomSettingCopyWithImpl<$Res>
 
 /// Create a copy of RoomSetting
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? gameArea = null,Object? releaseWaitSec = null,Object? gameDurationSec = null,Object? photoIntervalSec = null,Object? fugitiveInfoDelaySec = null,Object? senseDistanceRadiusM = null,Object? updatedAt = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? gameArea = null,Object? releaseWaitSec = null,Object? gameDurationSec = null,Object? photoIntervalSec = null,Object? fugitiveInfoDelaySec = null,Object? senseDistanceRadiusM = null,Object? gpsOnly = null,Object? updatedAt = freezed,}) {
   return _then(_RoomSetting(
 gameArea: null == gameArea ? _self._gameArea : gameArea // ignore: cast_nullable_to_non_nullable
 as List<LatLng>,releaseWaitSec: null == releaseWaitSec ? _self.releaseWaitSec : releaseWaitSec // ignore: cast_nullable_to_non_nullable
@@ -571,7 +573,8 @@ as int,gameDurationSec: null == gameDurationSec ? _self.gameDurationSec : gameDu
 as int,photoIntervalSec: null == photoIntervalSec ? _self.photoIntervalSec : photoIntervalSec // ignore: cast_nullable_to_non_nullable
 as int,fugitiveInfoDelaySec: null == fugitiveInfoDelaySec ? _self.fugitiveInfoDelaySec : fugitiveInfoDelaySec // ignore: cast_nullable_to_non_nullable
 as int,senseDistanceRadiusM: null == senseDistanceRadiusM ? _self.senseDistanceRadiusM : senseDistanceRadiusM // ignore: cast_nullable_to_non_nullable
-as int,updatedAt: freezed == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
+as int,gpsOnly: null == gpsOnly ? _self.gpsOnly : gpsOnly // ignore: cast_nullable_to_non_nullable
+as bool,updatedAt: freezed == updatedAt ? _self.updatedAt : updatedAt // ignore: cast_nullable_to_non_nullable
 as int?,
   ));
 }

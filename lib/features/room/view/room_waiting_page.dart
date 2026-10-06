@@ -58,6 +58,12 @@ class RoomWaitingPage extends HookConsumerWidget {
     final demonActionGuard = useMemoized(SingleFlightAction.new);
     final myUid = ref.watch(myUidProvider);
     final roomRepo = ref.read(roomRepositoryProvider);
+    // GPSのみモード(A/Bテスト)。気圧とWi-Fiに関わる処理・表示を丸ごと外す。
+    // 気圧センサーの購読(下のuseEffect)はgpsOnlyでは外さない。gpsOnlyで
+    // 作り直すと後始末のreleaseがビルド中に状態を書き換えて落ちる。待機画面
+    // での購読は手元の表示用で、RTDBへの送信はゲーム画面側(useGameSession)
+    // がgpsOnlyで止めている。
+    final gpsOnly = roomAsync.value?.setting.gpsOnly ?? false;
 
     Future<void> runDemonAction(
       String uid,
@@ -104,12 +110,13 @@ class RoomWaitingPage extends HookConsumerWidget {
     // 「確認中」へ書き換えるため、そのまま呼ぶと「ビルド中にproviderを
     // 書き換えた」エラーになる。このフレームが確定してから走らせる。
     useEffect(() {
+      if (gpsOnly) return null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
         unawaited(ref.read(wifiScanStatusProvider.notifier).refresh());
       });
       return null;
-    }, const []);
+    }, [gpsOnly]);
 
     // ref.listenではなくuseEffect(roomAsync.value依存)にしているのは、
     // 既にゲームが進行中(room.status == playing)のルームに、コード入力
@@ -253,15 +260,20 @@ class RoomWaitingPage extends HookConsumerWidget {
             final doneCount = calibrationStatuses.values
                 .where((s) => s == CalibrationStatus.done)
                 .length;
-            final allCalibrated = isCalibrationComplete(
-              calibrationStatuses.values,
-            );
-            final pendingNames = room.users
-                .where(
-                  (u) => calibrationStatuses[u.id] == CalibrationStatus.pending,
-                )
-                .map((u) => u.displayName)
-                .toList();
+            // GPSのみモードは気圧を使わないので、キャリブレーションを待たない。
+            final allCalibrated =
+                room.setting.gpsOnly ||
+                isCalibrationComplete(calibrationStatuses.values);
+            final pendingNames = room.setting.gpsOnly
+                ? const <String>[]
+                : room.users
+                      .where(
+                        (u) =>
+                            calibrationStatuses[u.id] ==
+                            CalibrationStatus.pending,
+                      )
+                      .map((u) => u.displayName)
+                      .toList();
             final myCalibrated =
                 myUid != null &&
                 calibrationStatuses[myUid] == CalibrationStatus.done;
@@ -352,10 +364,23 @@ class RoomWaitingPage extends HookConsumerWidget {
                     ],
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 2),
-                  child: _WifiScanStatusRow(),
-                ),
+                if (room.setting.gpsOnly)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 2),
+                    child: Text(
+                      'GPSのみモード(Wi-Fiと気圧は使いません)',
+                      style: TextStyle(
+                        color: gameMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                else
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 2),
+                    child: _WifiScanStatusRow(),
+                  ),
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24,
@@ -436,11 +461,13 @@ class RoomWaitingPage extends HookConsumerWidget {
                       // 偽プレイヤーは既定のpendingに落ちる。センサー非対応
                       // (pressureSensorAvailable: false)として作っているのに
                       // 未完了アイコンが出てしまうため、ここで補う。
-                      final status =
-                          calibrationStatuses[u.id] ??
-                          (isMock
-                              ? CalibrationStatus.unavailable
-                              : CalibrationStatus.pending);
+                      final status = room.setting.gpsOnly
+                          // 気圧を使わないので、未完了の強調を出さない。
+                          ? CalibrationStatus.unavailable
+                          : calibrationStatuses[u.id] ??
+                                (isMock
+                                    ? CalibrationStatus.unavailable
+                                    : CalibrationStatus.pending);
                       final isPending =
                           room.pendingDemonUid == u.id &&
                           u.role != UserRole.demon;
@@ -532,7 +559,8 @@ class RoomWaitingPage extends HookConsumerWidget {
                                   ],
                                 ),
                               ),
-                              _CalibrationStatusIcon(status: status),
+                              if (!room.setting.gpsOnly)
+                                _CalibrationStatusIcon(status: status),
                               // 偽プレイヤーの行にはホストの操作を出さない。
                               // 押すとRTDBへ実在しないuidが書き込まれ、誰も
                               // 受諾できないまま残って**部屋が鬼を指名できなく
@@ -625,14 +653,15 @@ class RoomWaitingPage extends HookConsumerWidget {
                     }).toList(),
                   ),
                 ),
-                _CalibrationSection(
-                  roomId: roomId,
-                  isHost: isHost,
-                  hostCalibrated: hostCalibrated,
-                  myCalibrated: myCalibrated,
-                  basePressure: room.basePressure,
-                  pressureState: pressureState,
-                ),
+                if (!room.setting.gpsOnly)
+                  _CalibrationSection(
+                    roomId: roomId,
+                    isHost: isHost,
+                    hostCalibrated: hostCalibrated,
+                    myCalibrated: myCalibrated,
+                    basePressure: room.basePressure,
+                    pressureState: pressureState,
+                  ),
                 if (isHost && demonCount == 0)
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 24),
