@@ -275,7 +275,12 @@ class GamePage extends HookConsumerWidget {
     final showMocks = kDebugMode && ref.watch(showDebugMockPlayersProvider);
 
     // ゲーム画面に滞在している間だけ、位置情報・気圧・Wi-Fi・BLEを動かす。
-    useGameSession(ref, roomId: roomId, myUid: myUid);
+    useGameSession(
+      ref,
+      roomId: roomId,
+      myUid: myUid,
+      gpsOnly: room?.setting.gpsOnly ?? false,
+    );
 
     // 撮影プロンプトのタイマー。鬼の放出(meta/releasedAt)から
     // setting/photoIntervalSecたった時点を1回目とし、以後その間隔ごとの
@@ -1309,93 +1314,103 @@ class GamePage extends HookConsumerWidget {
                     // ため、AnimatedSizeで地図の伸び縮みを滑らかにする。
                     // 差し替え時の段差そのものはHiddenOpponentCardの最低の
                     // 高さで小さくしてある(issue #29フォローアップ)。
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeOut,
-                      alignment: Alignment.topCenter,
-                      child:
-                          opponentRoster.isEmpty || effectiveSelectedUid == null
-                          ? Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                16,
-                                beforeRelease ? 12 : 10,
-                                16,
-                                0,
-                              ),
-                              child: Column(
-                                children: [
-                                  HiddenOpponentCard(
-                                    message: emptyOpponentMessage(
-                                      // 役割がまだ確定していない間の扱いは
-                                      // opponentRoleの既定と揃える(鬼と確定するまで
-                                      // 逃走者側として扱う)。
-                                      viewerRole: myRole ?? UserRole.fugitive,
-                                      opponentCountInRoom: room.users
-                                          .where((u) => u.role == opponentRole)
-                                          .length,
-                                      hiddenByVisibility:
-                                          anyOpponentHiddenFromMe,
-                                      beforeRelease: beforeRelease,
-                                      revealRemainingSec:
-                                          opponentRevealRemainingSec(
-                                            viewerRole:
-                                                myRole ?? UserRole.fugitive,
-                                            releasedAt: room.releasedAt,
-                                            fugitiveInfoDelaySec: room
-                                                .setting
-                                                .fugitiveInfoDelaySec,
-                                            nowMillis: now,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                              child: Column(
-                                children: [
-                                  OpponentSelectorChips(
-                                    roster: opponentRoster,
-                                    // 手がかりを止められている鬼には、Wi-Fiの
-                                    // 判定もチップに出さない。
-                                    entries: clueBlockedEffect != null
-                                        ? const []
-                                        : visibleWifiEntries,
-                                    selectedUid: effectiveSelectedUid,
-                                    onSelect: (uid) =>
-                                        selectedOpponentUid.value = uid,
-                                    leadingLabel:
-                                        opponentRole == UserRole.fugitive
-                                        ? '逃走者\nを選ぶ'
-                                        : '鬼を選ぶ',
-                                  ),
-                                  const SizedBox(height: 8),
-                                  if (clueBlockedEffect != null)
-                                    ClueBlockedCard(
-                                      remainingMillis: effectRemainingMillis(
-                                        clueBlockedEffect,
-                                        serverNowMillis: now,
+                    // GPSのみモードはWi-Fi・気圧の手がかりが無いので、カードごと出さない。
+                    if (!room.setting.gpsOnly)
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        alignment: Alignment.topCenter,
+                        child:
+                            opponentRoster.isEmpty ||
+                                effectiveSelectedUid == null
+                            ? Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  16,
+                                  beforeRelease ? 12 : 10,
+                                  16,
+                                  0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    HiddenOpponentCard(
+                                      message: emptyOpponentMessage(
+                                        // 役割がまだ確定していない間の扱いは
+                                        // opponentRoleの既定と揃える(鬼と確定するまで
+                                        // 逃走者側として扱う)。
+                                        viewerRole: myRole ?? UserRole.fugitive,
+                                        opponentCountInRoom: room.users
+                                            .where(
+                                              (u) => u.role == opponentRole,
+                                            )
+                                            .length,
+                                        hiddenByVisibility:
+                                            anyOpponentHiddenFromMe,
+                                        beforeRelease: beforeRelease,
+                                        revealRemainingSec:
+                                            opponentRevealRemainingSec(
+                                              viewerRole:
+                                                  myRole ?? UserRole.fugitive,
+                                              releasedAt: room.releasedAt,
+                                              fugitiveInfoDelaySec: room
+                                                  .setting
+                                                  .fugitiveInfoDelaySec,
+                                              nowMillis: now,
+                                            ),
                                       ),
-                                    )
-                                  else ...[
-                                    _SelectedClueCard(
-                                      roomId: roomId,
-                                      room: room,
-                                      myUid: myUid,
-                                      uid: effectiveSelectedUid,
-                                      users: displayUsers,
-                                      wifiEntries: visibleWifiEntries,
-                                      verticalPositions:
-                                          visibleVerticalPositions,
-                                      comparisons: selectedComparisons,
-                                      pressureState: pressureState,
                                     ),
                                   ],
-                                ],
+                                ),
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  10,
+                                  16,
+                                  0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    OpponentSelectorChips(
+                                      roster: opponentRoster,
+                                      // 手がかりを止められている鬼には、Wi-Fiの
+                                      // 判定もチップに出さない。
+                                      entries: clueBlockedEffect != null
+                                          ? const []
+                                          : visibleWifiEntries,
+                                      selectedUid: effectiveSelectedUid,
+                                      onSelect: (uid) =>
+                                          selectedOpponentUid.value = uid,
+                                      leadingLabel:
+                                          opponentRole == UserRole.fugitive
+                                          ? '逃走者\nを選ぶ'
+                                          : '鬼を選ぶ',
+                                    ),
+                                    const SizedBox(height: 8),
+                                    if (clueBlockedEffect != null)
+                                      ClueBlockedCard(
+                                        remainingMillis: effectRemainingMillis(
+                                          clueBlockedEffect,
+                                          serverNowMillis: now,
+                                        ),
+                                      )
+                                    else ...[
+                                      _SelectedClueCard(
+                                        roomId: roomId,
+                                        room: room,
+                                        myUid: myUid,
+                                        uid: effectiveSelectedUid,
+                                        users: displayUsers,
+                                        wifiEntries: visibleWifiEntries,
+                                        verticalPositions:
+                                            visibleVerticalPositions,
+                                        comparisons: selectedComparisons,
+                                        pressureState: pressureState,
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
-                            ),
-                    ),
+                      ),
                     const SizedBox(height: 8),
                   ],
                 );

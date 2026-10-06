@@ -42,6 +42,7 @@ class RoomSettingPage extends HookConsumerWidget {
     final releaseWaitMin = useState(1);
     final gameDurationMin = useState(5);
     final gameArea = useState<List<LatLng>>(const []);
+    final gpsOnly = useState(false);
     final hasInitialized = useRef(false);
 
     // room.settingの初期値をフォームへ1回だけ読み込む。以降はライブ更新で
@@ -60,6 +61,7 @@ class RoomSettingPage extends HookConsumerWidget {
               _gameDurationMaxMinutes,
             );
         gameArea.value = room.setting.gameArea;
+        gpsOnly.value = room.setting.gpsOnly;
       }
       return null;
     }, [room]);
@@ -161,6 +163,33 @@ class RoomSettingPage extends HookConsumerWidget {
                           min: 1,
                           max: _gameDurationMaxMinutes,
                           onChanged: (v) => gameDurationMin.value = v,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  GameToneCard(
+                    title: 'モード',
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('GPSのみモード', style: TextStyle(fontSize: 14)),
+                              Text(
+                                'Wi-Fiと気圧を使わず、GPSとBLEだけで遊ぶ(A/Bテスト用)',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: gameMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: gpsOnly.value,
+                          onChanged: (v) => gpsOnly.value = v,
                         ),
                       ],
                     ),
@@ -280,6 +309,7 @@ class RoomSettingPage extends HookConsumerWidget {
                                     releaseWaitSec: releaseWaitMin.value * 60,
                                     gameDurationSec: gameDurationMin.value * 60,
                                     gameArea: gameArea.value,
+                                    gpsOnly: gpsOnly.value,
                                   ),
                                 );
                             if (context.mounted) Navigator.of(context).pop();

@@ -22,6 +22,10 @@ abstract class RoomSetting with _$RoomSetting {
     // (最初の1分は鬼タイム)だったが、放出されたらすぐ見えるようにした。
     @Default(0) int fugitiveInfoDelaySec,
     @Default(50) int senseDistanceRadiusM,
+    // GPSのみモード(A/Bテスト用)。trueの部屋ではWi-Fiと気圧を使わない
+    // (スキャン・送信・キャリブレーション・手がかり表示をすべて止める)。
+    // BLEの近接検知は捕獲の判定に要るので止めない。
+    @Default(false) bool gpsOnly,
     int? updatedAt,
   }) = _RoomSetting;
 
