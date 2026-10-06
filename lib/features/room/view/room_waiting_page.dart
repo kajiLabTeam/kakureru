@@ -59,8 +59,10 @@ class RoomWaitingPage extends HookConsumerWidget {
     final myUid = ref.watch(myUidProvider);
     final roomRepo = ref.read(roomRepositoryProvider);
     // GPSのみモード(A/Bテスト)。気圧とWi-Fiに関わる処理・表示を丸ごと外す。
-    // 部屋を読み込む前はfalseなので、一瞬だけ通常モードの初期化が走るが、
-    // gpsOnlyがtrueに変わった時点でeffectの後始末(release)で止まる。
+    // 気圧センサーの購読(下のuseEffect)はgpsOnlyでは外さない。gpsOnlyで
+    // 作り直すと後始末のreleaseがビルド中に状態を書き換えて落ちる。待機画面
+    // での購読は手元の表示用で、RTDBへの送信はゲーム画面側(useGameSession)
+    // がgpsOnlyで止めている。
     final gpsOnly = roomAsync.value?.setting.gpsOnly ?? false;
 
     Future<void> runDemonAction(
@@ -84,7 +86,6 @@ class RoomWaitingPage extends HookConsumerWidget {
     }
 
     useEffect(() {
-      if (gpsOnly) return null;
       final pressureNotifier = ref.read(pressureViewModelProvider.notifier);
       unawaited(pressureNotifier.init(roomId));
       // 前のルームで出たキャリブレーションの失敗表示を持ち越さない
@@ -98,7 +99,7 @@ class RoomWaitingPage extends HookConsumerWidget {
       // 最後に離れた画面でだけセンサーが止まる(PressureViewModel.release)。
       // 後始末でrefに触れないよう、生きているうちに掴んだnotifierを使う。
       return pressureNotifier.release;
-    }, [gpsOnly]);
+    }, const []);
 
     // Wi-Fiスキャンが実際に通るかを画面を開いたときに1回だけ確かめる
     // (issue #98)。位置情報のON/OFFや権限、開発者オプションのスロットル
