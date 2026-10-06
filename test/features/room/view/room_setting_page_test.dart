@@ -40,6 +40,16 @@ class _FailingRoomRepository extends RoomRepository {
   }
 }
 
+/// 保存された設定を記録するRoomRepositoryの差し替え。
+class _RecordingRoomRepository extends RoomRepository {
+  RoomSetting? saved;
+
+  @override
+  Future<void> updateSetting(String roomId, RoomSetting setting) async {
+    saved = setting;
+  }
+}
+
 /// ホストとして設定画面を開く。
 Future<void> _openSettingPage(
   WidgetTester tester, {
@@ -166,5 +176,27 @@ void main() {
     expect(find.textContaining('firebase_database'), findsNothing);
     // 画面はそのまま残る(popはsaveが成功したときだけ)。
     expect(find.byType(RoomSettingPage), findsOneWidget);
+  });
+
+  testWidgets('GPSのみモードのスイッチを入れて保存すると、設定に載る', (tester) async {
+    final repo = _RecordingRoomRepository();
+    await _openSettingPage(tester, roomRepo: repo);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(repo.saved?.gpsOnly, isTrue);
+  });
+
+  testWidgets('スイッチに触らず保存すると、通常モードのまま', (tester) async {
+    final repo = _RecordingRoomRepository();
+    await _openSettingPage(tester, roomRepo: repo);
+
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(repo.saved?.gpsOnly, isFalse);
   });
 }

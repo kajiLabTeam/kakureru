@@ -27,6 +27,7 @@ _RoomSetting _$RoomSettingFromJson(Map<String, dynamic> json) => _RoomSetting(
   photoIntervalSec: (json['photoIntervalSec'] as num?)?.toInt() ?? 300,
   fugitiveInfoDelaySec: (json['fugitiveInfoDelaySec'] as num?)?.toInt() ?? 0,
   senseDistanceRadiusM: (json['senseDistanceRadiusM'] as num?)?.toInt() ?? 50,
+  gpsOnly: json['gpsOnly'] as bool? ?? false,
   updatedAt: (json['updatedAt'] as num?)?.toInt(),
 );
 
@@ -38,5 +39,6 @@ Map<String, dynamic> _$RoomSettingToJson(_RoomSetting instance) =>
       'photoIntervalSec': instance.photoIntervalSec,
       'fugitiveInfoDelaySec': instance.fugitiveInfoDelaySec,
       'senseDistanceRadiusM': instance.senseDistanceRadiusM,
+      'gpsOnly': instance.gpsOnly,
       'updatedAt': instance.updatedAt,
     };

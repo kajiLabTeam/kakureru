@@ -5,6 +5,17 @@ import 'package:kakureru/features/room/model/room_user.dart';
 
 void main() {
   group('RoomSetting', () {
+    test('gpsOnlyは未設定ならfalse(古い部屋は通常モード)', () {
+      expect(RoomSetting.fromMap({}).gpsOnly, isFalse);
+    });
+
+    test('gpsOnlyをRTDBの値から読み、書き込み用のマップにも載せる', () {
+      final setting = RoomSetting.fromMap({'gpsOnly': true});
+
+      expect(setting.gpsOnly, isTrue);
+      expect(setting.toMap()['gpsOnly'], isTrue);
+    });
+
     // 逃走者は鬼が放出されたらすぐ鬼の位置を見られる(以前は60秒待ち)。
     test('fugitiveInfoDelaySecの既定は0秒', () {
       expect(const RoomSetting().fugitiveInfoDelaySec, 0);

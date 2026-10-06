@@ -108,6 +108,17 @@ class _FakePressureViewModel extends PressureViewModel {
   @override
   Future<void> init(String roomId) async {}
 
+  int releaseCalls = 0;
+
+  /// 本物のreleaseは気圧を捨てるため状態を書き換える。ビルド中に呼ぶ
+  /// 実装へ戻したとき、テストが「ビルド中にproviderを書き換えた」で
+  /// 落ちるよう、ここでも毎回書く。
+  @override
+  void release() {
+    releaseCalls++;
+    state = state.copyWith(myPressureHPa: null);
+  }
+
   @override
   Future<void> calibrateAsHost(String roomId) async {
     final completer = Completer<void>();
@@ -236,6 +247,23 @@ ActionChip _chipWithText(WidgetTester tester, String label) =>
     tester.widget<ActionChip>(find.widgetWithText(ActionChip, label));
 
 void main() {
+  testWidgets('GPSのみモードがオンに変わっても、ビルド中のprovider書き換えで落ちない', (tester) async {
+    final pressure = _FakePressureViewModel();
+    final controller = await _pumpWaitingPage(
+      tester,
+      roomRepo: _FakeRoomRepository(),
+      pressureViewModel: pressure,
+    );
+
+    controller.add(_room(setting: const RoomSetting(gpsOnly: true)));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(pressure.releaseCalls, 0);
+    expect(find.textContaining('GPSのみモード'), findsWidgets);
+  });
+
   group('鬼指名(「鬼にする」「取り消す」)', () {
     testWidgets('送信中はチップがスピナーになり、押せなくなる', (tester) async {
       final roomRepo = _FakeRoomRepository();

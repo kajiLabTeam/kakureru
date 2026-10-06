@@ -40,15 +40,21 @@ class _RecordingLocationViewModel extends LocationViewModel {
 /// センサーとRTDBへ触れる。
 class _RecordingPressureViewModel extends PressureViewModel {
   int stopCalls = 0;
+  int initCalls = 0;
+  int startSendingCalls = 0;
 
   @override
   PressureState build() => const PressureState();
 
   @override
-  Future<void> init(String roomId) async {}
+  Future<void> init(String roomId) async {
+    initCalls++;
+  }
 
   @override
-  void startSendingToRoom(String roomId) {}
+  void startSendingToRoom(String roomId) {
+    startSendingCalls++;
+  }
 
   @override
   void stopSendingAndDispose() {
@@ -60,9 +66,12 @@ class _RecordingPressureViewModel extends PressureViewModel {
 /// プラグイン(WiFiScan)とRTDBへ触れる。
 class _RecordingWifiScanRepository extends WifiScanRepository {
   int stopCalls = 0;
+  int startCalls = 0;
 
   @override
-  void startScanning(String roomId) {}
+  void startScanning(String roomId) {
+    startCalls++;
+  }
 
   @override
   void stopScanning() {
@@ -119,12 +128,15 @@ class _RecordingGameAlerts extends GameAlerts {
 /// タイマーを張る。
 class _RecordingMissionController extends MissionController {
   int stopCalls = 0;
+  int startCalls = 0;
 
   @override
   MissionProgress build() => const MissionProgress();
 
   @override
-  void start(String roomId) {}
+  void start(String roomId) {
+    startCalls++;
+  }
 
   @override
   void stop() {
@@ -200,11 +212,13 @@ Future<_RecordingBleViewModel> _pumpBleHarness(WidgetTester tester) async {
 /// GamePage本体は地図やRTDBの購読まで抱えているため、センサーの開始/停止の
 /// 配線だけをここに切り出して確認する。
 class _GameSessionHarness extends HookConsumerWidget {
-  const _GameSessionHarness();
+  const _GameSessionHarness({this.gpsOnly = false});
+
+  final bool gpsOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    useGameSession(ref, roomId: 'room-1', myUid: 'me');
+    useGameSession(ref, roomId: 'room-1', myUid: 'me', gpsOnly: gpsOnly);
     return const SizedBox.shrink();
   }
 }
@@ -221,7 +235,10 @@ typedef _Sensors = ({
 });
 
 /// [_GameSessionHarness]をマウントし、差し替えたものを返す。
-Future<_Sensors> _pumpGameSession(WidgetTester tester) async {
+Future<_Sensors> _pumpGameSession(
+  WidgetTester tester, {
+  bool gpsOnly = false,
+}) async {
   final sensors = (
     location: _RecordingLocationViewModel(const LocationState()),
     pressure: _RecordingPressureViewModel(),
@@ -230,7 +247,7 @@ Future<_Sensors> _pumpGameSession(WidgetTester tester) async {
     alerts: _RecordingGameAlerts(),
     missions: _RecordingMissionController(),
   );
-  await _pumpUnderScope(tester, sensors, const _GameSessionHarness());
+  await _pumpUnderScope(tester, sensors, _GameSessionHarness(gpsOnly: gpsOnly));
   return sensors;
 }
 
@@ -266,6 +283,42 @@ Future<void> _pumpUnderScope(
 }
 
 void main() {
+  // GPSのみモード(A/Bテスト)。Wi-Fiと気圧だけを止め、位置情報とBLEは
+  // 通常どおり動かす(BLEは捕獲の判定に要る)。
+  group('useGameSession: GPSのみモード', () {
+    testWidgets('Wi-Fiスキャンと気圧の送信を始めない', (tester) async {
+      final sensors = await _pumpGameSession(tester, gpsOnly: true);
+
+      expect(sensors.wifi.startCalls, 0);
+      expect(sensors.pressure.initCalls, 0);
+      expect(sensors.pressure.startSendingCalls, 0);
+    });
+
+    testWidgets('ミッションの生成と判定を始めない', (tester) async {
+      final sensors = await _pumpGameSession(tester, gpsOnly: true);
+
+      expect(sensors.missions.startCalls, 0);
+    });
+
+    testWidgets('位置情報とBLEは止めない', (tester) async {
+      final sensors = await _pumpGameSession(tester, gpsOnly: true);
+
+      expect(sensors.location.startedRooms, ['room-1']);
+      expect(sensors.alerts.stopCalls, 0);
+      await _leaveGameScreen(tester, sensors);
+      expect(sensors.ble.stopCalls, 1);
+    });
+
+    testWidgets('通常モードではWi-Fiと気圧を始める', (tester) async {
+      final sensors = await _pumpGameSession(tester);
+
+      expect(sensors.wifi.startCalls, 1);
+      expect(sensors.pressure.initCalls, 1);
+      expect(sensors.pressure.startSendingCalls, 1);
+      expect(sensors.missions.startCalls, 1);
+    });
+  });
+
   // 画面を離れたら4種のセンサーが止まることの再発防止。以前は後始末の中で
   // `ref.read`を呼んでおり、unmount中のrefは使えない(StateError)ため
   // stop()が一度も走らず、位置情報のForeground Service・気圧の送信・
