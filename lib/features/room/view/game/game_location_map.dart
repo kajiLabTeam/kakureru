@@ -1,17 +1,18 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/map/repository/marker_cluster.dart';
 import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/rectangle_area.dart';
 import 'package:kakureru/features/room/role_theme.dart';
+import 'package:kakureru/features/room/view/game/cluster_marker.dart';
 import 'package:kakureru/features/room/view/game/game_palette.dart';
 import 'package:kakureru/features/room/view/game/game_view_helpers.dart';
 import 'package:latlong2/latlong.dart' as latlong;
@@ -78,6 +79,8 @@ class GameLocationMap extends HookWidget {
     required this.gameArea,
     this.missionPoints = const [],
     this.enlargedUserUids = const {},
+    this.selectableUids = const {},
+    this.onSelectOpponent,
   });
 
   /// 地図に出す位置。自分から見えていい相手の分だけが渡ってくる。
@@ -103,6 +106,12 @@ class GameLocationMap extends HookWidget {
   /// する対象のuid。役割に関係なく全員の地図で大きくする(自分が引いていれば
   /// 自分のピンも大きくなる)。
   final Set<String> enlargedUserUids;
+
+  /// クラスタの一覧シートから「鬼を選ぶ」の対象にできる相手のuid。
+  final Set<String> selectableUids;
+
+  /// 一覧シートで相手をタップしたとき。手がかりの対象を切り替える。
+  final ValueChanged<String>? onSelectOpponent;
 
   @override
   Widget build(BuildContext context) {
@@ -215,10 +224,9 @@ class GameLocationMap extends HookWidget {
               ),
             ],
             AnimatedMarkerLayer(
-              markers: [
-                for (final visual in locationVisuals)
-                  (id: visual.id, marker: visual.marker),
-              ],
+              markers: locationVisuals,
+              selectableUids: selectableUids,
+              onSelectOpponent: onSelectOpponent,
             ),
             buildMapAttribution(),
           ],
@@ -374,7 +382,7 @@ class GameLocationMap extends HookWidget {
   ///
   /// アイコン・ラベルの役割表記はissue #42対応(色だけでなく形・表記でも
   /// 鬼/逃走者を見分けられるようにする)。
-  ({String id, Marker marker}) _buildLocationVisual(
+  PinEntry _buildLocationVisual(
     UserLocation location,
     UserRole? myRole,
   ) {
@@ -450,7 +458,18 @@ class GameLocationMap extends HookWidget {
       ),
     );
 
-    return (id: location.uid, marker: marker);
+    return (
+      id: location.uid,
+      marker: marker,
+      isSelf: isSelf,
+      isDemon: displayRole == UserRole.demon,
+      name: markerLabelFor(
+        uid: location.uid,
+        myUid: myUid,
+        displayName: user?.displayName,
+        role: null,
+      ),
+    );
   }
 
   UserLocation? _findLocation(List<UserLocation> locations, String? uid) {
@@ -473,6 +492,16 @@ const enlargedMarkerScaleAlignment = Alignment(
   (markerIconSize / 2) / markerHeight * 2 - 1,
 );
 
+/// 地図に出す1人ぶんのピン。`isSelf`の人はクラスタに入れず常に単独で出す。
+/// `name`は一覧シートに出す名前(役割表記なし)。
+typedef PinEntry = ({
+  String id,
+  Marker marker,
+  bool isSelf,
+  bool isDemon,
+  String name,
+});
+
 /// GPSマーカーの幅。ラベル(名前)が入る幅。
 const markerWidth = 72.0;
 
@@ -480,7 +509,7 @@ const markerWidth = 72.0;
 const markerHeight = 56.0;
 
 /// マーカーのアイコン(白フチ込み)の一辺。[MarkerIcon] のSizedBoxと合わせる。
-const markerIconSize = 40.0;
+const double markerIconSize = kIconSize;
 
 /// アイコンの中心を実座標に合わせるためのalignment。
 ///
@@ -595,10 +624,21 @@ latlong.LatLng lerpLatLng(latlong.LatLng from, latlong.LatLng to, double t) {
 class AnimatedMarkerLayer extends HookWidget {
   /// [markers] の順序はそのまま描画順になる。`id` は同じ人のマーカーを
   /// 更新前後で対応づけるためのキー(uid)。
-  const AnimatedMarkerLayer({super.key, required this.markers});
+  const AnimatedMarkerLayer({
+    super.key,
+    required this.markers,
+    this.selectableUids = const {},
+    this.onSelectOpponent,
+  });
 
   /// 描くマーカー。`marker.point` は移動先(最新の位置)。
-  final List<({String id, Marker marker})> markers;
+  final List<PinEntry> markers;
+
+  /// 一覧シートで選べる相手のuid。
+  final Set<String> selectableUids;
+
+  /// 一覧シートで相手が選ばれたとき。
+  final ValueChanged<String>? onSelectOpponent;
 
   @override
   Widget build(BuildContext context) {
@@ -650,191 +690,90 @@ class AnimatedMarkerLayer extends HookWidget {
       for (final entry in markers) displayed(entry.id, entry.marker.point, t),
     ];
 
-    // 同じ場所にいる人のピンは重なり、一番上の1人しか見えない
-    // (issue #123)。画面上で近すぎるピンは、座標は変えずに見た目だけ
-    // 少しずつずらして全員が見えるようにする。画面座標で判定するので、
-    // ズームを変えると重なりの判定もやり直される(MapCameraの変化で
-    // このウィジェットが再描画されるため)。
+    // 画面上で近い人(自分を除く)は1つの四角にまとめる。画面座標で
+    // 判定するので、ズームするとMapCameraの変化でこのウィジェットが
+    // 再描画され、自然にほどける。自分は常に単独で出す。人数は多くても
+    // 10人ほどなので毎回計算し直しても軽く、アニメーションで毎フレーム
+    // 位置が変わるためメモ化の効きも薄い。
     final camera = MapCamera.maybeOf(context);
-    final shifts = camera == null
-        ? List<Offset>.filled(points.length, Offset.zero)
-        : spreadOverlappingMarkers([
-            for (final point in points) camera.latLngToScreenOffset(point),
-          ]);
-
-    // ずらし幅は画面ピクセルで固定なので、エリア全体を映すくらい引いた
-    // 地図では100m前後になり、誰のピンも本当の位置に無い状態になる。
-    // ずらしたピンには本当の位置に点を打ち、ピンからそこへ線を引いて、
-    // どこにいるのかを読み違えないようにする。地図は回転しない
-    // (gameMapInteractionOptions)ので、画面上のずらし量をそのまま足した
-    // 点がずらした後のアイコンの中心になる。
-    final shiftedIndexes = [
-      for (var i = 0; i < markers.length; i++)
-        if (shifts[i] != Offset.zero) i,
+    final screen = [
+      for (final point in points)
+        camera?.latLngToScreenOffset(point) ?? Offset.zero,
     ];
-
-    return Stack(
-      children: [
-        if (camera != null && shiftedIndexes.isNotEmpty) ...[
-          PolylineLayer(
-            polylines: [
-              for (final i in shiftedIndexes)
-                Polyline(
-                  points: [
-                    points[i],
-                    camera.screenOffsetToLatLng(
-                      camera.latLngToScreenOffset(points[i]) + shifts[i],
-                    ),
-                  ],
-                  strokeWidth: leaderLineWidth,
-                  color: leaderLineColor,
-                ),
-            ],
-          ),
-          CircleLayer(
-            circles: [
-              for (final i in shiftedIndexes)
-                CircleMarker(
-                  point: points[i],
-                  radius: trueLocationDotRadius,
-                  color: leaderLineColor,
-                  borderColor: Colors.white,
-                  borderStrokeWidth: 1.5,
-                ),
-            ],
-          ),
-        ],
-        MarkerLayer(
-          markers: [
+    final clusters = camera == null
+        ? <MarkerCluster>[]
+        : clusterMarkers([
             for (var i = 0; i < markers.length; i++)
-              Marker(
-                key: markers[i].marker.key,
-                point: points[i],
-                width: markers[i].marker.width,
-                height: markers[i].marker.height,
-                alignment: markers[i].marker.alignment,
-                rotate: markers[i].marker.rotate,
-                child: shifts[i] == Offset.zero
-                    ? markers[i].marker.child
-                    : Transform.translate(
-                        offset: shifts[i],
-                        child: markers[i].marker.child,
-                      ),
-              ),
-          ],
-        ),
+              if (!markers[i].isSelf)
+                (
+                  uid: markers[i].id,
+                  x: screen[i].dx,
+                  y: screen[i].dy,
+                  isDemon: markers[i].isDemon,
+                ),
+          ], kClusterPx);
+    final clusteredIds = {
+      for (final c in clusters)
+        if (!c.isSingle)
+          for (final m in c.members) m.uid,
+    };
+    final byId = {for (final m in markers) m.id: m};
+
+    Future<void> openSheet(MarkerCluster cluster) async {
+      final uid = await showClusterSheet(
+        context,
+        members: [
+          for (final m in cluster.members)
+            (
+              uid: m.uid,
+              name: byId[m.uid]?.name ?? '?',
+              isDemon: m.isDemon,
+              selectable: selectableUids.contains(m.uid),
+            ),
+        ],
+      );
+      if (uid != null && context.mounted) onSelectOpponent?.call(uid);
+    }
+
+    return MarkerLayer(
+      markers: [
+        for (var i = 0; i < markers.length; i++)
+          if (!clusteredIds.contains(markers[i].id))
+            Marker(
+              key: markers[i].marker.key,
+              point: points[i],
+              width: markers[i].marker.width,
+              height: markers[i].marker.height,
+              alignment: markers[i].marker.alignment,
+              rotate: markers[i].marker.rotate,
+              child: markers[i].marker.child,
+            ),
+        for (final cluster in clusters)
+          if (!cluster.isSingle)
+            () {
+              final label = clusterBreakdownLabel(
+                demons: cluster.demonCount,
+                fugitives: cluster.fugitiveCount,
+              );
+              return Marker(
+                point: camera!.screenOffsetToLatLng(
+                  Offset(cluster.x, cluster.y),
+                ),
+                width: kClusterMarkerWidth,
+                height: kClusterMarkerHeight,
+                alignment: clusterMarkerAlignment,
+                child: ClusterMarkerView(
+                  cluster: cluster,
+                  labelShiftX: labelShiftIntoView(
+                    centerX: cluster.x,
+                    labelWidth: clusterLabelWidthEstimate(label),
+                    screenWidth: camera.size.width,
+                  ),
+                  onTap: () => unawaited(openSheet(cluster)),
+                ),
+              );
+            }(),
       ],
     );
   }
-}
-
-/// ずらしたピンと本当の位置を結ぶ線、および本当の位置の点の色。
-/// 役割の色(赤=鬼・青=自分・緑=逃走者)と紛れないよう無彩色にする。
-const Color leaderLineColor = Color(0xCC424242);
-
-/// ずらしたピンと本当の位置を結ぶ線の太さ(論理px)。
-const double leaderLineWidth = 1.5;
-
-/// 本当の位置に打つ点の半径(論理px)。
-const double trueLocationDotRadius = 4;
-
-/// 画面上でピン同士がこれより近ければ「重なっている」とみなす距離(論理px)。
-/// アイコン同士がぶつかり始める距離にしている。
-const double markerOverlapDistance = markerIconSize;
-
-/// 重なったピンをずらして並べるときの、隣り合うピン同士の中心の間隔
-/// (論理px)。名前のラベルが重ならない幅にしている。
-const double markerSpreadSpacing = markerWidth;
-
-/// 画面上で重なっているピンを、見えるように少しずつずらす量を返す
-/// (issue #123)。
-///
-/// [screenPoints] は各ピンの画面座標で、戻り値は同じ順の「ずらす量」。
-/// 重なっていないピンは [Offset.zero]。
-///
-/// 近すぎるピン同士(間接的なつながりも含む)を1つの組にまとめ、組の
-/// 重心を中心とする円周上に、隣同士が [spacing] 離れるよう並べ直す。
-/// 並び順は [screenPoints] の順(=参加者の並び順)で固定なので、位置が
-/// 更新されても誰がどこに出るかは入れ替わらない。2人なら左右に並ぶ。
-List<Offset> spreadOverlappingMarkers(
-  List<Offset> screenPoints, {
-  double overlapDistance = markerOverlapDistance,
-  double spacing = markerSpreadSpacing,
-}) {
-  final count = screenPoints.length;
-  // 素朴なunion-find。ピンは参加者の人数ぶん(数人〜十数人)しかない。
-  final parent = List<int>.generate(count, (i) => i);
-  int find(int i) {
-    var root = i;
-    while (parent[root] != root) {
-      root = parent[root];
-    }
-    return root;
-  }
-
-  for (var i = 0; i < count; i++) {
-    for (var j = i + 1; j < count; j++) {
-      if ((screenPoints[i] - screenPoints[j]).distance < overlapDistance) {
-        parent[find(j)] = find(i);
-      }
-    }
-  }
-
-  // 組ごとに並べ直すと、動かした先で別の組のピンと新たに重なることが
-  // ある(例: 画面上の位置が0, 0, 40の3人。前の2人を左右に動かすと40の
-  // 人に重なる)。重なったらその組同士をまとめて並べ直し、重なりが無く
-  // なるまで繰り返す。組は減る一方なので、最悪でも全員が1つの組になって
-  // 終わる。1つの組の中では隣同士が[spacing]離れる(>= overlapDistance)。
-  while (true) {
-    final shifts = _placeGroupsOnCircles(screenPoints, find, spacing);
-    final placed = [
-      for (var i = 0; i < count; i++) screenPoints[i] + shifts[i],
-    ];
-    var merged = false;
-    for (var i = 0; i < count; i++) {
-      for (var j = i + 1; j < count; j++) {
-        if (find(i) != find(j) &&
-            (placed[i] - placed[j]).distance < overlapDistance) {
-          parent[find(j)] = find(i);
-          merged = true;
-        }
-      }
-    }
-    if (!merged) return shifts;
-  }
-}
-
-/// [find]で同じ組と判定されるピンを、組の重心を中心とする円周上に
-/// 隣同士が[spacing]離れるよう並べたときの「ずらす量」を返す。
-/// 1人だけの組は動かさない。
-List<Offset> _placeGroupsOnCircles(
-  List<Offset> screenPoints,
-  int Function(int) find,
-  double spacing,
-) {
-  final count = screenPoints.length;
-  final groups = <int, List<int>>{};
-  for (var i = 0; i < count; i++) {
-    groups.putIfAbsent(find(i), () => []).add(i);
-  }
-
-  final shifts = List<Offset>.filled(count, Offset.zero);
-  for (final members in groups.values) {
-    final n = members.length;
-    if (n < 2) continue;
-    var center = Offset.zero;
-    for (final i in members) {
-      center += screenPoints[i];
-    }
-    center /= n.toDouble();
-    // 円周上で隣り合うピンの弦の長さが spacing になる半径。
-    final radius = spacing / (2 * math.sin(math.pi / n));
-    for (var k = 0; k < n; k++) {
-      // 左(π)から時計回りに並べる。2人なら左右に並ぶ。
-      final angle = math.pi + 2 * math.pi * k / n;
-      final target = center + Offset(math.cos(angle), math.sin(angle)) * radius;
-      shifts[members[k]] = target - screenPoints[members[k]];
-    }
-  }
-  return shifts;
 }
