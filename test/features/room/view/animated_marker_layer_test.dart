@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
+import 'package:kakureru/features/room/view/game/cluster_marker.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
 import 'package:latlong2/latlong.dart' as latlong;
 
@@ -111,150 +112,120 @@ void main() {
     });
   });
 
-  group('spreadOverlappingMarkers (issue #123)', () {
-    test('離れているピンは動かさない', () {
-      final shifts = spreadOverlappingMarkers(const [
-        Offset.zero,
-        Offset(200, 0),
-      ]);
-      expect(shifts, [Offset.zero, Offset.zero]);
-    });
-
-    test('同じ点の2人は、左右に間隔ぶん離して並べる', () {
-      const p = Offset(100, 100);
-      final shifts = spreadOverlappingMarkers(
-        const [p, p],
-      );
-      final a = p + shifts[0];
-      final b = p + shifts[1];
-      expect((a - b).distance, closeTo(72, 1e-9));
-      // 1人目が左、2人目が右。
-      expect(a.dx, lessThan(b.dx));
-      expect(a.dy, closeTo(b.dy, 1e-9));
-    });
-
-    test('同じ点の3人は、互いに間隔以上離れる', () {
-      const p = Offset(50, 50);
-      final shifts = spreadOverlappingMarkers(
-        const [p, p, p],
-      );
-      final placed = [for (final s in shifts) p + s];
-      for (var i = 0; i < 3; i++) {
-        for (var j = i + 1; j < 3; j++) {
-          expect(
-            (placed[i] - placed[j]).distance,
-            greaterThanOrEqualTo(72 - 1e-9),
-          );
-        }
-      }
-    });
-
-    test('重なっている組と離れているピンが混ざっても、離れているピンは動かない', () {
-      final shifts = spreadOverlappingMarkers(const [
-        Offset.zero,
-        Offset(500, 500),
-        Offset(5, 0),
-      ]);
-      expect(shifts[1], Offset.zero);
-      expect(shifts[0], isNot(Offset.zero));
-      expect(shifts[2], isNot(Offset.zero));
-    });
-
-    // Copilotのレビュー指摘(PR #127)。組ごとに独立して並べると、動かした
-    // 先で別の組のピンと重なることがあった。
-    test('ずらした先で別のピンと重なるなら、まとめて並べ直す', () {
-      const points = [Offset.zero, Offset.zero, Offset(40, 0)];
-      final shifts = spreadOverlappingMarkers(points);
-      final placed = [for (var i = 0; i < 3; i++) points[i] + shifts[i]];
-      for (var i = 0; i < 3; i++) {
-        for (var j = i + 1; j < 3; j++) {
-          expect(
-            (placed[i] - placed[j]).distance,
-            greaterThanOrEqualTo(markerOverlapDistance),
-          );
-        }
-      }
-    });
-
-    test('密集していても、最後には全員が重ならない位置に並ぶ', () {
-      // 一列に少しずつずれて並んだ8人(隣同士だけが重なっている)。
-      final points = [for (var i = 0; i < 8; i++) Offset(i * 30.0, i * 5.0)];
-      final shifts = spreadOverlappingMarkers(points);
-      final placed = [
-        for (var i = 0; i < points.length; i++) points[i] + shifts[i],
-      ];
-      for (var i = 0; i < placed.length; i++) {
-        for (var j = i + 1; j < placed.length; j++) {
-          expect(
-            (placed[i] - placed[j]).distance,
-            greaterThanOrEqualTo(markerOverlapDistance - 1e-9),
-          );
-        }
-      }
-    });
-
-    test('組の中心は変えない(全体として元の場所のまわりに並ぶ)', () {
-      const points = [Offset(10, 10), Offset(12, 14), Offset(8, 9)];
-      final shifts = spreadOverlappingMarkers(points);
-      var before = Offset.zero;
-      var after = Offset.zero;
-      for (var i = 0; i < points.length; i++) {
-        before += points[i];
-        after += points[i] + shifts[i];
-      }
-      expect((before - after).distance, lessThan(1e-9));
-    });
-  });
-
-  testWidgets('同じ座標にいる2人のピンは、重ならずに両方見える位置に描かれる (issue #123)', (
-    tester,
-  ) async {
+  group('近い人のクラスタ表示', () {
     const same = latlong.LatLng(35.681, 139.767);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: buildLocationMapForTest(
-            myUid: _myUid,
-            users: const [
-              RoomUser(id: _myUid, displayName: 'わたし'),
-              RoomUser(id: _otherUid, displayName: 'あいて'),
-            ],
-            locations: [
-              UserLocation(
-                uid: _myUid,
-                latitude: same.latitude,
-                longitude: same.longitude,
-              ),
-              UserLocation(
-                uid: _otherUid,
-                latitude: same.latitude,
-                longitude: same.longitude,
-              ),
-            ],
+    const users = [
+      RoomUser(id: _myUid, displayName: 'わたし'),
+      RoomUser(id: 'a', displayName: 'あきら', role: UserRole.demon),
+      RoomUser(id: 'b', displayName: 'ばんび'),
+      RoomUser(id: 'c', displayName: 'ちか'),
+    ];
+
+    Future<void> pumpAll(
+      WidgetTester tester, {
+      List<RoomUser> roomUsers = users,
+      Set<String> selectable = const {},
+      ValueChanged<String>? onSelect,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GameLocationMap(
+              locations: [
+                for (final u in roomUsers)
+                  UserLocation(
+                    uid: u.id,
+                    latitude: same.latitude,
+                    longitude: same.longitude,
+                  ),
+              ],
+              users: roomUsers,
+              myUid: _myUid,
+              cachedPosition: null,
+              gameArea: const [],
+              selectableUids: selectable,
+              onSelectOpponent: onSelect,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+    }
 
-    final self = tester.getCenter(find.textContaining('自分'));
-    final other = tester.getCenter(find.textContaining('あいて'));
-    // ラベル同士が重ならない程度に離れている。
-    expect(
-      (self - other).distance,
-      greaterThanOrEqualTo(markerSpreadSpacing - 1),
-    );
-    // 座標そのものは変えていない(見た目だけずらしている)。
-    final points = tester
-        .widget<MarkerLayer>(find.byType(MarkerLayer))
-        .markers
-        .map((m) => m.point);
-    expect(points, everyElement(same));
-    // 2人なので左右に並ぶ。
-    expect((self.dy - other.dy).abs(), lessThan(1));
+    testWidgets('同じ場所の他人はまとめて1つの四角になり、自分は単独のまま', (tester) async {
+      await pumpAll(tester);
+
+      expect(find.byType(ClusterMarkerView), findsOneWidget);
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('鬼 1 ・ 逃走者 2'), findsOneWidget);
+      // 名前は出さない。自分のピンだけ名前付きで残る。
+      expect(find.textContaining('あきら'), findsNothing);
+      expect(find.textContaining('自分'), findsOneWidget);
+      // 黒い点・引き出し線は出さない。
+      expect(find.byType(PolylineLayer), findsNothing);
+      expect(find.byType(CircleLayer), findsNothing);
+    });
+
+    testWidgets('鬼がいなければ「逃走者 2」だけ出す', (tester) async {
+      await pumpAll(
+        tester,
+        roomUsers: const [
+          RoomUser(id: _myUid, displayName: 'わたし'),
+          RoomUser(id: 'b', displayName: 'ばんび'),
+          RoomUser(id: 'c', displayName: 'ちか'),
+        ],
+      );
+      expect(find.text('逃走者 2'), findsOneWidget);
+    });
+
+    testWidgets('捕まって鬼になると、内訳がその場で変わる', (tester) async {
+      await pumpAll(tester);
+      expect(find.text('鬼 1 ・ 逃走者 2'), findsOneWidget);
+
+      await pumpAll(
+        tester,
+        roomUsers: [
+          for (final u in users)
+            if (u.id == 'b') u.copyWith(role: UserRole.demon) else u,
+        ],
+      );
+      expect(find.text('鬼 2 ・ 逃走者 1'), findsOneWidget);
+    });
+
+    testWidgets('タップで一覧が開き、選べる人をタップすると通知される', (tester) async {
+      String? picked;
+      await pumpAll(
+        tester,
+        selectable: {'a', 'b'},
+        onSelect: (uid) => picked = uid,
+      );
+
+      await tester.tap(find.byType(ClusterMarkerView));
+      await tester.pumpAndSettle();
+      expect(find.byType(ClusterSheet), findsOneWidget);
+      expect(find.text('あきら'), findsOneWidget);
+      expect(find.text('鬼'), findsOneWidget);
+
+      await tester.tap(find.text('あきら'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ClusterSheet), findsNothing);
+      expect(picked, 'a');
+    });
+
+    testWidgets('選べない人(自分と同じ役割)をタップしても何も起きない', (tester) async {
+      String? picked;
+      await pumpAll(tester, selectable: {'a'}, onSelect: (uid) => picked = uid);
+
+      await tester.tap(find.byType(ClusterMarkerView));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ちか'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ClusterSheet), findsOneWidget);
+      expect(picked, isNull);
+    });
   });
 
-  group('ずらしたピンの本当の位置', () {
+  group('ピンの位置(issue #42)', () {
     Future<void> pumpTwoAt(
       WidgetTester tester,
       latlong.LatLng mine,
@@ -288,53 +259,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('ずらしたピンごとに、本当の位置の点とそこからピンへの線を描く', (
-      tester,
-    ) async {
-      const same = latlong.LatLng(35.681, 139.767);
-      await pumpTwoAt(tester, same, same);
-
-      final lines = tester
-          .widget<PolylineLayer>(find.byType(PolylineLayer))
-          .polylines;
-      expect(lines, hasLength(2));
-      for (final line in lines) {
-        expect(line.points.first, same);
-        expect(line.points.last, isNot(same));
-      }
-
-      final dots = tester.widget<CircleLayer>(find.byType(CircleLayer)).circles;
-      expect(dots.map((c) => c.point), [same, same]);
-    });
-
-    testWidgets('線の先はずらしたピンのアイコンの中心に届く', (tester) async {
-      const same = latlong.LatLng(35.681, 139.767);
-      await pumpTwoAt(tester, same, same);
-
-      final camera = MapCamera.of(
-        tester.element(find.byType(PolylineLayer)),
-      );
-      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
-      final lineEnds = tester
-          .widget<PolylineLayer>(find.byType(PolylineLayer))
-          .polylines
-          .map((l) => mapOrigin + camera.latLngToScreenOffset(l.points.last))
-          .toList();
-      final icons = find.byType(MarkerIcon);
-      final iconCenters = [
-        for (var i = 0; i < icons.evaluate().length; i++)
-          tester.getCenter(icons.at(i)),
-      ];
-
-      for (final center in iconCenters) {
-        final nearest = lineEnds
-            .map((end) => (end - center).distance)
-            .reduce((a, b) => a < b ? a : b);
-        expect(nearest, lessThan(1));
-      }
-    });
-
-    testWidgets('ずらしていないピンは、アイコンの中心がちょうど実座標に来る', (tester) async {
+    testWidgets('まとめていないピンは、アイコンの中心がちょうど実座標に来る', (tester) async {
       const mine = latlong.LatLng(35.681, 139.767);
       await pumpTwoAt(tester, mine, const latlong.LatLng(35.691, 139.777));
 
@@ -390,13 +315,14 @@ void main() {
       );
     });
 
-    testWidgets('離れているピンには点も線も描かない', (tester) async {
+    testWidgets('離れているピンは、まとめず単独のまま描く', (tester) async {
       await pumpTwoAt(
         tester,
         const latlong.LatLng(35.681, 139.767),
         const latlong.LatLng(35.691, 139.777),
       );
 
+      expect(find.byType(ClusterMarkerView), findsNothing);
       expect(find.byType(PolylineLayer), findsNothing);
       expect(find.byType(CircleLayer), findsNothing);
     });

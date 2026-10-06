@@ -1102,6 +1102,13 @@ class GamePage extends HookConsumerWidget {
                                       cachedPosition: cachedPosition.value,
                                       gameArea: room.setting.gameArea,
                                       enlargedUserUids: enlargedUserUids,
+                                      // 近い人のまとまりの一覧から、手がかりを
+                                      // 見る相手を選べるようにする。
+                                      selectableUids: {
+                                        for (final u in opponentRoster) u.id,
+                                      },
+                                      onSelectOpponent: (uid) =>
+                                          selectedOpponentUid.value = uid,
                                       // 地図に出し続ける地点を[visibleMissionSpots]
                                       // に任せる(issue #155。自分が取った
                                       // 地点を除き、ミッションが終わったら
