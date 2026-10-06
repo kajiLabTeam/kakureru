@@ -695,6 +695,8 @@ class AnimatedMarkerLayer extends HookWidget {
     // 再描画され、自然にほどける。自分は常に単独で出す。人数は多くても
     // 10人ほどなので毎回計算し直しても軽く、アニメーションで毎フレーム
     // 位置が変わるためメモ化の効きも薄い。
+    // ごほうびで拡大中のピンも、判定は通常サイズ(kIconSize)のまま。
+    // 拡大は見た目だけの一時的な演出なので、クラスタ判定には含めない。
     final camera = MapCamera.maybeOf(context);
     final screen = [
       for (final point in points)
@@ -750,30 +752,34 @@ class AnimatedMarkerLayer extends HookWidget {
             ),
         for (final cluster in clusters)
           if (!cluster.isSingle)
-            () {
-              final label = clusterBreakdownLabel(
-                demons: cluster.demonCount,
-                fugitives: cluster.fugitiveCount,
-              );
-              return Marker(
-                point: camera!.screenOffsetToLatLng(
-                  Offset(cluster.x, cluster.y),
-                ),
-                width: kClusterMarkerWidth,
-                height: kClusterMarkerHeight,
-                alignment: clusterMarkerAlignment,
-                child: ClusterMarkerView(
-                  cluster: cluster,
-                  labelShiftX: labelShiftIntoView(
-                    centerX: cluster.x,
-                    labelWidth: clusterLabelWidthEstimate(label),
-                    screenWidth: camera.size.width,
-                  ),
-                  onTap: () => unawaited(openSheet(cluster)),
-                ),
-              );
-            }(),
+            _clusterMarker(cluster, camera!, openSheet),
       ],
+    );
+  }
+
+  Marker _clusterMarker(
+    MarkerCluster cluster,
+    MapCamera camera,
+    Future<void> Function(MarkerCluster) openSheet,
+  ) {
+    final label = clusterBreakdownLabel(
+      demons: cluster.demonCount,
+      fugitives: cluster.fugitiveCount,
+    );
+    return Marker(
+      point: camera.screenOffsetToLatLng(Offset(cluster.x, cluster.y)),
+      width: kClusterMarkerWidth,
+      height: kClusterMarkerHeight,
+      alignment: clusterMarkerAlignment,
+      child: ClusterMarkerView(
+        cluster: cluster,
+        labelShiftX: labelShiftIntoView(
+          centerX: cluster.x,
+          labelWidth: clusterLabelWidthEstimate(label),
+          screenWidth: camera.size.width,
+        ),
+        onTap: () => unawaited(openSheet(cluster)),
+      ),
     );
   }
 }

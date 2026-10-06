@@ -110,23 +110,29 @@ class ClusterMarkerView extends StatelessWidget {
           const SizedBox(height: kClusterLabelGap),
           Transform.translate(
             offset: Offset(labelShiftX, 0),
+            // alignmentを指定したContainerは親の制約(幅168)いっぱいに広がり、
+            // 黒帯とタップ範囲が文字幅より広くなる。Rowのmin幅で文字幅に絞る。
             child: Container(
               height: kClusterLabelHeight,
-              alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
                 color: _boxBorder,
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  height: 1.1,
-                ),
-                maxLines: 1,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      height: 1.1,
+                    ),
+                    maxLines: 1,
+                  ),
+                ],
               ),
             ),
           ),
