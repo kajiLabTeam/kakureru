@@ -81,11 +81,13 @@ void useGameSession(
 
   // ミッションの生成(ホストの端末だけ)と、自分の到着・達成の判定。
   // GameAlertsと同じく画面が消えていても進むよう、自前のタイマーで回す。
+  // GPSのみモードではミッションを出さない(ごほうびがWi-Fi・気圧に絡むため)。
   useEffect(() {
+    if (gpsOnly) return null;
     final missions = ref.read(missionControllerProvider.notifier)
       ..start(roomId);
     return missions.stop;
-  }, [roomId]);
+  }, [roomId, gpsOnly]);
 
   // BLEの広告・スキャン(issue #16)。myUidが確定するまで
   // (FirebaseAuthの復元前など)は開始できない。

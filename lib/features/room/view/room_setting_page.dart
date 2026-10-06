@@ -178,7 +178,7 @@ class RoomSettingPage extends HookConsumerWidget {
                             children: [
                               Text('GPSのみモード', style: TextStyle(fontSize: 14)),
                               Text(
-                                'Wi-Fiと気圧を使わず、GPSとBLEだけで遊ぶ(A/Bテスト用)',
+                                'Wi-Fi・気圧・ミッションを使わず、GPSとBLEだけで遊ぶ(A/Bテスト用)',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: gameMuted,

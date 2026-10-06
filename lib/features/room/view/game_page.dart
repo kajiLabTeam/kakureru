@@ -412,7 +412,10 @@ class GamePage extends HookConsumerWidget {
     // (到着。MissionControllerが画面と無関係に1秒ごとに更新する)。
     final missionProgress = ref.watch(missionControllerProvider);
     final missionBanner = ref.watch(missionBannerProvider);
-    final mission = roleOf(room?.users ?? const [], myUid) == UserRole.fugitive
+    // GPSのみモードはミッションを出さない(生成も止めている。useGameSession)。
+    final gpsOnly = room?.setting.gpsOnly ?? false;
+    final mission =
+        !gpsOnly && roleOf(room?.users ?? const [], myUid) == UserRole.fugitive
         ? currentMission(
             ref.watch(missionsStreamProvider(roomId)).value ?? const [],
             startedAt: room?.startedAt,
@@ -421,7 +424,7 @@ class GamePage extends HookConsumerWidget {
         : null;
     // 持っていてまだ使っていないごほうび(逃走者だけ。引いた順)。
     final heldRewards =
-        roleOf(room?.users ?? const [], myUid) == UserRole.fugitive
+        !gpsOnly && roleOf(room?.users ?? const [], myUid) == UserRole.fugitive
         ? heldRewardsOf(
             missions: missionsOfCurrentGame(
               ref.watch(missionsStreamProvider(roomId)).value ?? const [],
@@ -1211,6 +1214,7 @@ class GamePage extends HookConsumerWidget {
                                   // 「ミッションをいますぐ出す」を置く(放出から
                                   // 3分待たずに、回を選んで出せる)。
                                   if (debugMissionArrivalEnabled &&
+                                      !gpsOnly &&
                                       mission == null &&
                                       room.startedAt != null)
                                     Positioned(

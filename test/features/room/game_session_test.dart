@@ -128,12 +128,15 @@ class _RecordingGameAlerts extends GameAlerts {
 /// タイマーを張る。
 class _RecordingMissionController extends MissionController {
   int stopCalls = 0;
+  int startCalls = 0;
 
   @override
   MissionProgress build() => const MissionProgress();
 
   @override
-  void start(String roomId) {}
+  void start(String roomId) {
+    startCalls++;
+  }
 
   @override
   void stop() {
@@ -291,6 +294,12 @@ void main() {
       expect(sensors.pressure.startSendingCalls, 0);
     });
 
+    testWidgets('ミッションの生成と判定を始めない', (tester) async {
+      final sensors = await _pumpGameSession(tester, gpsOnly: true);
+
+      expect(sensors.missions.startCalls, 0);
+    });
+
     testWidgets('位置情報とBLEは止めない', (tester) async {
       final sensors = await _pumpGameSession(tester, gpsOnly: true);
 
@@ -306,6 +315,7 @@ void main() {
       expect(sensors.wifi.startCalls, 1);
       expect(sensors.pressure.initCalls, 1);
       expect(sensors.pressure.startSendingCalls, 1);
+      expect(sensors.missions.startCalls, 1);
     });
   });
 
