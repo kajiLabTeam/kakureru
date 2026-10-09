@@ -8,6 +8,7 @@ import 'package:kakureru/features/location/model/location_sample.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
 import 'package:kakureru/features/location/repository/location_smoothing.dart';
 import 'package:kakureru/features/location/repository/location_task_handler.dart';
+import 'package:kakureru/features/map/repository/grid_snap.dart';
 
 class LocationRepository {
   final FirebaseDatabase _db;
@@ -20,6 +21,10 @@ class LocationRepository {
   LocationUpdateFilter _filter = LocationUpdateFilter(
     startedAt: DateTime.now(),
   );
+
+  /// 自分が他人に見せているマス。境目のちらつき対策(stableGridCell)の
+  /// 「前回のマス」で、自分の分だけ持つ。[startSendingLocation]で捨てる。
+  GridCell? _shownCell;
 
   LocationRepository({FirebaseDatabase? db, FirebaseAuth? auth})
     : _db = db ?? FirebaseDatabase.instance,
@@ -43,6 +48,7 @@ class LocationRepository {
   Future<bool> startSendingLocation(String roomId) async {
     await stopSendingLocation();
     _filter = LocationUpdateFilter(startedAt: DateTime.now());
+    _shownCell = null;
 
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -86,6 +92,11 @@ class LocationRepository {
         accuracy: (accuracy as num?)?.toDouble(),
         timestampMs: timestamp is int ? timestamp : null,
       );
+      // 屋内外の誤差の違いを後で見るための記録。表示には使わない。RTDBには
+      // 書かず(Spark枠)、棄却される測位も含めて毎回ログに残す。
+      debugPrint(
+        '[LocationRepository] 測位 accuracy=${sample.accuracy}m',
+      );
       final now = DateTime.now();
       final rejectionsBefore = _filter.consecutiveRejections;
       final elapsedBefore = now.difference(_filter.lastAcceptedAt).inSeconds;
@@ -111,6 +122,17 @@ class LocationRepository {
         );
       }
 
+      // 他人に見せる位置は、採用した測位のときだけ丸め直す(マーカーを
+      // 組み立てるたびには計算しない)。前回のマスを渡して境目のちらつきを
+      // 止める。生のlat/lngは判定に使うのでそのまま書く。
+      final cell = stableGridCell(
+        lat: toWrite.latitude,
+        lng: toWrite.longitude,
+        previous: _shownCell,
+      );
+      _shownCell = cell;
+      final center = gridCenterOf(cell.x, cell.y);
+
       // set()だとlocations/{uid}ノード全体を置き換えてしまい、同じノードの
       // 子であるpressure(PressureRepository)・wifiScan(WifiScanRepository)を
       // 4秒ごとに消してしまう(issue #8)。update()にして自分が持つキーだけを
@@ -122,6 +144,8 @@ class LocationRepository {
           'lng': toWrite.longitude,
           'altitude': toWrite.altitude,
           'accuracy': toWrite.accuracy,
+          'snapLat': center.lat,
+          'snapLng': center.lng,
           'updatedAt': ServerValue.timestamp,
         }),
       );

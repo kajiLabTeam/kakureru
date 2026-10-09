@@ -231,6 +231,23 @@ class GameLocationMap extends HookWidget {
             buildMapAttribution(),
           ],
         ),
+        // 他人の点はマスの中心に丸めて出している。丸めたことが伝わらないと
+        // 「嘘の位置を教えられた」になるので、小さく断っておく。
+        Positioned(
+          left: 8,
+          bottom: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.black45,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              '位置はおおよその範囲',
+              style: TextStyle(color: Colors.white, fontSize: 10),
+            ),
+          ),
+        ),
         if (positionTier == 0)
           Positioned(
             top: 12,
@@ -371,14 +388,14 @@ class GameLocationMap extends HookWidget {
   /// ルーム内の他の参加者が既にいればその位置、いなければ固定の暫定座標。
   latlong.LatLng _initialFallbackCenter() {
     if (locations.isNotEmpty) {
-      final other = locations.first;
-      return latlong.LatLng(other.latitude, other.longitude);
+      final other = locations.first.displayPoint;
+      return latlong.LatLng(other.lat, other.lng);
     }
     return fallbackMapCenter;
   }
 
-  /// マーカー本体(アイコン+ラベル)を組み立てる。どの役割から見ても
-  /// 実座標に置く(issue #118でマス目への丸めを廃止)。
+  /// マーカー本体(アイコン+ラベル)を組み立てる。他人はマスの中心、
+  /// 自分は実座標に置く。
   ///
   /// アイコン・ラベルの役割表記はissue #42対応(色だけでなく形・表記でも
   /// 鬼/逃走者を見分けられるようにする)。
@@ -414,9 +431,13 @@ class GameLocationMap extends HookWidget {
     // 起点に拡大する。Transformはレイアウトを変えないので、
     // 重なりの判定や座標合わせは元の大きさのまま動く。
     final enlarged = enlargedUserUids.contains(location.uid);
+    // 自分は生の位置(ミッションの到達判定と見た目を合わせる)、他人は
+    // 送り出す側が丸めたマスの中心に置く。
+    final shown = isSelf
+        ? (lat: location.latitude, lng: location.longitude)
+        : location.displayPoint;
     final marker = Marker(
-      // どの役割から見ても実座標に置く(issue #118でグリッドを廃止)。
-      point: latlong.LatLng(location.latitude, location.longitude),
+      point: latlong.LatLng(shown.lat, shown.lng),
       // ラベル表示のため横幅を拡張(名前が長い場合は省略表示)。
       // 縦はアイコン(白フチ込みで40) + ラベル(~15) で余裕を持たせる。
       width: markerWidth,
@@ -751,8 +772,7 @@ class AnimatedMarkerLayer extends HookWidget {
               child: markers[i].marker.child,
             ),
         for (final cluster in clusters)
-          if (!cluster.isSingle)
-            _clusterMarker(cluster, camera!, openSheet),
+          if (!cluster.isSingle) _clusterMarker(cluster, camera!, openSheet),
       ],
     );
   }

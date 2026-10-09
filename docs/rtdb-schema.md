@@ -48,6 +48,7 @@ rooms/
         lng
         altitude
         accuracy           GPSの測位精度(m)。悪い測位の足切り(issue #46)に使う
+        snapLat / snapLng  他人に見せる用の、200mのマスの中心に丸めた位置。送り出す端末が lat/lng と同じ update() で書く(書き込み回数は増えない)。捕獲・距離・ミッションなどの判定は生の lat/lng を使い、他人のマーカー表示だけがこちらを使う。無い(旧バージョン)ときは読む側が lat/lng をマスの中心に丸める。定数は `lib/features/map/repository/grid_snap.dart`
         pressure
         updatedAt
         wifiScan/          直近のWi-Fiスキャン結果（WifiScanRepositoryが書く）
