@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/map/repository/grid_snap.dart';
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
 import 'package:latlong2/latlong.dart' as latlong;
@@ -75,25 +76,40 @@ List<Polygon<Object>> _polygons(WidgetTester tester) {
 }
 
 void main() {
-  // 以前は鬼から見た逃走者を100mのマス目に丸めていた(issue #39)が、
-  // 廃止した(issue #118)。丸めが残っていないことを役割の両方向で押さえる。
-  group('_LocationMap のピン位置 (issue #118: グリッド廃止)', () {
-    testWidgets('鬼視点でも逃走者のピンは実座標で、マス目の矩形も描かれない', (tester) async {
+  // 他人のピンは送り出す側が丸めたマスの中心に出す。自分のピンは生の位置。
+  // 以前の100mグリッド(issue #39)は#118で廃止したが、200mのマスの中心への
+  // 丸めを改めて入れた(feat/map-grid-snap)。
+  group('_LocationMap のピン位置 (マスの中心への丸め)', () {
+    final cell = gridCellOf(_otherLat, _otherLng);
+    final center = gridCenterOf(cell.x, cell.y);
+    final snapped = latlong.LatLng(center.lat, center.lng);
+
+    testWidgets('鬼視点で逃走者のピンはマスの中心に出て、マス目の矩形は描かれない', (tester) async {
       await _pumpMap(tester, myRole: UserRole.demon);
 
-      expect(_otherMarker(tester).point, _otherExactPoint);
+      expect(_otherMarker(tester).point, snapped);
+      expect(_otherMarker(tester).point, isNot(_otherExactPoint));
       expect(_polygons(tester), isEmpty);
     });
 
-    testWidgets('逃走者視点でも鬼のピンは実座標', (tester) async {
+    testWidgets('逃走者視点でも鬼のピンはマスの中心', (tester) async {
       await _pumpMap(
         tester,
         myRole: UserRole.fugitive,
         otherRole: UserRole.demon,
       );
 
-      expect(_otherMarker(tester).point, _otherExactPoint);
+      expect(_otherMarker(tester).point, snapped);
       expect(_polygons(tester), isEmpty);
+    });
+
+    testWidgets('自分のピンは丸めず生の位置に出る', (tester) async {
+      await _pumpMap(tester, myRole: UserRole.demon);
+
+      final markers = tester
+          .widget<MarkerLayer>(find.byType(MarkerLayer))
+          .markers;
+      expect(markers.first.point, const latlong.LatLng(_myLat, _myLng));
     });
   });
 

@@ -10,8 +10,8 @@ import 'package:latlong2/latlong.dart' as latlong;
 const _myUid = 'me';
 const _otherUid = 'other';
 
-/// 相手の位置だけを差し替えて地図を描く(逃走者視点で鬼を見るので、
-/// グリッド丸めがかからず実座標がそのままマーカーの移動先になる)。
+/// 相手の位置だけを差し替えて地図を描く(相手のsnapLat/snapLngに同じ値を
+/// 入れ、丸めの影響を受けずに渡した座標がそのままマーカーの移動先になる)。
 Future<void> _pumpMapWithOtherAt(
   WidgetTester tester,
   latlong.LatLng other,
@@ -32,6 +32,8 @@ Future<void> _pumpMapWithOtherAt(
               uid: _otherUid,
               latitude: other.latitude,
               longitude: other.longitude,
+              snapLatitude: other.latitude,
+              snapLongitude: other.longitude,
             ),
           ],
         ),
@@ -250,6 +252,8 @@ void main() {
                   uid: _otherUid,
                   latitude: others.latitude,
                   longitude: others.longitude,
+                  snapLatitude: others.latitude,
+                  snapLongitude: others.longitude,
                 ),
               ],
             ),
@@ -291,6 +295,8 @@ void main() {
                   uid: _otherUid,
                   latitude: unknown.latitude,
                   longitude: unknown.longitude,
+                  snapLatitude: unknown.latitude,
+                  snapLongitude: unknown.longitude,
                 ),
               ],
             ),
