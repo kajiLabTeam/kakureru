@@ -79,14 +79,15 @@ void main() {
       final c = gridCenterOf(previous.x, previous.y);
       final next = gridCenterOf(previous.x + 1, previous.y);
       final halfLng = next.lng - c.lng;
-      // 余裕は経度で30mぶん。1度あたり約91.0kmなので約0.00033度。
-      final inside = c.lng + halfLng / 2 + 0.0001;
+      // 余裕は経度方向のほうが緯度方向より大きい(1度の距離が短いため)ので、
+      // 緯度の余裕の半分なら必ず余裕の中、3倍なら必ず外。
+      final inside = c.lng + halfLng / 2 + _latMarginDeg * 0.5;
       expect(gridCellOf(c.lat, inside).x, previous.x + 1);
       expect(
         stableGridCell(lat: c.lat, lng: inside, previous: previous),
         previous,
       );
-      final outside = c.lng + halfLng / 2 + 0.001;
+      final outside = c.lng + halfLng / 2 + _latMarginDeg * 3;
       expect(
         stableGridCell(lat: c.lat, lng: outside, previous: previous),
         (x: previous.x + 1, y: previous.y),
@@ -107,7 +108,8 @@ void main() {
       final c = gridCenterOf(cell.x, cell.y);
       final boundary = c.lat + _latStep / 2;
       final seen = <GridCell>{};
-      for (final d in [-0.00008, 0.00008, -0.00005, 0.00005, 0.0001]) {
+      for (final f in [-0.8, 0.8, -0.5, 0.5, 0.9]) {
+        final d = f * _latMarginDeg;
         cell = stableGridCell(lat: boundary + d, lng: c.lng, previous: cell);
         seen.add(cell);
       }
@@ -132,6 +134,17 @@ void main() {
       final cell = gridCellOf(35.18, 139.93);
       expect(loc.displayPoint, gridCenterOf(cell.x, cell.y));
       expect(loc.latitude, 35.18);
+    });
+  });
+
+  group('gridBoundsOf', () {
+    test('マスの中心は、そのマスの四角の真ん中にある', () {
+      final cell = gridCellOf(35.18, 139.93);
+      final c = gridCenterOf(cell.x, cell.y);
+      final b = gridBoundsOf(cell.x, cell.y);
+      expect((b.south + b.north) / 2, closeTo(c.lat, 1e-9));
+      expect((b.west + b.east) / 2, closeTo(c.lng, 1e-9));
+      expect(b.north - b.south, closeTo(_latStep, 1e-9));
     });
   });
 }

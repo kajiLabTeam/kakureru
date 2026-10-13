@@ -1,12 +1,12 @@
 import 'dart:math' as math;
 
-/// マスの一辺(メートル)。プレイ後に150へ落とす可能性があるので、ここだけ
+/// マスの一辺(メートル)。プレイ後に調整する可能性があるので、ここだけ
 /// 変えれば全体が追従する。
-const kGridMeters = 200.0;
+const kGridMeters = 60.0;
 
 /// 境目のちらつき対策の余裕(メートル)。一度入ったマスからは、境目を
 /// これだけ行き過ぎるまで出ない。
-const kGridHysteresisMeters = 30.0;
+const kGridHysteresisMeters = 10.0;
 
 /// 経度方向の距離を出すための基準緯度(度)。端末ごとにマスの幅がずれない
 /// よう、生の緯度ではなくこの定数を使う。構内の緯度。
@@ -63,5 +63,18 @@ GridCell stableGridCell({
   return (
     x: lng >= lngMin && lng < lngMax ? previous.x : current.x,
     y: lat >= latMin && lat < latMax ? previous.y : current.y,
+  );
+}
+
+/// マス番号から、そのマスの四隅(南西〜北東)の緯度経度。
+({double south, double west, double north, double east}) gridBoundsOf(
+  int x,
+  int y,
+) {
+  return (
+    south: y * _latStep,
+    west: x * _lngStep,
+    north: (y + 1) * _latStep,
+    east: (x + 1) * _lngStep,
   );
 }

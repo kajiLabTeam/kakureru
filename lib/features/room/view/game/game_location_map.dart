@@ -5,6 +5,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/map/repository/grid_snap.dart';
 import 'package:kakureru/features/map/repository/marker_cluster.dart';
 import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
@@ -194,6 +195,11 @@ class GameLocationMap extends HookWidget {
         .map((location) => _buildLocationVisual(location, myRole))
         .toList();
 
+    final cellPolygons = [
+      for (final location in locations)
+        if (location.uid != myUid) _cellPolygon(location),
+    ];
+
     return Stack(
       children: [
         FlutterMap(
@@ -223,6 +229,9 @@ class GameLocationMap extends HookWidget {
                 ],
               ),
             ],
+            // 他人のピンはマスの中心に丸めて出しているので、そのマスを
+            // 薄い四角で囲み「この範囲のどこか」と読めるようにする。
+            if (cellPolygons.isNotEmpty) PolygonLayer(polygons: cellPolygons),
             AnimatedMarkerLayer(
               markers: locationVisuals,
               selectableUids: selectableUids,
@@ -371,6 +380,25 @@ class GameLocationMap extends HookWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// 他人のピンが入っているマスを囲む、ごく薄い四角。
+  Polygon<Object> _cellPolygon(UserLocation location) {
+    final shown = location.displayPoint;
+    final cell = gridCellOf(shown.lat, shown.lng);
+    final b = gridBoundsOf(cell.x, cell.y);
+    final color = colorForRole(findUser(users, location.uid)?.role);
+    return Polygon(
+      points: [
+        latlong.LatLng(b.south, b.west),
+        latlong.LatLng(b.south, b.east),
+        latlong.LatLng(b.north, b.east),
+        latlong.LatLng(b.north, b.west),
+      ],
+      color: color.withValues(alpha: 0.08),
+      borderStrokeWidth: 1,
+      borderColor: color.withValues(alpha: 0.35),
     );
   }
 
