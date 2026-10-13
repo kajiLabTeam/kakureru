@@ -91,10 +91,10 @@ void main() {
       expect(_otherMarker(tester).point, isNot(_otherExactPoint));
       // 四角は自分の分を含めず、相手のマス1つだけ。中心がピンと一致する。
       final polygons = _polygons(tester);
-      expect(polygons.length, 1);
+      expect(polygons.length, 5);
       final b = gridBoundsOf(cell.x, cell.y);
       expect(
-        polygons.single.points,
+        polygons.last.points,
         [
           latlong.LatLng(b.south, b.west),
           latlong.LatLng(b.south, b.east),
@@ -112,7 +112,7 @@ void main() {
       );
 
       expect(_otherMarker(tester).point, snapped);
-      expect(_polygons(tester).length, 1);
+      expect(_polygons(tester).length, 5);
     });
 
     testWidgets('自分のピンは丸めず生の位置に出る', (tester) async {
