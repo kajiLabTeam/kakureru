@@ -5,6 +5,10 @@ part 'marker_cluster.freezed.dart';
 /// この画面距離(論理px)以内にいる人を1つのクラスタにまとめる。
 const double kClusterPx = 60;
 
+/// このズームレベル未満(引き)のときだけクラスタにまとめる。これ以上
+/// 寄ったら、近い人も画面距離に関係なくバラバラに出す。
+const double kClusterMaxZoom = 16.5;
+
 /// クラスタの四角の一辺(論理px)。
 const double kClusterBoxSize = 64;
 

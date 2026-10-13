@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/room/model/room_setting.dart' show LatLng;
 import 'package:kakureru/features/room/model/room_user.dart';
 import 'package:kakureru/features/room/view/game/cluster_marker.dart';
 import 'package:kakureru/features/room/view/game/game_location_map.dart';
@@ -128,6 +129,7 @@ void main() {
       List<RoomUser> roomUsers = users,
       Set<String> selectable = const {},
       ValueChanged<String>? onSelect,
+      bool zoomedIn = false,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -144,7 +146,15 @@ void main() {
               users: roomUsers,
               myUid: _myUid,
               cachedPosition: null,
-              gameArea: const [],
+              // 広いエリアにフィットさせて引きの状態にする(寄るとクラスタしない)。
+              gameArea: zoomedIn
+                  ? const []
+                  : const [
+                      LatLng(lat: 35.60, lng: 139.70),
+                      LatLng(lat: 35.60, lng: 139.85),
+                      LatLng(lat: 35.76, lng: 139.85),
+                      LatLng(lat: 35.76, lng: 139.70),
+                    ],
               selectableUids: selectable,
               onSelectOpponent: onSelect,
             ),
@@ -166,6 +176,12 @@ void main() {
       // 黒い点・引き出し線は出さない。
       expect(find.byType(PolylineLayer), findsNothing);
       expect(find.byType(CircleLayer), findsNothing);
+    });
+
+    testWidgets('寄って見ると、同じ場所の他人でもまとめずに出す', (tester) async {
+      await pumpAll(tester, zoomedIn: true);
+
+      expect(find.byType(ClusterMarkerView), findsNothing);
     });
 
     testWidgets('鬼がいなければ「逃走者 2」だけ出す', (tester) async {

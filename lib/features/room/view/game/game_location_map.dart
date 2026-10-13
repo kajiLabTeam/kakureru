@@ -712,8 +712,9 @@ class AnimatedMarkerLayer extends HookWidget {
     ];
 
     // 画面上で近い人(自分を除く)は1つの四角にまとめる。画面座標で
-    // 判定するので、ズームするとMapCameraの変化でこのウィジェットが
-    // 再描画され、自然にほどける。自分は常に単独で出す。人数は多くても
+    // 判定し、さらに引き(zoom < kClusterMaxZoom)のときだけまとめる。
+    // ズームするとMapCameraの変化でこのウィジェットが再描画され、
+    // 寄ればほどける。自分は常に単独で出す。人数は多くても
     // 10人ほどなので毎回計算し直しても軽く、アニメーションで毎フレーム
     // 位置が変わるためメモ化の効きも薄い。
     // ごほうびで拡大中のピンも、判定は通常サイズ(kIconSize)のまま。
@@ -723,7 +724,7 @@ class AnimatedMarkerLayer extends HookWidget {
       for (final point in points)
         camera?.latLngToScreenOffset(point) ?? Offset.zero,
     ];
-    final clusters = camera == null
+    final clusters = camera == null || camera.zoom >= kClusterMaxZoom
         ? <MarkerCluster>[]
         : clusterMarkers([
             for (var i = 0; i < markers.length; i++)
