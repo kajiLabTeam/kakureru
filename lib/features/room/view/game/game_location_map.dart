@@ -5,6 +5,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:kakureru/features/location/model/user_location.dart';
+import 'package:kakureru/features/map/repository/grid_snap.dart';
 import 'package:kakureru/features/map/repository/marker_cluster.dart';
 import 'package:kakureru/features/mission/view/mission_palette.dart';
 import 'package:kakureru/features/room/game_map_options.dart';
@@ -42,6 +43,15 @@ Widget buildLocationMapForTest({
     enlargedUserUids: enlargedUserUids,
   );
 }
+
+/// マスの四角のぼかし。[_cellBlurSteps]枚の四角をマスの[_cellBlurSpread]
+/// 倍まで広げて重ね、1枚あたり[_cellBlurAlpha]を足す(中心ほど濃くなる)。
+const _cellBlurSteps = 4;
+const _cellBlurSpread = 0.25;
+const _cellBlurAlpha = 0.025;
+
+/// 逃走者(緑)の四角の濃さの倍率。
+const _fugitiveAlphaScale = 2.0;
 
 /// 地図に出すミッションの地点(アクセスポイント)と判定の半径(m)。
 ///
@@ -194,6 +204,11 @@ class GameLocationMap extends HookWidget {
         .map((location) => _buildLocationVisual(location, myRole))
         .toList();
 
+    final cellPolygons = [
+      for (final location in locations)
+        if (location.uid != myUid) ..._cellPolygons(location),
+    ];
+
     return Stack(
       children: [
         FlutterMap(
@@ -223,6 +238,9 @@ class GameLocationMap extends HookWidget {
                 ],
               ),
             ],
+            // 他人のピンはマスの中心に丸めて出しているので、そのマスを
+            // 薄い四角で囲み「この範囲のどこか」と読めるようにする。
+            if (cellPolygons.isNotEmpty) PolygonLayer(polygons: cellPolygons),
             AnimatedMarkerLayer(
               markers: locationVisuals,
               selectableUids: selectableUids,
@@ -372,6 +390,38 @@ class GameLocationMap extends HookWidget {
         ],
       ),
     );
+  }
+
+  /// 他人のピンが入っているマスを囲む、ごく薄い四角。外枠はぼかす。
+  ///
+  /// flutter_mapのPolygonにはぼかしが無いので、少しずつ広げた四角を
+  /// 透明度を足しながら重ねて、縁に向かって薄くなる見た目にする。
+  /// 一番内側がマス本来の大きさ。
+  List<Polygon<Object>> _cellPolygons(UserLocation location) {
+    final shown = location.displayPoint;
+    final cell = gridCellOf(shown.lat, shown.lng);
+    final b = gridBoundsOf(cell.x, cell.y);
+    final role = findUser(users, location.uid)?.role;
+    final color = colorForRole(role);
+    // 緑(逃走者)は地図の緑に溶けて見えにくいので、濃くする。
+    final alpha = role == UserRole.fugitive
+        ? _cellBlurAlpha * _fugitiveAlphaScale
+        : _cellBlurAlpha;
+    final dLat = (b.north - b.south) * _cellBlurSpread / _cellBlurSteps;
+    final dLng = (b.east - b.west) * _cellBlurSpread / _cellBlurSteps;
+    return [
+      // 外側(広い・先に描く)から内側へ。
+      for (var i = _cellBlurSteps; i >= 0; i--)
+        Polygon(
+          points: [
+            latlong.LatLng(b.south - dLat * i, b.west - dLng * i),
+            latlong.LatLng(b.south - dLat * i, b.east + dLng * i),
+            latlong.LatLng(b.north + dLat * i, b.east + dLng * i),
+            latlong.LatLng(b.north + dLat * i, b.west - dLng * i),
+          ],
+          color: color.withValues(alpha: alpha),
+        ),
+    ];
   }
 
   /// プレイエリアの境界線。ルーム設定画面と同じ青い破線で揃えている。

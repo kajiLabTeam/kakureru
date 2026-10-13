@@ -77,19 +77,31 @@ List<Polygon<Object>> _polygons(WidgetTester tester) {
 
 void main() {
   // 他人のピンは送り出す側が丸めたマスの中心に出す。自分のピンは生の位置。
-  // 以前の100mグリッド(issue #39)は#118で廃止したが、200mのマスの中心への
+  // 以前の100mグリッド(issue #39)は#118で廃止したが、60mのマスの中心への
   // 丸めを改めて入れた(feat/map-grid-snap)。
   group('_LocationMap のピン位置 (マスの中心への丸め)', () {
     final cell = gridCellOf(_otherLat, _otherLng);
     final center = gridCenterOf(cell.x, cell.y);
     final snapped = latlong.LatLng(center.lat, center.lng);
 
-    testWidgets('鬼視点で逃走者のピンはマスの中心に出て、マス目の矩形は描かれない', (tester) async {
+    testWidgets('鬼視点で逃走者のピンはマスの中心に出て、そのマスが四角で囲まれる', (tester) async {
       await _pumpMap(tester, myRole: UserRole.demon);
 
       expect(_otherMarker(tester).point, snapped);
       expect(_otherMarker(tester).point, isNot(_otherExactPoint));
-      expect(_polygons(tester), isEmpty);
+      // 四角は自分の分を含めず、相手のマス1つだけ。中心がピンと一致する。
+      final polygons = _polygons(tester);
+      expect(polygons.length, 5);
+      final b = gridBoundsOf(cell.x, cell.y);
+      expect(
+        polygons.last.points,
+        [
+          latlong.LatLng(b.south, b.west),
+          latlong.LatLng(b.south, b.east),
+          latlong.LatLng(b.north, b.east),
+          latlong.LatLng(b.north, b.west),
+        ],
+      );
     });
 
     testWidgets('逃走者視点でも鬼のピンはマスの中心', (tester) async {
@@ -100,7 +112,7 @@ void main() {
       );
 
       expect(_otherMarker(tester).point, snapped);
-      expect(_polygons(tester), isEmpty);
+      expect(_polygons(tester).length, 5);
     });
 
     testWidgets('自分のピンは丸めず生の位置に出る', (tester) async {
