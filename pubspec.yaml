@@ -65,7 +65,7 @@ dependencies:
   path_provider: ^2.1.5
   # テザリング中の端末が「いま接続しているWi-Fi(=自分のホットスポット)」の
   # BSSIDを得るためだけに追加(issue #142)。
-  network_info_plus: ^7.0.0
+  network_info_plus: ^8.2.1
   # かくれるガチャの効果音を鳴らすためだけに追加(issue #160)。音源は
   # assets/sounds/gacha/ で、出どころは docs/gacha-sounds.md。
   audioplayers: ^6.8.1
