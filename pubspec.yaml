@@ -72,7 +72,7 @@ dependencies:
 
 dev_dependencies:
   # コード生成用。実行時には不要なので dev_dependencies 側に置く。
-  build_runner: ^2.15.1
+  build_runner: ^2.16.2
 
   # Timer.periodic を実時間を待たずに進めるため(game_alerts_test.dart)。
   # flutter_test が推移的に持っているが、直接importするので明示する。
