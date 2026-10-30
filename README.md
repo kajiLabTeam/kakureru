@@ -46,12 +46,21 @@ GPS だけの鬼ごっこは**鬼が不利**になりやすい。そこで屋内
 
 ## 技術構成
 
+![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
+![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
+![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![Firebase](https://img.shields.io/badge/Firebase-DD2C00?style=for-the-badge&logo=firebase&logoColor=white)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-F38020?style=for-the-badge&logo=cloudflareworkers&logoColor=white)
+![Cloudflare R2](https://img.shields.io/badge/Cloudflare_R2-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
+
 - **Flutter**（Dart SDK ^3.12.2）
 - **対象は Android のみ**。iOS には周辺 Wi-Fi アクセスポイントをスキャンする公開 API がなく、must 機能である Wi-Fi ベースの距離感が実装できないため
 - **状態管理**: flutter_hooks + Riverpod（使い分けは [AGENTS.md](AGENTS.md) の規約に従う）
 - **データクラス**: Freezed のみ
-- **バックエンド**: Firebase Realtime Database
-- **静的解析**: very_good_analysis（strict lint）
+- **バックエンド**: Firebase Realtime Database（位置・気圧・Wi-Fi を数秒おきに同期）
+- **写真API**: Cloudflare Workers（`kakureru-photo-api/`）+ Cloudflare R2。捕まえた瞬間・足元の写真の実体を R2 に保存して全員に配る。egress 無料のため Firebase Storage ではなく R2 を採用（詳細は [docs/photo-storage.md](docs/photo-storage.md)）
+- **静的解析・CI**: very_good_analysis（strict lint）/ GitHub Actions
 
 ### 運用上の前提
 
