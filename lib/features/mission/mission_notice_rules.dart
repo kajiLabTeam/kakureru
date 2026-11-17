@@ -10,11 +10,11 @@ import 'package:kakureru/features/mission/model/mission_notice.dart';
 
 /// 「出た」のお知らせの文言。
 ///
-/// 例: 「アクセスポイントへ行こう。5分以内、先着2人。近いのは 62m 先」
+/// 例: 「ガチャスポットへ行こう。5分以内、先着2人。近いのは 62m 先」
 /// 位置がまだ無ければ距離は付けない。
 String missionCreatedMessage(Mission mission, {UserLocation? location}) {
   final head =
-      'アクセスポイントへ行こう。${missionTimeLimit.inMinutes}分以内、'
+      'ガチャスポットへ行こう。${missionTimeLimit.inMinutes}分以内、'
       '先着${mission.spots.length}人';
   final spot = nearestOpenSpot(mission, location);
   final distance = readAccessPoint(spot: spot, location: location).distanceM;
@@ -37,7 +37,7 @@ String missionFinishedMessage(
     for (final spot in mission.spots)
       if (spot.claimedBy case final uid?) nameOf(uid),
   ];
-  if (names.isEmpty) return 'アクセスポイントは時間切れ。だれも取れなかった';
+  if (names.isEmpty) return 'ガチャスポットは時間切れ。だれも取れなかった';
   return '${names.join(' と ')} が ごほうび を引いた';
 }
 

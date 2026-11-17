@@ -21,7 +21,7 @@ enum MissionCardStatus {
   /// GPSの精度が悪く、判定していない。
   weakGps,
 
-  /// アクセスポイントへ向かっている。
+  /// ガチャスポットへ向かっている。
   approaching,
 
   /// 判定範囲に入った(2回続けて範囲内)。「ごほうびガチャを引く」を出す。
@@ -289,14 +289,14 @@ class MissionCard extends StatelessWidget {
 
   String _title() => switch (status) {
     MissionCardStatus.needsLocationPermission => '位置情報の許可が必要',
-    MissionCardStatus.arrived => 'アクセスポイントに着いた',
+    MissionCardStatus.arrived => 'ガチャスポットに着いた',
     MissionCardStatus.takenByOther => 'ほかの人に取られた',
     MissionCardStatus.claimedByMe => 'ごほうびを引いた',
     MissionCardStatus.claimedWithoutReward => 'ごほうびをまだ受け取っていない',
     MissionCardStatus.leftRange => '判定範囲の外に出た',
     MissionCardStatus.weakGps => 'GPSの電波が弱い',
     MissionCardStatus.locating ||
-    MissionCardStatus.approaching => 'アクセスポイントへ行こう',
+    MissionCardStatus.approaching => 'ガチャスポットへ行こう',
   };
 
   List<Widget> _body() {
@@ -305,7 +305,7 @@ class MissionCard extends StatelessWidget {
         return const [
           SizedBox(height: 6),
           Text(
-            '設定から位置情報を許可すると、アクセスポイントに着いたかを判定できる',
+            '設定から位置情報を許可すると、ガチャスポットに着いたかを判定できる',
             style: TextStyle(fontSize: 12, height: 1.5, color: gameMuted),
           ),
         ];
@@ -368,7 +368,7 @@ class MissionCard extends StatelessWidget {
         return const [
           SizedBox(height: 6),
           Text(
-            'アクセスポイントはすべて取られた。次のミッションを待とう',
+            'ガチャスポットはすべて取られた。次のミッションを待とう',
             style: TextStyle(fontSize: 12, color: gameMuted),
           ),
         ];

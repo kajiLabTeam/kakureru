@@ -5,7 +5,7 @@ import 'package:kakureru/features/mission/model/reward_type.dart';
 part 'mission.freezed.dart';
 part 'mission.g.dart';
 
-/// RTDB `rooms/{roomId}/missions/{missionId}` 1件ぶん(アクセスポイント)。
+/// RTDB `rooms/{roomId}/missions/{missionId}` 1件ぶん(ガチャスポット)。
 ///
 /// サーバーが無いので**ホストの端末が書く**(`MissionController`)。同時に
 /// 出すのは1件だけ。地点([spots])の数は回で変わり(`missionSpotCount`)、

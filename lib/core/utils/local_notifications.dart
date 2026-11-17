@@ -259,7 +259,7 @@ Future<void> showMissionNotification(String message) {
   const androidDetails = AndroidNotificationDetails(
     'kakureru_mission',
     'ミッションの通知',
-    channelDescription: 'アクセスポイントのミッションを、音なし・振動だけで通知します',
+    channelDescription: 'ガチャスポットのミッションを、音なし・振動だけで通知します',
     importance: Importance.high,
     priority: Priority.high,
     playSound: false,
