@@ -94,13 +94,13 @@ rooms/
         pressure            気圧(hPa、あれば)
         indoor              屋内ならtrue(catchのみ)
     missions/
-      {missionId}/          逃走者だけが受けるお題(アクセスポイント)。ホストの端末が書く(下の「ミッションとごほうび」参照)
+      {missionId}/          逃走者だけが受けるお題(ガチャスポット)。ホストの端末が書く(下の「ミッションとごほうび」参照)
         round               何回目か(1 = 放出から3分 / 2 = 放出から10分 / 3 = 放出から25分。4回目は無い)
         createdAt           ServerValue.timestamp
         expiresAt           作った時刻 + 制限時間(5分)。ホストのサーバー時刻の補正値から計算する
         finishedAt          すべての地点が取られて早く終わった時刻(サーバー時刻のミリ秒)。期限切れで終わったときは無し
         spots/
-          {spotId}/         アクセスポイント1か所("s0", "s1", …)。数は1回目4・2回目4・3回目3(逃走者の人数では減らさない)。互いに50m以上離す
+          {spotId}/         ガチャスポット1か所("s0", "s1", …)。数は1回目4・2回目4・3回目3(逃走者の人数では減らさない)。互いに50m以上離す
             lat / lng       地点
             radiusM         判定の半径(15)
             claimedBy       先に取った人のuid。未取得は無し。1地点に1人まで。1人が同じミッションで何地点取ってもよい
@@ -383,7 +383,7 @@ npm test
 | `became_demon` | 指名された本人 | `acceptDemonNomination` で鬼になった時(開始前の初期鬼) | 鬼になった人 |
 | `game_ended` | ホストのみ | `GameAlerts` がゲーム終了を検知した時 | ホスト |
 | `photo_taken` | 撮影者 | 足元写真のアップロード成功時 | 撮影者 |
-| `mission_claimed` | 取った逃走者 | アクセスポイントを先着で取れた時(`claimMission`) | 取った逃走者(引いたごほうびは `missions/{missionId}/spots/{spotId}/reward`) |
+| `mission_claimed` | 取った逃走者 | ガチャスポットを先着で取れた時(`claimMission`) | 取った逃走者(引いたごほうびは `missions/{missionId}/spots/{spotId}/reward`) |
 
 - `released` / `game_ended` は全端末で同じ判定が回るため、重複を避けてホスト端末だけが書く。`at` は「ホスト端末が検知した時刻」で、バックグラウンド等で遅れうる。正確な予定時刻は `meta/releasedAt` / `meta/endsAt` を使うこと。ホストのアプリが閉じていると記録されない
 - `catch` の `lat`/`lng`/`accuracy` は、その時点で鬼が最後に送った `locations/{uid}` の値。`pressure` は端末の最新の気圧(取れなければ `locations/{uid}/pressure`)
@@ -392,7 +392,7 @@ npm test
 
 ### ミッションとごほうび(`missions` / `effects`)
 
-逃走者だけが受けるお題(アクセスポイントへ行く)と、達成したときに引けるごほうび(鬼への妨害など)。
+逃走者だけが受けるお題(ガチャスポットへ行く)と、達成したときに引けるごほうび(鬼への妨害など)。
 
 **ミッションはホストの端末が作る**(サーバーが無いため)。`MissionController`(`lib/features/mission/view_model/mission_view_model.dart`)が `GameAlerts` と同じく画面と無関係に1秒ごとに回り、ホスト(`meta/hostUserId`)の端末だけが `missionRoundToCreate`(`lib/features/mission/mission_rules.dart`)を見て書く。時刻の定数は `lib/features/mission/mission_timing.dart` に1か所にまとめてある。
 

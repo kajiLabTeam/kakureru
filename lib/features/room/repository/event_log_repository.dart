@@ -29,7 +29,7 @@ enum GameEventType {
   /// 足元写真のアップロードに成功した。
   photoTaken('photo_taken'),
 
-  /// アクセスポイントのミッションを先着で取った。引いたごほうびは
+  /// ガチャスポットのミッションを先着で取った。引いたごほうびは
   /// `missions/{missionId}/reward` に残る。
   missionClaimed('mission_claimed');
 

@@ -234,7 +234,7 @@ void main() {
 
         final banner = container.read(missionBannerProvider);
         expect(banner?.kind, MissionNoticeKind.created);
-        expect(banner?.message, startsWith('アクセスポイントへ行こう'));
+        expect(banner?.message, startsWith('ガチャスポットへ行こう'));
         expect(sink.vibrations, 1);
         expect(sink.notified, isEmpty);
       });

@@ -116,7 +116,7 @@ class MissionRepository {
     });
   }
 
-  /// アクセスポイントの地点[spotId]を先着で取る。
+  /// ガチャスポットの地点[spotId]を先着で取る。
   ///
   /// **先着はここで決める**: `missions/{missionId}` への
   /// [DatabaseReference.runTransaction]で、`spots/{spotId}/claimedBy` が

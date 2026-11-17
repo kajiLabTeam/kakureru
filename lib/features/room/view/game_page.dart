@@ -641,7 +641,7 @@ class GamePage extends HookConsumerWidget {
               );
             case ClaimOutcome.unavailable:
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('このアクセスポイントはもう取れません')),
+                const SnackBar(content: Text('このガチャスポットはもう取れません')),
               );
           }
         case AsyncActionStatus.failed:
