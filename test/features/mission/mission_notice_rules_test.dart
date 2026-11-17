@@ -46,7 +46,7 @@ void main() {
     test('出た: 制限時間と先着の人数、近い地点までの距離', () {
       expect(
         missionCreatedMessage(_mission()),
-        'アクセスポイントへ行こう。5分以内、先着2人',
+        'ガチャスポットへ行こう。5分以内、先着2人',
       );
       final message = missionCreatedMessage(
         _mission(),
@@ -57,7 +57,7 @@ void main() {
           accuracy: 5,
         ),
       );
-      expect(message, startsWith('アクセスポイントへ行こう。5分以内、先着2人。近いのは '));
+      expect(message, startsWith('ガチャスポットへ行こう。5分以内、先着2人。近いのは '));
       expect(message, endsWith('m 先'));
     });
 
@@ -90,7 +90,7 @@ void main() {
       );
       expect(
         missionFinishedMessage(_mission(), nameOf: _nameOf),
-        'アクセスポイントは時間切れ。だれも取れなかった',
+        'ガチャスポットは時間切れ。だれも取れなかった',
       );
     });
   });

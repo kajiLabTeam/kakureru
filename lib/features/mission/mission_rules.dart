@@ -14,7 +14,7 @@ import 'package:kakureru/features/mission/model/mission.dart';
 import 'package:kakureru/features/room/area_alert.dart';
 import 'package:kakureru/features/room/model/room_setting.dart';
 
-/// アクセスポイントの判定の半径(m)。
+/// ガチャスポットの判定の半径(m)。
 const accessPointRadiusM = 15.0;
 
 /// GPSの精度(m)がこれより悪いときは到着を判定しない。
@@ -264,7 +264,7 @@ enum AccessPointFix {
   inside,
 }
 
-/// アクセスポイントとの位置関係。カードの「のこり N m」「GPS ±N m」に使う。
+/// ガチャスポットとの位置関係。カードの「のこり N m」「GPS ±N m」に使う。
 typedef AccessPointReading = ({
   AccessPointFix fix,
 

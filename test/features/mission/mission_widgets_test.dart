@@ -210,7 +210,7 @@ void main() {
 
     testWidgets('向かっている間は「のこり N m」と「GPS ±N m」を出す', (tester) async {
       await pumpCard(tester, MissionCardStatus.approaching);
-      expect(find.text('アクセスポイントへ行こう'), findsOneWidget);
+      expect(find.text('ガチャスポットへ行こう'), findsOneWidget);
       expect(find.text('近いのは のこり 62m'), findsOneWidget);
       expect(find.text('GPS '), findsOneWidget);
       expect(find.text('±8m'), findsOneWidget);
@@ -237,7 +237,7 @@ void main() {
 
     testWidgets('到着したら「まだ誰も取っていない」を出す', (tester) async {
       await pumpCard(tester, MissionCardStatus.arrived);
-      expect(find.text('アクセスポイントに着いた'), findsOneWidget);
+      expect(find.text('ガチャスポットに着いた'), findsOneWidget);
       expect(find.text('まだ誰も取っていない'), findsOneWidget);
     });
 
@@ -279,7 +279,7 @@ void main() {
         expanded: false,
         onToggleExpanded: () => toggled++,
       );
-      expect(find.text('アクセスポイントへ行こう'), findsNothing);
+      expect(find.text('ガチャスポットへ行こう'), findsNothing);
       expect(find.text('近いのは のこり 62m'), findsNothing);
       // 見出しの帯も残さず、旗のマークだけにする。
       expect(find.text('ミッション'), findsNothing);
@@ -302,7 +302,7 @@ void main() {
         MissionCardStatus.approaching,
         onToggleExpanded: () => toggled++,
       );
-      await tester.tap(find.text('アクセスポイントへ行こう'));
+      await tester.tap(find.text('ガチャスポットへ行こう'));
       expect(toggled, 1);
       await tester.tap(find.text('ミッション'));
       expect(toggled, 2);
@@ -566,14 +566,14 @@ void main() {
             notice: const MissionNotice(
               kind: MissionNoticeKind.created,
               missionId: 'm1',
-              message: 'アクセスポイントへ行こう',
+              message: 'ガチャスポットへ行こう',
             ),
             onTap: () => tapped++,
             onDismissed: () {},
           ),
         ),
       );
-      expect(find.text('アクセスポイントへ行こう'), findsOneWidget);
+      expect(find.text('ガチャスポットへ行こう'), findsOneWidget);
       expect(
         tester.getSize(find.byType(MissionNoticeBanner)).height,
         greaterThanOrEqualTo(44),
@@ -591,7 +591,7 @@ void main() {
             notice: const MissionNotice(
               kind: MissionNoticeKind.created,
               missionId: 'm1',
-              message: 'アクセスポイントへ行こう',
+              message: 'ガチャスポットへ行こう',
             ),
             onTap: () => tapped++,
             onDismissed: () => dismissed++,
@@ -616,7 +616,7 @@ void main() {
             notice: const MissionNotice(
               kind: MissionNoticeKind.created,
               missionId: 'm1',
-              message: 'アクセスポイントへ行こう',
+              message: 'ガチャスポットへ行こう',
             ),
             onTap: () {},
             onDismissed: () => dismissed++,
@@ -630,7 +630,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(dismissed, 0);
-      expect(find.text('アクセスポイントへ行こう'), findsOneWidget);
+      expect(find.text('ガチャスポットへ行こう'), findsOneWidget);
     });
 
     testWidgets('畳んだアイコンは押すと呼ばれる', (tester) async {

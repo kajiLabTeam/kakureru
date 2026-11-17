@@ -51,7 +51,7 @@ double _scaleOf(WidgetTester tester, String label) {
 }
 
 void main() {
-  testWidgets('アクセスポイントの点と、判定範囲の破線の円を地点の数だけ描く', (tester) async {
+  testWidgets('ガチャスポットの点と、判定範囲の破線の円を地点の数だけ描く', (tester) async {
     await _pumpMap(
       tester,
       missionPoints: const [
@@ -59,7 +59,7 @@ void main() {
         (lat: 35.0010, lng: 137.0, radiusM: 15, claimed: false),
       ],
     );
-    expect(find.text('アクセスポイント'), findsNWidgets(2));
+    expect(find.text('ガチャスポット'), findsNWidgets(2));
     final polygons = tester
         .widgetList<PolygonLayer>(find.byType(PolygonLayer))
         .expand((layer) => layer.polygons)
@@ -78,7 +78,7 @@ void main() {
       ],
     );
     expect(find.text('取られた'), findsOneWidget);
-    expect(find.text('アクセスポイント'), findsNothing);
+    expect(find.text('ガチャスポット'), findsNothing);
     final polygons = tester
         .widgetList<PolygonLayer>(find.byType(PolygonLayer))
         .expand((layer) => layer.polygons)
@@ -86,9 +86,9 @@ void main() {
     expect(polygons.where((p) => p.borderColor == gameMuted), hasLength(1));
   });
 
-  testWidgets('ミッションが無ければアクセスポイントは描かない', (tester) async {
+  testWidgets('ミッションが無ければガチャスポットは描かない', (tester) async {
     await _pumpMap(tester);
-    expect(find.text('アクセスポイント'), findsNothing);
+    expect(find.text('ガチャスポット'), findsNothing);
   });
 
   testWidgets('自分が「自分のアイコンを大きくする」を引いたら、自分のピンも2倍', (tester) async {

@@ -17,7 +17,7 @@ abstract class MissionProgress with _$MissionProgress {
     /// どの地点への到着判定か(いちばん近い、空いている地点)。
     String? spotId,
 
-    /// アクセスポイントの到着判定。
+    /// ガチャスポットの到着判定。
     @Default(initialArrival) ArrivalProgress arrival,
   }) = _MissionProgress;
 }

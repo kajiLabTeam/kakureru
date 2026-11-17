@@ -53,7 +53,7 @@ const _cellBlurAlpha = 0.025;
 /// 逃走者(緑)の四角の濃さの倍率。
 const _fugitiveAlphaScale = 2.0;
 
-/// 地図に出すミッションの地点(アクセスポイント)と判定の半径(m)。
+/// 地図に出すミッションの地点(ガチャスポット)と判定の半径(m)。
 ///
 /// [claimed]はほかの人に取られた地点か(issue #155)。自分が取った地点は
 /// 呼び出し側(GamePage)がそもそも渡さない(向かう必要が無いため)。
@@ -108,7 +108,7 @@ class GameLocationMap extends HookWidget {
   /// ルーム設定で指定されたプレイエリア。未設定なら空。
   final List<LatLng> gameArea;
 
-  /// いま受けているミッションの、空いているアクセスポイント。それぞれに
+  /// いま受けているミッションの、空いているガチャスポット。それぞれに
   /// 点と判定範囲の円を描く。無ければ空。
   final List<MissionMapPoint> missionPoints;
 
@@ -325,7 +325,7 @@ class GameLocationMap extends HookWidget {
     );
   }
 
-  /// アクセスポイントの判定範囲(半径 `radiusM`)の破線の円。
+  /// ガチャスポットの判定範囲(半径 `radiusM`)の破線の円。
   /// flutter_mapのCircleMarkerは破線にできないため、円周を多角形で描く。
   ///
   /// ほかの人に取られた地点([MissionMapPoint.claimed])は、埋まったことが
@@ -345,7 +345,7 @@ class GameLocationMap extends HookWidget {
     );
   }
 
-  /// アクセスポイントの点とラベル。[MissionMapPoint.claimed]なら灰色に
+  /// ガチャスポットの点とラベル。[MissionMapPoint.claimed]なら灰色に
   /// 色を落とす(issue #155)。
   Marker _missionMarker(MissionMapPoint point) {
     final color = point.claimed ? gameMuted : missionAccent;
@@ -379,7 +379,7 @@ class GameLocationMap extends HookWidget {
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
-              point.claimed ? '取られた' : 'アクセスポイント',
+              point.claimed ? '取られた' : 'ガチャスポット',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 10,

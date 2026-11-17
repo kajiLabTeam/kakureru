@@ -17,7 +17,7 @@ mixin _$MissionProgress {
 
 /// どのミッションの進み具合か。ミッションが無ければnull。
  String? get missionId;/// どの地点への到着判定か(いちばん近い、空いている地点)。
- String? get spotId;/// アクセスポイントの到着判定。
+ String? get spotId;/// ガチャスポットの到着判定。
  ArrivalProgress get arrival;
 /// Create a copy of MissionProgress
 /// with the given fields replaced by the non-null parameter values.
@@ -224,7 +224,7 @@ class _MissionProgress implements MissionProgress {
 @override final  String? missionId;
 /// どの地点への到着判定か(いちばん近い、空いている地点)。
 @override final  String? spotId;
-/// アクセスポイントの到着判定。
+/// ガチャスポットの到着判定。
 @override@JsonKey() final  ArrivalProgress arrival;
 
 /// Create a copy of MissionProgress
